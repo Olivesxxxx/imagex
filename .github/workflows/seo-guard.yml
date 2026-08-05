@@ -1,0 +1,19 @@
+name: SEO Guard
+on: [push, pull_request]
+jobs:
+  build-and-assert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        # 锁 Node 24: Node < 24 的 undici Response.blob() 与 jsdom 29 的 Blob 不互通,
+        # 导致 URL image 转 blob 的测试在 Node 20/22 CI 上失败 (object.stream is not a function +
+        # instanceof Blob 不通过)。Node 24 的 undici 修复了 Blob 互通,本地与 CI 一致全绿。
+        with: { node-version: '24' }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Assert SEO invariants
+        run: node scripts/assert-seo.mjs

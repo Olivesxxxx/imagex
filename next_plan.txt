@@ -1,0 +1,165 @@
+ImageX 二次开发计划（基于 CPA Image）
+更新日期：2026-08-05
+
+一、当前结论
+
+源项目已克隆到 D:\Projects\imagex，并已在当前 Windows 机器完成依赖安装、测试、类型检查、生产构建和开发服务启动。
+
+当前开发地址：http://127.0.0.1:5174
+本次启动的进程 PID：12800
+源仓库：https://github.com/codegrazier/cpa-image.git
+当前分支：main
+当前基线提交：3d935f2 feat: 编辑模式支持粘贴图片与输入图大图预览
+
+验证结果：
+- Node.js：v24.16.0，满足项目要求 Node >= 24。
+- npm：12.0.2；pnpm：11.8.0。源项目使用 package-lock.json，应继续优先使用 npm。
+- npm install：成功，安装 209 个包。
+- npm test：成功，7 个测试文件、151 个用例全部通过。
+- npm run typecheck：成功。
+- npm run build：成功，dist 产物和预渲染页面均已生成。
+- 开发服务器：启动成功，首页 HTTP 状态码 200。
+- Windows 注意事项：当前 PowerShell 执行策略会拦截 npm.ps1，因此命令行中使用 npm.cmd（例如 npm.cmd start）。普通 cmd.exe 中可直接使用 npm。
+
+二、项目概况
+
+1. 产品定位
+
+ImageX 基于 CPA Image，是一个本地优先的 OpenAI 兼容图像生成与编辑控制台。它是纯浏览器前端，不包含业务后端，也不在项目服务器保存用户数据。浏览器直接请求用户配置的 OpenAI 或兼容 API。
+
+2. 当前主要能力
+
+- 文生图：调用 /v1/images/generations。
+- 图片编辑：调用 /v1/images/edits，支持本地选择、粘贴图片和复用历史结果，最多 5 张输入图。
+- Responses 生图：调用 /v1/responses，并使用 image_generation 工具。
+- Chat Completions 生图：调用 /v1/chat/completions，并使用 image_generation 工具。
+- 连接测试：调用 /v1/models。
+- 批量与队列：单次最多创建 100 个请求；并发度 1-100；请求间隔 0-3600 秒；支持取消、过滤和清理。
+- 结果处理：兼容 URL/base64 图片结果，支持单图下载、历史结果再次编辑、响应 JSON 查看和完成图片 ZIP 导出。
+- 本地工作流：保存设置、生成/编辑各自的 Prompt 草稿与历史、Prompt 置顶、请求摘要和请求详情。
+- 国际化：中文和英文，语言状态体现在 URL 路径。
+- SEO/静态部署：Vite 构建后执行预渲染，仓库包含 robots、sitemap、manifest、Netlify headers/redirects 和 SEO CI 检查。
+
+3. 技术栈
+
+- React 19 + TypeScript 6
+- Vite 8
+- Tailwind CSS 4
+- shadcn/ui 风格组件，底层使用 Radix UI
+- Vitest + Testing Library + jsdom
+- lucide-react 图标，sonner 消息提示
+- 无服务端数据库、无鉴权服务、无环境变量依赖
+
+4. 核心代码结构
+
+- src/App.tsx：三栏主界面及各类确认/进度/JSON 对话框的组合入口。
+- src/hooks/use-image-console.ts：核心运行状态；负责队列调度、请求执行、取消、结果缓存、下载和界面动作。目前约 68 KB，是后续维护风险最高的单体模块。
+- src/lib/image-console.ts：领域类型、默认设置、参数校验、四类请求载荷、响应解析、缓存模型和格式化工具。目前约 58 KB。
+- src/lib/api.ts：HTTP 请求、Bearer 鉴权、JSON/文本响应解析和错误转换。
+- src/lib/endpoints.ts：从用户填写的 Base URL 规范化五类直连端点。
+- src/lib/storage.ts：localStorage 与 IndexedDB 持久化、迁移和清理。
+- src/lib/request-queue.ts：并发数、请求间隔和下一任务调度规则。
+- src/components：生成参数、请求列表、结果区、设置窗口和基础 UI 组件。
+- src/lib/*.test.ts、src/App.test.tsx：领域逻辑、存储、队列、端点、结果和主要交互测试。
+
+5. 数据与安全边界
+
+- localStorage 保存设置、Prompt 草稿和 Prompt 历史。
+- IndexedDB 数据库名为 ImageX，保存请求摘要、响应详情和图片缓存。
+- API Key 默认只保存在当前运行内存；只有用户启用“记住 API Key”后才写入 localStorage，存储时没有加密。
+- ImageX 不提供请求中转代理，目标 API 必须正确配置 CORS。
+- 纯前端架构意味着浏览器 CORS 是硬约束，也无法真正隐藏 API Key。若未来面向多用户或公网部署，应新增自有后端/BFF，而不是继续把密钥放在浏览器。
+
+6. 当前已知问题与技术风险
+
+- npm audit 报告 2 个 high：vite 间接依赖 postcss@8.5.15，jsdom 间接依赖 undici@7.27.2；均显示 fixAvailable=true。它们主要位于开发/测试工具链，但仍需升级和回归。
+- use-image-console.ts 和 image-console.ts 体积过大，UI 状态、业务编排、请求适配及缓存逻辑耦合，新增功能时容易扩大回归面。
+- 当前只配置一个 Base URL/API Key，再用四个模型字段切换；不支持多个供应商配置、快速切换、模型自动发现或供应商级参数差异。
+- OpenAI 兼容接口实际返回结构差异较大。当前已有多种响应提取兼容逻辑，但缺少明确的 provider adapter 边界和真实服务契约测试。
+- 队列仅存在单浏览器实例中；刷新后的 queued/running 请求会如何恢复需作为验收项重点检查，不能视作服务端可靠任务队列。
+- ZIP 为项目自行实现的浏览器端打包逻辑，大批量/大图片时可能产生较高内存占用。
+- 没有端到端浏览器测试；现有测试以单元和组件测试为主，真实 CORS、下载、IndexedDB、刷新恢复和响应图片加载仍需人工或 Playwright 覆盖。
+- Git 远程应只指向 ImageX 自有仓库；上游来源通过 README 与 MIT License 说明。
+
+三、接下来要做的事情
+
+阶段 0：先完成本机人工验收（当前最优先）
+
+目标：确认“页面能开”之外，真实 OpenAI 兼容 API 的完整链路也能工作。
+
+1. 浏览器打开 http://127.0.0.1:5174。
+2. 在设置中填写实际 Base URL、API Key 和对应模型名。
+3. 点击连接测试，确认 /v1/models 可访问。
+4. 用最小参数分别验证：Images Generations、Responses、Chat Completions。
+5. 上传或粘贴一张非敏感测试图，验证 Images Edits。
+6. 验证取消请求、并发/间隔、单图下载、ZIP 导出、JSON 查看、历史复用。
+7. 刷新页面，核对设置、Prompt 历史、请求列表、缩略图和详情恢复。
+8. 若浏览器报告 CORS，需要修复 API 服务或自有网关的 CORS 配置。
+
+验收记录应至少包含：API 服务类型、Base URL 形式（隐藏域名/API Key）、模型名、成功的接口、失败状态码、响应结构样例（脱敏）、浏览器和图片格式。
+
+阶段 1：固化可二开的开发基线
+
+1. 将 origin 指向 https://github.com/Olivesxxxx/imagex.git。
+2. 从当前 main 建立开发分支，例如 develop；为上游原始状态打 baseline 标签。
+3. 升级或覆盖 postcss >= 8.5.23、undici >= 7.29.0，重新执行 npm audit、typecheck、151 个现有测试和 build。
+4. 增加 Windows 启动说明或 start-win 脚本，明确 npm.cmd 和 PowerShell 执行策略问题。
+5. 增加统一质量命令（lint/format/check）；当前 package.json 没有 ESLint/Prettier 脚本。
+6. 引入 Playwright 最小冒烟测试：页面加载、设置保存、模拟 API 生成、刷新恢复、下载入口。
+7. 保存一组脱敏的兼容 API fixture，避免每次回归都消耗真实生图额度。
+
+阶段 2：明确二开需求和产品边界
+
+在编码前，按优先级确认以下问题：
+
+1. 使用对象：仅自己本机使用，还是团队/公网多用户使用。
+2. API 来源：只接 OpenAI，还是还要接中转站、Azure OpenAI、Gemini/Vertex、火山、阿里云等兼容或非兼容接口。
+3. 数据策略：只保存在当前浏览器，还是需要账号、云同步、跨设备和共享图库。
+4. 核心增强：供应商预设、模型列表、参数模板、Prompt 模板、任务重试、图片管理、元数据检索、批量编辑等，确定第一版真正必需的范围。
+5. 部署方式：本地 Vite、静态站、桌面应用（Tauri/Electron），还是前后端服务。
+
+建议第一版优先做“多供应商配置 + 可靠的任务重试 + 可检索图库”，因为它们直接改善日常生图工作流；账号体系、云端协作和复杂画布应在确认确有多人需求后再引入。
+
+阶段 3：为功能扩展整理架构
+
+1. 把 use-image-console.ts 拆为设置、任务队列、请求执行、结果持久化、导出等职责明确的 hooks/services。
+2. 建立 Provider Adapter：统一 capabilities、模型发现、payload 构造、响应解析、错误标准化；OpenAI 作为第一个适配器。
+3. 给 IndexedDB 增加显式 schema 版本和迁移策略，并支持数据导入/导出、容量提示与损坏恢复。
+4. 将请求状态定义为明确状态机，补充重试次数、失败原因、可重试性和刷新恢复规则。
+5. 大图和批量导出改为受控内存策略；评估流式 ZIP 或分批导出。
+6. 保持 API Key 脱敏：日志、导出、异常和测试 fixture 中不得出现完整密钥。
+
+阶段 4：按确认后的优先级交付功能
+
+建议候选 backlog：
+- 多 API 配置档案与一键切换。
+- 从 /v1/models 获取模型并按能力筛选，仍允许手填模型。
+- 每个供应商独立 Base URL、Key、Header 和参数映射。
+- 失败请求重试、指数退避、429/5xx 分类处理、仅重跑失败项。
+- 图库视图、Prompt/模型/尺寸/日期筛选、收藏和标签。
+- 请求参数模板与 Prompt 模板变量。
+- 对比视图、批量选择、批量下载/删除/再次编辑。
+- 本地数据备份与恢复。
+- 可选的自托管 BFF，用于解决 CORS、隐藏上游密钥和实现团队权限。
+
+每个功能的完成标准：类型检查通过、相关单元测试通过、关键路径端到端测试通过、生产构建通过、真实兼容 API 冒烟通过、API Key 未泄露。
+
+四、日常开发命令（Windows PowerShell）
+
+cd D:\Projects\imagex
+npm.cmd install
+npm.cmd start
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run build
+npm.cmd audit
+
+开发服务默认只监听 127.0.0.1:5174，适合当前本机验收。若进程已停止，重新执行 npm.cmd start 即可。
+
+五、下一次开发会话的建议起点
+
+1. 先让用户在当前页面使用自己的兼容 API 完成阶段 0，并收集脱敏失败样例。
+2. 根据实际目标回答阶段 2 的五个产品边界问题，确定第一期功能清单和优先级。
+3. 建立自己的 Git 远程和开发分支。
+4. 修复依赖审计告警并加入 Playwright 冒烟基线。
+5. 再开始第一个二开功能，避免在真实接口兼容性和产品范围未确认前大规模改结构。

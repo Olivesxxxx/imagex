@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://olivesxxxx.github.io/imagex/</loc>
+    <lastmod>2026-06-13</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://olivesxxxx.github.io/imagex/zh-CN/" />
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://olivesxxxx.github.io/imagex/en-US/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://olivesxxxx.github.io/imagex/" />
+  </url>
+  <url>
+    <loc>https://olivesxxxx.github.io/imagex/zh-CN/</loc>
+    <lastmod>2026-06-13</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://olivesxxxx.github.io/imagex/zh-CN/" />
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://olivesxxxx.github.io/imagex/en-US/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://olivesxxxx.github.io/imagex/" />
+  </url>
+  <url>
+    <loc>https://olivesxxxx.github.io/imagex/en-US/</loc>
+    <lastmod>2026-06-13</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://olivesxxxx.github.io/imagex/zh-CN/" />
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://olivesxxxx.github.io/imagex/en-US/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://olivesxxxx.github.io/imagex/" />
+  </url>
+</urlset>

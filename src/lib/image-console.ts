@@ -1,0 +1,1629 @@
+import { DEFAULT_BASE_URL } from "@/lib/endpoints";
+
+export {
+  normalizeChatCompletionsEndpoint,
+  normalizeImageEditsEndpoint,
+  normalizeImageEndpoint,
+  normalizeModelsEndpoint,
+  normalizeResponsesEndpoint,
+} from "@/lib/endpoints";
+
+export {
+  MAX_PROMPT_HISTORY,
+  addPromptToHistory,
+  mergePromptHistoryForDisplay,
+  normalizePinnedPromptHistory,
+  normalizePromptHistory,
+  pinPromptHistory,
+  removePromptFromHistory,
+  unpinPromptHistory,
+  type PromptHistoryEntry,
+} from "@/lib/prompt-history";
+
+export const STORAGE_KEY = "ImageX-settings";
+export const REQUEST_CACHE_KEY = "ImageX-requests";
+export const LAST_PROMPT_KEY = "ImageX-last-prompt";
+export const PROMPT_HISTORY_KEY = "ImageX-prompt-history";
+export const PINNED_PROMPT_HISTORY_KEY = "ImageX-pinned-prompts";
+export const REQUEST_DETAIL_DB_NAME = "ImageX";
+export const REQUEST_DETAIL_DB_VERSION = 2;
+export const REQUEST_RECORDS_STORE_NAME = "request-records";
+export const REQUEST_DETAIL_STORE_NAME = "request-details";
+
+export const MIN_REQUEST_CONCURRENCY = 1;
+export const MAX_REQUEST_CONCURRENCY = 100;
+export const MIN_REQUEST_INTERVAL_SECONDS = 0;
+export const MAX_REQUEST_INTERVAL_SECONDS = 3600;
+export const MAX_IMAGE_COUNT = 100;
+export const MAX_EDIT_INPUT_IMAGES = 5;
+export const LAST_PROMPT_KEY_BY_MODE = {
+  generate: LAST_PROMPT_KEY,
+  edit: "ImageX-edit-last-prompt",
+} as const;
+export const PROMPT_HISTORY_KEY_BY_MODE = {
+  generate: PROMPT_HISTORY_KEY,
+  edit: "ImageX-edit-prompt-history",
+} as const;
+export const PINNED_PROMPT_HISTORY_KEY_BY_MODE = {
+  generate: PINNED_PROMPT_HISTORY_KEY,
+  edit: "ImageX-edit-pinned-prompts",
+} as const;
+
+export const SIZE_OPTION_GROUPS = {
+  square: ["1024x1024", "2048x2048"],
+  landscape: ["1440x1088", "1536x1024", "2048x1152", "2048x1536", "3840x2160"],
+  portrait: ["1088x1440", "1024x1536", "1152x2048", "1536x2048", "2160x3840"],
+} as const;
+
+export const SIZE_OPTIONS = [
+  "auto",
+  ...SIZE_OPTION_GROUPS.square,
+  ...SIZE_OPTION_GROUPS.landscape,
+  ...SIZE_OPTION_GROUPS.portrait,
+] as const;
+
+export const SIZE_OPTION_DISPLAY_LABELS: Partial<Record<ImageSize, string>> = {
+  "2048x2048": "2048x2048 (2K)",
+  "2048x1536": "2048x1536 (2K)",
+  "2048x1152": "2048x1152 (2K)",
+  "1152x2048": "1152x2048 (2K)",
+  "3840x2160": "3840x2160 (4K)",
+  "2160x3840": "2160x3840 (4K)",
+  "1536x2048": "1536x2048 (2K)",
+};
+
+export function sizeOptionDisplayLabel(option: ImageSize | string) {
+  return SIZE_OPTION_DISPLAY_LABELS[option as ImageSize] || option;
+}
+
+export const QUALITY_OPTIONS = ["auto", "low", "medium", "high"] as const;
+export const BACKGROUND_OPTIONS = ["auto", "opaque", "transparent"] as const;
+export const OUTPUT_FORMAT_OPTIONS = ["png", "webp", "jpeg"] as const;
+
+export type ImageSize = (typeof SIZE_OPTIONS)[number];
+export type ImageQuality = (typeof QUALITY_OPTIONS)[number];
+export type ImageBackground = (typeof BACKGROUND_OPTIONS)[number];
+export type ImageOutputFormat = (typeof OUTPUT_FORMAT_OPTIONS)[number];
+export type ConsoleMode = "generate" | "edit";
+export type GenerationMethod = "gpt-image-2" | "image_generation" | "completions" | "edit";
+export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
+export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
+export type RequestStatus = KnownRequestStatus | (string & {});
+export const REQUEST_FILTERS = ["all", "active", "done", "failed"] as const;
+export type RequestFilter = (typeof REQUEST_FILTERS)[number];
+
+export interface AppSettings {
+  baseUrl: string;
+  apiKey: string;
+  rememberKey: boolean;
+  generationsModel: string;
+  editsModel: string;
+  responsesModel: string;
+  completionsModel: string;
+  strictPromptText: string;
+  strictPrompt: boolean;
+  requestConcurrency: number | string;
+  requestIntervalSeconds: number | string;
+  size: ImageSize;
+  quality: ImageQuality;
+  n: number | string;
+  background: ImageBackground;
+  outputFormat: ImageOutputFormat;
+}
+
+export type SharedSettings = Pick<
+  AppSettings,
+  | "baseUrl"
+  | "apiKey"
+  | "rememberKey"
+  | "generationsModel"
+  | "editsModel"
+  | "responsesModel"
+  | "completionsModel"
+  | "strictPromptText"
+  | "requestConcurrency"
+  | "requestIntervalSeconds"
+>;
+
+export type ModeSettings = Pick<AppSettings, "size" | "quality" | "n" | "background" | "outputFormat" | "strictPrompt">;
+
+export interface StoredConsoleSettings {
+  shared: SharedSettings;
+  modeSettingsByMode: Record<ConsoleMode, ModeSettings>;
+}
+
+export interface GenerationValues extends AppSettings {
+  prompt: string;
+}
+
+export interface ImageToolPayload {
+  type: "image_generation";
+  size?: string;
+  quality?: string;
+  background?: string;
+  output_format?: string;
+  moderation?: string;
+}
+
+export interface EditInputImage {
+  src: string;
+  name: string;
+  mimeType: string;
+  file?: File;
+  blob?: Blob;
+  sourceKey?: string;
+}
+
+export interface ChatCompletionMessage {
+  role: "system" | "user" | "assistant" | string;
+  content:
+    | string
+    | Array<{
+        type?: string;
+        text?: string;
+        [key: string]: unknown;
+      }>;
+  [key: string]: unknown;
+}
+
+export interface RequestPayload {
+  model?: string;
+  prompt?: string;
+  input?: string;
+  images?: Array<{
+    file_id?: string;
+    image_url?: string;
+  }>;
+  messages?: ChatCompletionMessage[];
+  n?: number | string;
+  size?: string;
+  quality?: string;
+  background?: string;
+  output_format?: string;
+  moderation?: string;
+  tools?: ImageToolPayload[];
+  tool_choice?: {
+    type: "image_generation";
+  };
+  [key: string]: unknown;
+}
+
+export interface GeneratedImage {
+  src: string;
+  kind: "base64" | "url";
+  path: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  blob?: Blob;
+  objectUrl?: string;
+}
+
+export interface ImageRequestRecord {
+  id: string;
+  title: string;
+  index: number;
+  total: number;
+  method: GenerationMethod | "";
+  endpoint: string;
+  payload: RequestPayload;
+  sourcePrompt: string;
+  imageCount?: number;
+  imageResolution?: string;
+  imageSizeBytes?: number;
+  hasCachedDetails?: boolean;
+  detailsMissing?: boolean;
+  thumbnail?: GeneratedImage | null;
+  status: RequestStatus;
+  createdAt: number;
+  startedAt: number | null;
+  endedAt: number | null;
+  completedAt?: number | null;
+  images: GeneratedImage[];
+  response: unknown;
+  rawResponse?: unknown;
+  error: string;
+  controller?: AbortController | null;
+  cancelRequested?: boolean;
+  apiKey?: string;
+  editImages?: EditInputImage[];
+}
+
+export interface CachedRequestRecord
+  extends Omit<ImageRequestRecord, "images" | "response" | "controller" | "cancelRequested" | "apiKey" | "editImages"> {
+  imageCount: number;
+  hasCachedDetails: boolean;
+  imageSizeBytes?: number;
+  thumbnail?: GeneratedImage | null;
+}
+
+export const DEFAULTS: AppSettings = {
+  baseUrl: DEFAULT_BASE_URL,
+  apiKey: "",
+  rememberKey: false,
+  generationsModel: "gpt-image-2",
+  editsModel: "gpt-image-2",
+  responsesModel: "gpt-5.4-mini",
+  completionsModel: "gpt-5.4-mini",
+  strictPromptText: "",
+  strictPrompt: true,
+  requestConcurrency: 2,
+  requestIntervalSeconds: 60,
+  size: "auto",
+  quality: "auto",
+  n: 1,
+  background: "auto",
+  outputFormat: "png",
+};
+
+export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
+  baseUrl: DEFAULTS.baseUrl,
+  apiKey: DEFAULTS.apiKey,
+  rememberKey: DEFAULTS.rememberKey,
+  generationsModel: DEFAULTS.generationsModel,
+  editsModel: DEFAULTS.editsModel,
+  responsesModel: DEFAULTS.responsesModel,
+  completionsModel: DEFAULTS.completionsModel,
+  strictPromptText: DEFAULTS.strictPromptText,
+  requestConcurrency: DEFAULTS.requestConcurrency,
+  requestIntervalSeconds: DEFAULTS.requestIntervalSeconds,
+};
+
+export const DEFAULT_MODE_SETTINGS: ModeSettings = {
+  size: DEFAULTS.size,
+  quality: DEFAULTS.quality,
+  n: DEFAULTS.n,
+  background: DEFAULTS.background,
+  outputFormat: DEFAULTS.outputFormat,
+  strictPrompt: DEFAULTS.strictPrompt,
+};
+
+export const DEFAULT_STORED_SETTINGS: StoredConsoleSettings = {
+  shared: { ...DEFAULT_SHARED_SETTINGS },
+  modeSettingsByMode: {
+    generate: { ...DEFAULT_MODE_SETTINGS },
+    edit: { ...DEFAULT_MODE_SETTINGS },
+  },
+};
+
+export function isKnownRequestStatus(status: RequestStatus): status is KnownRequestStatus {
+  return (KNOWN_REQUEST_STATUSES as readonly string[]).includes(status);
+}
+
+export function requestStatusDisplayLabel(labels: Record<KnownRequestStatus, string>, status: RequestStatus) {
+  return isKnownRequestStatus(status) ? labels[status] : status;
+}
+
+export function generationMethodDisplayName(method: GenerationMethod | "" | null | undefined) {
+  if (method === "image_generation") return "responses";
+  if (method === "completions") return "completions";
+  if (method === "edit") return "edit";
+  return "generations";
+}
+
+export const STRICT_PROMPT_HEADER = "请把下面的原始 Prompt 当作最终图像指令执行。";
+export const STRICT_PROMPT_FOOTER = "原始 Prompt:";
+
+export const DEFAULT_STRICT_PROMPT_TEXT = [
+  "不要改写、扩写、翻译、润色、补充主体、改变构图、改变风格、添加未出现的元素。",
+  "保留原文的风格强度、氛围、姿态、镜头语言、材质和光影，不要把它改得更保守或更中性。",
+  "不要删减关键词，不要替换成含糊说法，不要添加原文没有的内容。",
+  "必须逐字保持原始 Prompt 的语义、语言和细节不变。",
+].join("\n");
+
+export const DEFAULT_STRICT_PROMPT_TEXT_EN = [
+  "Do not rewrite, expand, translate, polish, add missing subjects, change the composition, change the style, or add elements that do not appear in the original.",
+  "Keep the original style strength, atmosphere, pose, camera language, materials, and lighting; do not make it more conservative or neutral.",
+  "Do not remove keywords, replace them with vague wording, or add anything that is not in the original.",
+  "Must keep the original Prompt's semantics, language, and details exactly as written.",
+].join("\n");
+
+export function isDefaultStrictPromptText(value: unknown) {
+  const text = normalizeStrictPromptText(value);
+  return text === DEFAULT_STRICT_PROMPT_TEXT || text === DEFAULT_STRICT_PROMPT_TEXT_EN;
+}
+
+function isSettingsRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionFromValue<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
+  const normalized = String(value ?? "").trim();
+  return options.includes(normalized as T) ? (normalized as T) : fallback;
+}
+
+export function normalizeStrictPromptText(value: unknown) {
+  const text = String(value ?? "").replace(/\r\n/g, "\n");
+  return text.trim() ? text : DEFAULT_STRICT_PROMPT_TEXT;
+}
+
+export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
+  const source = isSettingsRecord(values) ? values : {};
+  return {
+    ...DEFAULT_SHARED_SETTINGS,
+    baseUrl: String(source.baseUrl || DEFAULTS.baseUrl).trim() || DEFAULTS.baseUrl,
+    apiKey: String(source.apiKey || "").trim(),
+    rememberKey: Boolean(source.rememberKey),
+    generationsModel: String(source.generationsModel || source.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
+    editsModel: String(source.editsModel || source.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel,
+    responsesModel: String(source.responsesModel || source.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel,
+    completionsModel: String(source.completionsModel || source.llmModel || DEFAULTS.completionsModel).trim() || DEFAULTS.completionsModel,
+    strictPromptText: normalizeStrictPromptText(source.strictPromptText),
+    requestConcurrency: normalizeRequestConcurrency(source.requestConcurrency),
+    requestIntervalSeconds: normalizeRequestIntervalSeconds(source.requestIntervalSeconds),
+  };
+}
+
+export function normalizeModeSettings(values: unknown = {}): ModeSettings {
+  const source = isSettingsRecord(values) ? values : {};
+  return {
+    ...DEFAULT_MODE_SETTINGS,
+    size: optionFromValue(source.size, SIZE_OPTIONS, DEFAULTS.size),
+    quality: optionFromValue(source.quality, QUALITY_OPTIONS, DEFAULTS.quality),
+    n: imageCountFromValue(source.n || DEFAULTS.n),
+    background: optionFromValue(source.background, BACKGROUND_OPTIONS, DEFAULTS.background),
+    outputFormat: optionFromValue(source.outputFormat, OUTPUT_FORMAT_OPTIONS, DEFAULTS.outputFormat),
+    strictPrompt: typeof source.strictPrompt === "boolean" ? source.strictPrompt : DEFAULTS.strictPrompt,
+  };
+}
+
+export function mergeSettingsForMode(shared: SharedSettings, modeSettings: ModeSettings): AppSettings {
+  return {
+    ...DEFAULTS,
+    ...shared,
+    ...modeSettings,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+export function buildStrictPromptPolicy(prompt: string, strictPromptText: unknown = DEFAULT_STRICT_PROMPT_TEXT) {
+  const text = normalizeStrictPromptText(strictPromptText);
+  return `${STRICT_PROMPT_HEADER}\n${text}\n\n${STRICT_PROMPT_FOOTER}\n${prompt}`;
+}
+
+export function applyPromptPolicy(
+  prompt: string,
+  strictPrompt = DEFAULTS.strictPrompt,
+  strictPromptText: unknown = DEFAULT_STRICT_PROMPT_TEXT,
+) {
+  if (!strictPrompt) return prompt;
+  return buildStrictPromptPolicy(prompt, strictPromptText);
+}
+
+export function stripPromptPolicy(prompt: unknown) {
+  const text = String(prompt || "").replace(/\r\n/g, "\n");
+  const strictPrefix = `${STRICT_PROMPT_HEADER}\n`;
+  if (text.startsWith(strictPrefix)) {
+    const footerMarker = `\n\n${STRICT_PROMPT_FOOTER}\n`;
+    const footerIndex = text.lastIndexOf(footerMarker);
+    if (footerIndex >= 0) {
+      return text.slice(footerIndex + footerMarker.length);
+    }
+  }
+
+  return text;
+}
+
+export function payloadImageTool(payload: RequestPayload | undefined | null) {
+  return Array.isArray(payload?.tools)
+    ? payload.tools.find((tool) => tool?.type === "image_generation") || null
+    : null;
+}
+
+export function payloadPrompt(payload: RequestPayload | undefined | null) {
+  if (typeof payload?.prompt === "string") return payload.prompt;
+  if (typeof payload?.input === "string") return payload.input;
+  if (Array.isArray(payload?.messages)) {
+    const message = [...payload.messages].reverse().find((item) => item?.role === "user") || payload.messages[0];
+    if (typeof message?.content === "string") return message.content;
+    if (Array.isArray(message?.content)) {
+      return message.content
+        .map((part) => (part?.type === "text" && typeof part.text === "string" ? part.text : ""))
+        .join("\n")
+        .trim();
+    }
+  }
+  return "";
+}
+
+export function payloadOutputFormat(payload: RequestPayload | undefined | null) {
+  const tool = payloadImageTool(payload);
+  return payload?.output_format || tool?.output_format || DEFAULTS.outputFormat;
+}
+
+export function payloadSize(payload: RequestPayload | undefined | null) {
+  const tool = payloadImageTool(payload);
+  return payload?.size || tool?.size || DEFAULTS.size;
+}
+
+export function reusablePromptForRequest(request: Pick<ImageRequestRecord, "payload" | "sourcePrompt">) {
+  return String(request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload))).trim();
+}
+
+export function revisedPromptForResponse(value: unknown) {
+  const seenObjects = new WeakSet<object>();
+
+  function walk(node: unknown): string {
+    if (!node || typeof node !== "object") return "";
+    if (seenObjects.has(node)) return "";
+    seenObjects.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const found = walk(item);
+        if (found) return found;
+      }
+      return "";
+    }
+
+    const record = node as Record<string, unknown>;
+    for (const key of ["revised_prompt", "revisedPrompt"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    for (const child of Object.values(record)) {
+      const found = walk(child);
+      if (found) return found;
+    }
+
+    return "";
+  }
+
+  return walk(value);
+}
+
+export function imageCountFromValue(value: unknown, language: MessageLanguage = "zh") {
+  const imageCount = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > MAX_IMAGE_COUNT) {
+    throw new Error(validationCopy(language).imageCountRange(MAX_IMAGE_COUNT));
+  }
+  return imageCount;
+}
+
+export function validatePromptAndOutput(
+  values: Pick<GenerationValues, "prompt" | "background" | "outputFormat">,
+  language: MessageLanguage = "zh",
+) {
+  const prompt = String(values.prompt || "").trim();
+
+  if (!prompt) {
+    throw new Error(validationCopy(language).promptRequired);
+  }
+
+  if (values.background === "transparent" && values.outputFormat === "jpeg") {
+    throw new Error(validationCopy(language).transparentJpeg);
+  }
+
+  return prompt;
+}
+
+export function buildPayload(
+  values: Partial<GenerationValues> & Pick<GenerationValues, "prompt">,
+  language: MessageLanguage = "zh",
+): RequestPayload {
+  const prompt = validatePromptAndOutput({
+    prompt: values.prompt,
+    background: values.background || DEFAULTS.background,
+    outputFormat: values.outputFormat || DEFAULTS.outputFormat,
+  }, language);
+  const imageCount = imageCountFromValue(values.n || DEFAULTS.n, language);
+  const model = String(values.generationsModel || DEFAULTS.generationsModel).trim();
+
+  if (!model) {
+    throw new Error(validationCopy(language).generationsModelRequired);
+  }
+
+  return {
+    model,
+    prompt: applyPromptPolicy(prompt, values.strictPrompt ?? DEFAULTS.strictPrompt, values.strictPromptText),
+    n: imageCount,
+    size: values.size || DEFAULTS.size,
+    quality: values.quality || DEFAULTS.quality,
+    background: values.background || DEFAULTS.background,
+    output_format: values.outputFormat || DEFAULTS.outputFormat,
+    moderation: "low",
+  };
+}
+
+export function buildResponsesImagePayload(
+  values: Partial<GenerationValues> & Pick<GenerationValues, "prompt">,
+  language: MessageLanguage = "zh",
+): RequestPayload {
+  const prompt = validatePromptAndOutput({
+    prompt: values.prompt,
+    background: values.background || DEFAULTS.background,
+    outputFormat: values.outputFormat || DEFAULTS.outputFormat,
+  }, language);
+  const model = String(values.responsesModel || DEFAULTS.responsesModel).trim();
+  imageCountFromValue(values.n || DEFAULTS.n, language);
+
+  if (!model) {
+    throw new Error(validationCopy(language).responsesModelRequired);
+  }
+
+  return {
+    model,
+    input: applyPromptPolicy(prompt, values.strictPrompt ?? DEFAULTS.strictPrompt, values.strictPromptText),
+    tools: [
+      {
+        type: "image_generation",
+        size: values.size || DEFAULTS.size,
+        quality: values.quality || DEFAULTS.quality,
+        background: values.background || DEFAULTS.background,
+        output_format: values.outputFormat || DEFAULTS.outputFormat,
+        moderation: "low",
+      },
+    ],
+    tool_choice: {
+      type: "image_generation",
+    },
+  };
+}
+
+export function buildChatCompletionsImagePayload(
+  values: Partial<GenerationValues> & Pick<GenerationValues, "prompt">,
+  language: MessageLanguage = "zh",
+): RequestPayload {
+  const prompt = validatePromptAndOutput({
+    prompt: values.prompt,
+    background: values.background || DEFAULTS.background,
+    outputFormat: values.outputFormat || DEFAULTS.outputFormat,
+  }, language);
+  const model = String(values.completionsModel || DEFAULTS.completionsModel).trim();
+  imageCountFromValue(values.n || DEFAULTS.n, language);
+
+  if (!model) {
+    throw new Error(validationCopy(language).completionsModelRequired);
+  }
+
+  return {
+    model,
+    messages: [
+      {
+        role: "user",
+        content: applyPromptPolicy(prompt, values.strictPrompt ?? DEFAULTS.strictPrompt, values.strictPromptText),
+      },
+    ],
+    tools: [
+      {
+        type: "image_generation",
+        size: values.size || DEFAULTS.size,
+        quality: values.quality || DEFAULTS.quality,
+        background: values.background || DEFAULTS.background,
+        output_format: values.outputFormat || DEFAULTS.outputFormat,
+      },
+    ],
+    tool_choice: {
+      type: "image_generation",
+    },
+  };
+}
+
+export function buildEditImagePayload(
+  values: Partial<GenerationValues> & Pick<GenerationValues, "prompt">,
+  images: EditInputImage[],
+  language: MessageLanguage = "zh",
+): RequestPayload {
+  const prompt = validatePromptAndOutput({
+    prompt: values.prompt,
+    background: values.background || DEFAULTS.background,
+    outputFormat: values.outputFormat || DEFAULTS.outputFormat,
+  }, language);
+  const model = String(values.editsModel || DEFAULTS.editsModel).trim();
+  const requestedCount = imageCountFromValue(values.n || DEFAULTS.n, language);
+
+  if (!model) {
+    throw new Error(validationCopy(language).editsModelRequired);
+  }
+
+  if (!Array.isArray(images) || !images.length) {
+    throw new Error(validationCopy(language).editInputMissing);
+  }
+
+  if (images.length > MAX_EDIT_INPUT_IMAGES) {
+    throw new Error(validationCopy(language).editInputLimit(MAX_EDIT_INPUT_IMAGES));
+  }
+
+  return {
+    model,
+    prompt: applyPromptPolicy(prompt, values.strictPrompt ?? DEFAULTS.strictPrompt, values.strictPromptText),
+    n: requestedCount,
+    size: values.size || DEFAULTS.size,
+    quality: values.quality || DEFAULTS.quality,
+    background: values.background || DEFAULTS.background,
+    output_format: values.outputFormat || DEFAULTS.outputFormat,
+    moderation: "low",
+  };
+}
+
+export function buildGenerationRequests(payload: RequestPayload) {
+  const requestedCount = Number.parseInt(String(payload.n), 10);
+
+  return Array.from({ length: requestedCount }, () => ({
+    ...payload,
+    n: 1,
+  }));
+}
+
+export function buildResponsesImageRequests(payload: RequestPayload, count: unknown) {
+  const requestedCount = imageCountFromValue(count);
+
+  return Array.from({ length: requestedCount }, () => ({
+    ...payload,
+    tools: payload.tools?.map((tool) => ({ ...tool })) || [],
+  }));
+}
+
+export function buildChatCompletionsImageRequests(payload: RequestPayload, count: unknown) {
+  const requestedCount = imageCountFromValue(count);
+
+  return Array.from({ length: requestedCount }, () => ({
+    ...payload,
+    messages: payload.messages?.map((message) => ({ ...message })) || [],
+    tools: payload.tools?.map((tool) => ({ ...tool })) || [],
+  }));
+}
+
+export function buildEditImageRequests(payload: RequestPayload, count: unknown) {
+  const requestedCount = imageCountFromValue(count);
+
+  return Array.from({ length: requestedCount }, () => ({
+    ...payload,
+    n: 1,
+  }));
+}
+
+function normalizeInteger(value: unknown, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+export function normalizeRequestConcurrency(value: unknown) {
+  return normalizeInteger(value, Number(DEFAULTS.requestConcurrency), MIN_REQUEST_CONCURRENCY, MAX_REQUEST_CONCURRENCY);
+}
+
+export function normalizeRequestIntervalSeconds(value: unknown) {
+  return normalizeInteger(
+    value,
+    Number(DEFAULTS.requestIntervalSeconds),
+    MIN_REQUEST_INTERVAL_SECONDS,
+    MAX_REQUEST_INTERVAL_SECONDS,
+  );
+}
+
+export function formatBatchPrefix(date = new Date()) {
+  const year = String(date.getFullYear()).slice(-2);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}${month}${day}-${hour}${minute}`;
+}
+
+export function nextRequestIndexForPrefix(batchPrefix: string, records: Array<Pick<ImageRequestRecord, "title">> = []) {
+  const escapedPrefix = batchPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const titlePattern = new RegExp(`^${escapedPrefix}-(\\d+)$`);
+
+  return records.reduce((nextIndex, request) => {
+    const match = titlePattern.exec(String(request.title || ""));
+    if (!match) return nextIndex;
+
+    const index = Number.parseInt(match[1], 10);
+    return Number.isInteger(index) ? Math.max(nextIndex, index + 1) : nextIndex;
+  }, 1);
+}
+
+export function createRequestRecords(
+  requestPayloads: RequestPayload[],
+  endpoint: string,
+  now = performance.now(),
+  date = new Date(),
+  existingRecords: Array<Pick<ImageRequestRecord, "title">> = [],
+  method: GenerationMethod | "" = "",
+): ImageRequestRecord[] {
+  const batchPrefix = formatBatchPrefix(date);
+  const startIndex = nextRequestIndexForPrefix(batchPrefix, existingRecords);
+
+  return requestPayloads.map((payload, index) => ({
+    id: `request-${Math.round(now)}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${index + 1}`}`,
+    title: `${batchPrefix}-${startIndex + index}`,
+    index: startIndex + index,
+    total: requestPayloads.length,
+    method,
+    endpoint,
+    payload,
+    sourcePrompt: stripPromptPolicy(payloadPrompt(payload)),
+    status: "queued",
+    createdAt: now,
+    startedAt: null,
+    endedAt: null,
+    completedAt: null,
+    images: [],
+    response: null,
+    error: "",
+    controller: null,
+    cancelRequested: false,
+  }));
+}
+
+export function requestImageCount(request: Pick<ImageRequestRecord, "images" | "imageCount">) {
+  return request.images?.length || request.imageCount || 0;
+}
+
+export function prepareRequestForCache(request: ImageRequestRecord, language: MessageLanguage = "zh"): CachedRequestRecord {
+  const copy = runtimeCopy(language);
+  const status = request.status === "running" || request.status === "queued" ? "canceled" : request.status;
+  const endedAt = request.endedAt ?? (status === "canceled" ? performance.now() : null);
+  const error =
+    request.status === "running" || request.status === "queued" ? copy.requestInterrupted : request.error || "";
+
+  return {
+    id: request.id,
+    title: request.title,
+    index: request.index,
+    total: request.total,
+    method: request.method || "",
+    endpoint: request.endpoint,
+    payload: request.payload,
+    sourcePrompt: request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload)),
+    imageCount: requestImageCount(request),
+    imageResolution:
+      String(request.imageResolution || "").trim() ||
+      (request.images?.[0]?.width && request.images?.[0]?.height
+        ? `${request.images[0].width}x${request.images[0].height}`
+        : ""),
+    imageSizeBytes: Number(request.imageSizeBytes) || 0,
+    hasCachedDetails: Boolean(
+      request.hasCachedDetails ||
+        (request.images?.length || 0) > 0 ||
+        request.response != null ||
+        request.thumbnail,
+    ),
+    thumbnail: request.thumbnail ? serializeGeneratedImage(request.thumbnail) : null,
+    status,
+    createdAt: request.createdAt,
+    startedAt: request.startedAt,
+    endedAt,
+    completedAt: request.completedAt ?? null,
+    error,
+  };
+}
+
+export function restoreCachedRequest(
+  request: Partial<ImageRequestRecord & CachedRequestRecord>,
+  language: MessageLanguage = "zh",
+): ImageRequestRecord {
+  const copy = runtimeCopy(language);
+  const status = request.status === "running" || request.status === "queued" ? "canceled" : request.status || "canceled";
+
+  return {
+    id: String(request.id || `cached-${Date.now()}`),
+    title: String(request.title || "cached-request"),
+    index: Number.parseInt(String(request.index), 10) || 1,
+    total: Number.parseInt(String(request.total), 10) || 1,
+    method: request.method || "",
+    endpoint: String(request.endpoint || ""),
+    payload: request.payload || {},
+    sourcePrompt: String(request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload))),
+    imageCount: Number.parseInt(String(request.imageCount), 10) || (Array.isArray(request.images) ? request.images.length : 0),
+    imageResolution:
+      String(request.imageResolution || "").trim() ||
+      (Array.isArray(request.images) && request.images[0]?.width && request.images[0]?.height
+        ? `${request.images[0].width}x${request.images[0].height}`
+        : ""),
+    imageSizeBytes: Number(request.imageSizeBytes) || 0,
+    hasCachedDetails: Boolean(request.hasCachedDetails || request.response != null || request.images?.length || request.thumbnail),
+    detailsMissing: Boolean(request.detailsMissing),
+    thumbnail: serializeGeneratedImage(request.thumbnail),
+    status,
+    createdAt: Number(request.createdAt) || 0,
+    startedAt: Number(request.startedAt) || null,
+    endedAt: Number(request.endedAt) || (status === "canceled" ? performance.now() : null),
+    completedAt: Number(request.completedAt) || null,
+    images: [],
+    response: null,
+    error:
+      request.status === "running" || request.status === "queued" ? copy.requestInterrupted : request.error || "",
+    controller: null,
+    cancelRequested: false,
+    editImages: [],
+  };
+}
+
+export function cachedRequestRecords(records: ImageRequestRecord[] = [], language: MessageLanguage = "zh") {
+  return records.map((record) => prepareRequestForCache(record, language));
+}
+
+function serializeGeneratedImage(image: unknown): GeneratedImage | null {
+  if (!image || typeof image !== "object") return null;
+
+  const candidate = image as Partial<GeneratedImage>;
+  const src = String(candidate.src || "").trim();
+  const kind = candidate.kind === "url" ? "url" : candidate.kind === "base64" ? "base64" : "";
+  const path = String(candidate.path || "").trim();
+
+  if (!src || !kind || !path) return null;
+
+  return {
+    src,
+    kind,
+    path,
+    mimeType: candidate.mimeType || undefined,
+    width: typeof candidate.width === "number" ? candidate.width : undefined,
+    height: typeof candidate.height === "number" ? candidate.height : undefined,
+  };
+}
+
+export function requestMatchesFilter(request: Pick<ImageRequestRecord, "status">, filter: RequestFilter = "all") {
+  const status = request?.status;
+  const isActive = status === "queued" || status === "running";
+  const isDone = status === "done";
+
+  if (filter === "active") return isActive;
+  if (filter === "done") return isDone;
+  if (filter === "failed") return !isActive && !isDone;
+  return true;
+}
+
+export function filteredRequestRecords(records: ImageRequestRecord[] = [], filter: RequestFilter = "all") {
+  return records.filter((request) => requestMatchesFilter(request, filter));
+}
+
+function splitRequestTitle(title: unknown) {
+  const rawTitle = String(title || "");
+  const lastDash = rawTitle.lastIndexOf("-");
+
+  if (lastDash <= 0) {
+    return { prefix: rawTitle, index: Number.NaN, rawTitle };
+  }
+
+  return {
+    prefix: rawTitle.slice(0, lastDash),
+    index: Number.parseInt(rawTitle.slice(lastDash + 1), 10),
+    rawTitle,
+  };
+}
+
+function compareRequestTitlesDesc(a: Pick<ImageRequestRecord, "title">, b: Pick<ImageRequestRecord, "title">) {
+  const left = splitRequestTitle(a.title);
+  const right = splitRequestTitle(b.title);
+
+  const prefixDiff = right.prefix.localeCompare(left.prefix);
+  if (prefixDiff) return prefixDiff;
+
+  const leftHasIndex = Number.isFinite(left.index);
+  const rightHasIndex = Number.isFinite(right.index);
+  if (leftHasIndex && rightHasIndex && left.index !== right.index) {
+    return right.index - left.index;
+  }
+
+  return right.rawTitle.localeCompare(left.rawTitle);
+}
+
+export function sortedRequestRecordsForFilter(records: ImageRequestRecord[] = [], filter: RequestFilter = "all") {
+  const filtered = filteredRequestRecords(records, filter);
+
+  if (filter === "all" || filter === "active") {
+    return [...filtered].sort(compareRequestTitlesDesc);
+  }
+
+  if (filter === "done") {
+    return [...filtered].sort((a, b) => {
+      const completedDiff =
+        (b.completedAt ?? b.endedAt ?? Number.NEGATIVE_INFINITY) -
+        (a.completedAt ?? a.endedAt ?? Number.NEGATIVE_INFINITY);
+      if (completedDiff) return completedDiff;
+      const indexDiff = (Number(b.index) || 0) - (Number(a.index) || 0);
+      if (indexDiff) return indexDiff;
+      return b.createdAt - a.createdAt;
+    });
+  }
+
+  return [...filtered].sort((a, b) => {
+    const failedDiff = (b.endedAt ?? b.completedAt ?? Number.NEGATIVE_INFINITY) - (a.endedAt ?? a.completedAt ?? Number.NEGATIVE_INFINITY);
+    if (failedDiff) return failedDiff;
+    const indexDiff = (Number(b.index) || 0) - (Number(a.index) || 0);
+    if (indexDiff) return indexDiff;
+    return b.createdAt - a.createdAt;
+  });
+}
+
+export function requestFilterCounts(records: ImageRequestRecord[] = []) {
+  return Object.fromEntries(
+    REQUEST_FILTERS.map((filter) => [
+      filter,
+      filteredRequestRecords(records, filter).length,
+    ]),
+  ) as Record<RequestFilter, number>;
+}
+
+function formatDuration(milliseconds: number) {
+  const totalSeconds = Math.max(0, milliseconds) / 1000;
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(1)}s`;
+  }
+
+  let minutes = Math.floor(totalSeconds / 60);
+  let seconds = Number((totalSeconds - minutes * 60).toFixed(1));
+
+  if (seconds >= 60) {
+    minutes += 1;
+    seconds = 0;
+  }
+
+  return `${minutes}m${seconds.toFixed(1)}s`;
+}
+
+type TimingLanguage = "zh" | "en";
+type MessageLanguage = TimingLanguage;
+
+function timingCopy(language: TimingLanguage) {
+  return language === "en"
+    ? {
+        waiting: "Waiting",
+        running: "Elapsed",
+        done: "Duration",
+        completionTime: "Completed at",
+        completionMissing: "Completion time not recorded",
+      }
+    : {
+        waiting: "等待",
+        running: "已用",
+        done: "用时",
+        completionTime: "完成于",
+        completionMissing: "完成时间未记录",
+      };
+}
+
+export function formatRequestTiming(
+  request: Pick<ImageRequestRecord, "status" | "createdAt" | "startedAt" | "endedAt">,
+  now = performance.now(),
+  language: TimingLanguage = "zh",
+) {
+  const copy = timingCopy(language);
+  const waitEnd = request.startedAt ?? request.endedAt ?? now;
+  const waitText = `${copy.waiting} ${formatDuration(waitEnd - request.createdAt)}`;
+
+  if (request.status === "queued") {
+    return waitText;
+  }
+
+  const runStart = request.startedAt ?? request.createdAt;
+  const runEnd = request.endedAt ?? now;
+  const runLabel = request.status === "running" ? copy.running : copy.done;
+  return `${waitText} · ${runLabel} ${formatDuration(runEnd - runStart)}`;
+}
+
+export function formatCompletionTime(completedAt: unknown, language: TimingLanguage = "zh") {
+  const copy = timingCopy(language);
+  const timestamp = Number(completedAt);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return copy.completionMissing;
+
+  const date = new Date(timestamp);
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const second = String(date.getSeconds()).padStart(2, "0");
+  return `${copy.completionTime} ${hour}:${minute}:${second}`;
+}
+
+function validationCopy(language: MessageLanguage) {
+  return language === "en"
+    ? {
+        promptRequired: "Prompt cannot be empty.",
+        transparentJpeg: "Transparent background requires png or webp.",
+        generationsModelRequired: "Generations model cannot be empty.",
+        editsModelRequired: "Edits model cannot be empty.",
+        responsesModelRequired: "Responses model cannot be empty.",
+        completionsModelRequired: "Completions model cannot be empty.",
+        editInputMissing: "Please choose at least one image.",
+        editInputLimit: (count: number) => `Edit mode supports up to ${count} images.`,
+        imageCountRange: (count: number) => `Count must be an integer between 1 and ${count}.`,
+      }
+    : {
+        promptRequired: "Prompt 不能为空。",
+        transparentJpeg: "透明背景需要 png 或 webp 格式。",
+        generationsModelRequired: "generations 模型不能为空。",
+        editsModelRequired: "edits 模型不能为空。",
+        responsesModelRequired: "responses 模型不能为空。",
+        completionsModelRequired: "completions 模型不能为空。",
+        editInputMissing: "请先选择至少一张图片。",
+        editInputLimit: (count: number) => `编辑模式最多选择 ${count} 张图片。`,
+        imageCountRange: (count: number) => `数量必须是 1 到 ${count} 之间的整数。`,
+      };
+}
+
+function runtimeCopy(language: MessageLanguage) {
+  return language === "en"
+    ? {
+        requestControlSummary: (settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">) =>
+          `Concurrency ${normalizeRequestConcurrency(settings.requestConcurrency)} · Interval ${normalizeRequestIntervalSeconds(
+            settings.requestIntervalSeconds,
+          )}s`,
+        missingImageOutput: "No image output was found in the response.",
+        encryptedContentOnly:
+          "The response only contains encrypted_content and no image_generation_call.result; encrypted_content is encrypted content and cannot be parsed as an image.",
+        responseErrorAuthUnavailable:
+          "HTTP 503 auth_unavailable: CLIProxyAPI has no available authentication. Please confirm this page's API key is one of the entries in config.yaml api-keys, and confirm the proxy auth-dir contains usable upstream login/import credentials and image generation is not disabled.",
+        responseErrorInvalidApiKey:
+          "HTTP 401: The API key was not accepted by CLIProxyAPI. Please use the proxy key configured in config.yaml api-keys.",
+        responseErrorPrefix: "Response error:",
+        responseErrorUpstream: (detail: string, code: string) => `Response error: ${detail || "Upstream returned error."}${code}`,
+        requestCanceled: "Request canceled",
+        requestCanceledBeforeSend: "Request canceled before sending.",
+        requestInterrupted: "Page refreshed and the request was interrupted.",
+      }
+    : {
+        requestControlSummary: (settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">) =>
+          `并发 ${normalizeRequestConcurrency(settings.requestConcurrency)} · 间隔 ${normalizeRequestIntervalSeconds(
+            settings.requestIntervalSeconds,
+          )}s`,
+        missingImageOutput: "响应中没有找到图片输出。",
+        encryptedContentOnly: "响应中只有 encrypted_content，没有 image_generation_call.result；encrypted_content 是加密内容，不能解析为图片。",
+        responseErrorAuthUnavailable:
+          "HTTP 503 auth_unavailable：CLIProxyAPI 没有可用认证。请确认本页面 API Key 是 config.yaml 的 api-keys 中的一项；并确认代理端 auth-dir 中已有可用上游登录/导入凭据，且图片生成未被禁用。",
+        responseErrorInvalidApiKey: "HTTP 401：API Key 未被 CLIProxyAPI 接受。请填写 config.yaml 的 api-keys 中配置的代理 key。",
+        responseErrorPrefix: "响应错误：",
+        responseErrorUpstream: (detail: string, code: string) => `响应错误：${detail || "上游返回 error。"}${code}`,
+        requestCanceled: "已取消请求",
+        requestCanceledBeforeSend: "请求已取消，未发送。",
+        requestInterrupted: "页面刷新，请求已中断。",
+      };
+}
+
+export function requestControlSummary(
+  settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">,
+  language: MessageLanguage = "zh",
+) {
+  return runtimeCopy(language).requestControlSummary(settings);
+}
+
+export function detectMimeFromBase64(base64: unknown, fallbackFormat = "png") {
+  const sample = String(base64 || "").slice(0, 16);
+  if (sample.startsWith("iVBOR")) return "image/png";
+  if (sample.startsWith("/9j/")) return "image/jpeg";
+  if (sample.startsWith("UklG")) return "image/webp";
+  if (sample.startsWith("R0lG")) return "image/gif";
+  return `image/${fallbackFormat || "png"}`;
+}
+
+function imageDimensionsToThumbnail(width: number, height: number, maxEdge: number) {
+  const longest = Math.max(width, height, 1);
+  const scale = Math.min(1, maxEdge / longest);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+async function dataUrlFromBlobThumbnail(blob: Blob, maxEdge = 160) {
+  if (typeof createImageBitmap !== "function" || typeof document === "undefined") return null;
+
+  let bitmap: ImageBitmap | null = null;
+
+  try {
+    bitmap = await createImageBitmap(blob);
+    const { width, height } = imageDimensionsToThumbnail(bitmap.width, bitmap.height, maxEdge);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+
+    context.drawImage(bitmap, 0, 0, width, height);
+    return canvas.toDataURL("image/webp", 0.82);
+  } catch {
+    return null;
+  } finally {
+    try {
+      bitmap?.close?.();
+    } catch {
+      // Ignore bitmap cleanup failures.
+    }
+  }
+}
+
+export async function prepareImageForThumbnailCache(
+  image: GeneratedImage,
+  maxEdge = 160,
+): Promise<GeneratedImage | null> {
+  const blob = imageBlobFromImage(image);
+  if (blob) {
+    const thumbnailSrc = await dataUrlFromBlobThumbnail(blob, maxEdge);
+    if (!thumbnailSrc) {
+      return null;
+    }
+
+    return {
+      src: thumbnailSrc,
+      kind: "base64",
+      path: image.path,
+      mimeType: "image/webp",
+    };
+  }
+
+  if (image.kind === "url") {
+    return {
+      src: image.src,
+      kind: "url",
+      path: image.path,
+      mimeType: image.mimeType || "image/webp",
+    };
+  }
+
+  return null;
+}
+
+function base64ToDataUrl(value: unknown, fallbackFormat = "png") {
+  const text = String(value || "").trim();
+  if (text.startsWith("data:image/")) return text;
+  const mime = detectMimeFromBase64(text, fallbackFormat);
+  return `data:${mime};base64,${text}`;
+}
+
+function dataUrlMimeType(value: unknown, fallbackFormat = "png") {
+  const text = String(value || "").trim();
+  const match = /^data:(image\/[^;,]+);base64,/i.exec(text);
+  return match?.[1] || detectMimeFromBase64(text, fallbackFormat);
+}
+
+function isBlob(value: unknown): value is Blob {
+  return typeof Blob !== "undefined" && value instanceof Blob;
+}
+
+function imageFormatFromMimeType(mimeType: unknown) {
+  return String(mimeType || "png").replace(/^image\//, "") || "png";
+}
+
+export function imageBlobFromDataUrl(value: unknown, fallbackFormat = "png") {
+  const dataUrl = base64ToDataUrl(value, fallbackFormat);
+  const match = /^data:(image\/[^;,]+);base64,(.*)$/is.exec(dataUrl);
+  if (!match || typeof globalThis.atob !== "function" || typeof Blob === "undefined") return null;
+
+  try {
+    const binary = globalThis.atob(match[2].replace(/\s/g, ""));
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return new Blob([bytes], { type: match[1] });
+  } catch {
+    return null;
+  }
+}
+
+function imageBlobFromImage(image: GeneratedImage) {
+  if (isBlob(image.blob)) return image.blob;
+  if (image.kind !== "base64") return null;
+  return imageBlobFromDataUrl(image.src, imageFormatFromMimeType(image.mimeType));
+}
+
+async function imageDimensionsFromBlob(blob: Blob, fallbackSource = "") {
+  if (typeof document === "undefined") return null;
+
+  if (typeof createImageBitmap === "function") {
+    let bitmap: ImageBitmap | null = null;
+
+    try {
+      bitmap = await createImageBitmap(blob);
+      return { width: bitmap.width, height: bitmap.height };
+    } catch {
+      // Fall back to HTMLImageElement below.
+    } finally {
+      try {
+        bitmap?.close?.();
+      } catch {
+        // Ignore bitmap cleanup failures.
+      }
+    }
+  }
+
+  const source = fallbackSource || (typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? URL.createObjectURL(blob) : "");
+  if (!source) return null;
+
+  return await new Promise<{ width: number; height: number } | null>((resolve) => {
+    const image = new Image();
+    const revoke = source !== fallbackSource && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function";
+
+    image.onload = () => {
+      if (revoke) {
+        try {
+          URL.revokeObjectURL(source);
+        } catch {
+          // Ignore cleanup failures.
+        }
+      }
+      resolve(image.naturalWidth && image.naturalHeight ? { width: image.naturalWidth, height: image.naturalHeight } : null);
+    };
+    image.onerror = () => {
+      if (revoke) {
+        try {
+          URL.revokeObjectURL(source);
+        } catch {
+          // Ignore cleanup failures.
+        }
+      }
+      resolve(null);
+    };
+    image.src = source;
+  });
+}
+
+export function prepareImageForDetailCache(image: GeneratedImage): GeneratedImage | null {
+  const blob = imageBlobFromImage(image);
+  if (blob) {
+    return {
+      src: image.kind === "url" ? image.src : "",
+      kind: image.kind,
+      path: image.path,
+      mimeType: blob.type || image.mimeType,
+      width: image.width,
+      height: image.height,
+      blob,
+    };
+  }
+
+  if (image.kind === "url") {
+    return {
+      src: image.src,
+      kind: "url",
+      path: image.path,
+      mimeType: image.mimeType,
+      width: image.width,
+      height: image.height,
+    };
+  }
+
+  if (String(image.src || "").startsWith("data:image/")) {
+    return {
+      src: image.src,
+      kind: "base64",
+      path: image.path,
+      mimeType: image.mimeType || dataUrlMimeType(image.src),
+      width: image.width,
+      height: image.height,
+    };
+  }
+
+  return null;
+}
+
+export async function prepareImageForDetailCacheWithDimensions(image: GeneratedImage) {
+  const cached = prepareImageForDetailCache(image);
+  if (!cached) return null;
+  if (cached.width && cached.height) return cached;
+
+  const blob = imageBlobFromImage(image);
+  if (!blob) return cached;
+
+  const dimensions = await imageDimensionsFromBlob(blob, image.src);
+  if (!dimensions) return cached;
+
+  return {
+    ...cached,
+    ...dimensions,
+  };
+}
+
+export function prepareImageForRuntime(image: GeneratedImage): GeneratedImage {
+  const blob = imageBlobFromImage(image);
+  if (blob && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+    try {
+      const objectUrl = URL.createObjectURL(blob);
+      return {
+        src: objectUrl,
+        kind: image.kind,
+        path: image.path,
+        mimeType: blob.type || image.mimeType,
+        width: image.width,
+        height: image.height,
+        objectUrl,
+      };
+    } catch {
+      // 预览 URL 创建失败时回退到原始 src，避免生成流程被中断。
+    }
+  }
+
+  if (image.kind === "url") {
+    return {
+      src: image.src,
+      kind: "url",
+      path: image.path,
+      mimeType: image.mimeType,
+      width: image.width,
+      height: image.height,
+    };
+  }
+
+  return {
+    src: image.src,
+    kind: "base64",
+    path: image.path,
+    mimeType: image.mimeType || dataUrlMimeType(image.src),
+    width: image.width,
+    height: image.height,
+  };
+}
+
+export function prepareEditInputImage(image: GeneratedImage, name: string): EditInputImage | null {
+  const blob = typeof Blob !== "undefined" && image.blob instanceof Blob
+    ? image.blob
+    : image.kind === "base64"
+      ? imageBlobFromDataUrl(image.src, imageFormatFromMimeType(image.mimeType))
+      : null;
+
+  if (!blob) return null;
+
+  const runtimeImage = prepareImageForRuntime({ ...image, blob });
+  return {
+    src: runtimeImage.src,
+    name,
+    mimeType: blob.type || image.mimeType || "image/png",
+    blob,
+  };
+}
+
+function looksLikeBase64Image(value: unknown) {
+  const text = String(value || "").trim();
+  if (text.startsWith("data:image/")) return true;
+  return text.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(text);
+}
+
+function markdownImageUrlsFromText(value: string) {
+  const urls: string[] = [];
+  const text = value.replace(/\\\//g, "/");
+  const markdownImagePattern = /!\[[^\]\r\n]*]\(\s*<?((?:https?:\/\/|data:image\/)[^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/gi;
+
+  for (const match of text.matchAll(markdownImagePattern)) {
+    const url = match[1]?.trim();
+    if (url) urls.push(url);
+  }
+
+  return urls;
+}
+
+export function extractImages(response: unknown, fallbackFormat = "png") {
+  const found: GeneratedImage[] = [];
+  const seenObjects = new WeakSet<object>();
+  const base64Keys = new Set(["b64_json", "image_base64", "base64", "image", "result"]);
+  const urlKeys = new Set(["url", "image_url", "output_url"]);
+
+  function addImage(item: GeneratedImage) {
+    if (!item.src || found.some((existing) => existing.src === item.src)) return;
+    found.push(item);
+  }
+
+  function walk(value: unknown, path = "$") {
+    if (value == null) return;
+
+    if (typeof value === "string") {
+      const text = value.trim().replace(/\\\//g, "/");
+      markdownImageUrlsFromText(text).forEach((url, index) => {
+        addImage({
+          src: url,
+          kind: url.startsWith("data:image/") ? "base64" : "url",
+          path: `${path}.markdownImage[${index}]`,
+          mimeType: url.startsWith("data:image/") ? dataUrlMimeType(url, fallbackFormat) : undefined,
+        });
+      });
+
+      if (text.startsWith("http://") || text.startsWith("https://") || text.startsWith("data:image/")) {
+        addImage({
+          src: text,
+          kind: text.startsWith("data:image/") ? "base64" : "url",
+          path,
+          mimeType: text.startsWith("data:image/") ? dataUrlMimeType(text, fallbackFormat) : undefined,
+        });
+      }
+      return;
+    }
+
+    if (typeof value !== "object") return;
+    if (seenObjects.has(value)) return;
+    seenObjects.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => walk(item, `${path}[${index}]`));
+      return;
+    }
+
+    const outputFormat = isRecord(value) && typeof value.output_format === "string" ? value.output_format : fallbackFormat;
+    let preferredBase64Image: { key: string; image: GeneratedImage } | null = null;
+    let preferredUrlImage: { key: string; image: GeneratedImage } | null = null;
+    let hasDirectBase64 = false;
+
+    for (const [key, child] of Object.entries(value)) {
+      if (typeof child !== "string") continue;
+      const text = child.trim();
+
+      if (base64Keys.has(key) && looksLikeBase64Image(text)) {
+        const src = base64ToDataUrl(text, outputFormat);
+        if (!preferredBase64Image) {
+          preferredBase64Image = {
+            key,
+            image: {
+              src,
+              kind: "base64",
+              path: `${path}.${key}`,
+              mimeType: dataUrlMimeType(src, outputFormat),
+            },
+          };
+        }
+        hasDirectBase64 = true;
+        continue;
+      }
+
+      if (urlKeys.has(key) && text.startsWith("data:image/")) {
+        if (!preferredBase64Image) {
+          preferredBase64Image = {
+            key,
+            image: {
+              src: text,
+              kind: "base64",
+              path: `${path}.${key}`,
+              mimeType: dataUrlMimeType(text, outputFormat),
+            },
+          };
+        }
+        hasDirectBase64 = true;
+        continue;
+      }
+
+      if (!preferredUrlImage && urlKeys.has(key) && (text.startsWith("http://") || text.startsWith("https://"))) {
+        preferredUrlImage = {
+          key,
+          image: {
+            src: text,
+            kind: "url",
+            path: `${path}.${key}`,
+          },
+        };
+      }
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = `${path}.${key}`;
+      if (typeof child === "string") {
+        if (preferredBase64Image && key === preferredBase64Image.key) {
+          addImage(preferredBase64Image.image);
+          continue;
+        }
+
+        if (hasDirectBase64 && urlKeys.has(key)) {
+          continue;
+        }
+
+        if (!hasDirectBase64 && preferredUrlImage && key === preferredUrlImage.key) {
+          addImage(preferredUrlImage.image);
+        }
+
+        markdownImageUrlsFromText(child).forEach((url, index) => {
+          addImage({
+            src: url,
+            kind: url.startsWith("data:image/") ? "base64" : "url",
+            path: `${childPath}.markdownImage[${index}]`,
+            mimeType: url.startsWith("data:image/") ? dataUrlMimeType(url, fallbackFormat) : undefined,
+          });
+        });
+
+        continue;
+      }
+
+      walk(child, childPath);
+    }
+  }
+
+  walk(response);
+  return found;
+}
+
+function responseContainsKey(value: unknown, targetKey: string) {
+  const seenObjects = new WeakSet<object>();
+
+  function walk(node: unknown): boolean {
+    if (!node || typeof node !== "object") return false;
+    if (seenObjects.has(node)) return false;
+    seenObjects.add(node);
+
+    if (Array.isArray(node)) {
+      return node.some((item) => walk(item));
+    }
+
+    return Object.entries(node).some(([key, child]) => key === targetKey || walk(child));
+  }
+
+  return walk(value);
+}
+
+export function missingImageOutputMessage(body: unknown, language: MessageLanguage = "zh") {
+  const copy = runtimeCopy(language);
+  if (responseContainsKey(body, "encrypted_content")) {
+    return copy.encryptedContentOnly;
+  }
+
+  return copy.missingImageOutput;
+}
+
+export function sanitizeResponseForDisplay(value: unknown): unknown {
+  const seenObjects = new WeakSet<object>();
+  const largeImageKeys = new Set(["b64_json", "image_base64", "base64", "image", "result"]);
+
+  function scrub(node: unknown, key = ""): unknown {
+    if (typeof node === "string") {
+      if ((largeImageKeys.has(key) || node.startsWith("data:image/")) && node.length > 240) {
+        return `[image data omitted, ${node.length} chars]`;
+      }
+      return node;
+    }
+
+    if (!node || typeof node !== "object") return node;
+    if (seenObjects.has(node)) return "[Circular]";
+    seenObjects.add(node);
+
+    if (Array.isArray(node)) {
+      return node.map((item) => scrub(item));
+    }
+
+    return Object.fromEntries(Object.entries(node).map(([childKey, child]) => [childKey, scrub(child, childKey)]));
+  }
+
+  return scrub(value);
+}
+
+function errorDetailFromBody(body: unknown) {
+  if (!body) return "";
+  if (typeof body === "string") return body;
+  if (!isRecord(body)) return String(body);
+
+  const error = body.error;
+  if (isRecord(error) && typeof error.message === "string") return error.message;
+  if (typeof error === "string") return error;
+  if (typeof body.message === "string") return body.message;
+  return JSON.stringify(sanitizeResponseForDisplay(body));
+}
+
+export function responseBodyHasError(body: unknown) {
+  return Boolean(isRecord(body) && body.error);
+}
+
+export function responseErrorMessage(status: number, body: unknown, language: MessageLanguage = "zh") {
+  const detail = errorDetailFromBody(body);
+  const searchable = `${status} ${detail} ${JSON.stringify(sanitizeResponseForDisplay(body))}`.toLowerCase();
+  const copy = runtimeCopy(language);
+
+  if (status === 503 && searchable.includes("auth_unavailable")) {
+    return copy.responseErrorAuthUnavailable;
+  }
+
+  if (status === 401 || searchable.includes("invalid api key")) {
+    return copy.responseErrorInvalidApiKey;
+  }
+
+  if (status >= 200 && status < 300 && responseBodyHasError(body)) {
+    const code = isRecord(body) && isRecord(body.error) && typeof body.error.code === "string" ? ` (${body.error.code})` : "";
+    return copy.responseErrorUpstream(detail, code);
+  }
+
+  return `HTTP ${status} ${detail}`;
+}
+
+export function imageDownloadName(
+  request: Pick<ImageRequestRecord, "payload" | "title" | "method"> &
+    Partial<Pick<ImageRequestRecord, "imageCount" | "images">>,
+  index = 0,
+) {
+  const format = payloadOutputFormat(request?.payload);
+  const title = String(request?.title || "image").replace(/[^\w.-]+/g, "-");
+  const prefix = "ImageX";
+  const imageCount = request?.images?.length || Number(request?.imageCount || 0);
+  const suffix = imageCount > 1 ? `-${index + 1}` : "";
+  return `${prefix}-${title}${suffix}.${format}`;
+}
