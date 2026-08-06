@@ -265,12 +265,12 @@ export function ResultPanel({
   const selectedRequestStatusText = selectedRequest
     ? `${requestStatusDisplayLabel(copy.requestStatusLabels, selectedRequest.status)}${selectedRequestResolution ? ` · ${selectedRequestResolution}` : ""}${selectedRequestSize ? ` · ${selectedRequestSize}` : ""}`
     : copy.requestCardStatus.unselectedSubtitle;
-  const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input Prompt" : "暂无输入 Prompt");
+  const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
 
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none"
+      className="flex h-full min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none"
       aria-live="polite"
       aria-label={copy.resultSectionLabel}
     >

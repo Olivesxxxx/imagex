@@ -301,14 +301,14 @@ export function generationMethodDisplayName(method: GenerationMethod | "" | null
   return "generations";
 }
 
-export const STRICT_PROMPT_HEADER = "请把下面的原始 Prompt 当作最终图像指令执行。";
-export const STRICT_PROMPT_FOOTER = "原始 Prompt:";
+export const STRICT_PROMPT_HEADER = "请把下面的原始提示词当作最终图像指令执行。";
+export const STRICT_PROMPT_FOOTER = "原始提示词:";
 
 export const DEFAULT_STRICT_PROMPT_TEXT = [
   "不要改写、扩写、翻译、润色、补充主体、改变构图、改变风格、添加未出现的元素。",
   "保留原文的风格强度、氛围、姿态、镜头语言、材质和光影，不要把它改得更保守或更中性。",
   "不要删减关键词，不要替换成含糊说法，不要添加原文没有的内容。",
-  "必须逐字保持原始 Prompt 的语义、语言和细节不变。",
+  "必须逐字保持原始提示词的语义、语言和细节不变。",
 ].join("\n");
 
 export const DEFAULT_STRICT_PROMPT_TEXT_EN = [
@@ -1027,14 +1027,14 @@ function validationCopy(language: MessageLanguage) {
         imageCountRange: (count: number) => `Count must be an integer between 1 and ${count}.`,
       }
     : {
-        promptRequired: "Prompt 不能为空。",
+        promptRequired: "提示词不能为空。",
         transparentJpeg: "透明背景需要 png 或 webp 格式。",
         generationsModelRequired: "generations 模型不能为空。",
         editsModelRequired: "edits 模型不能为空。",
         responsesModelRequired: "responses 模型不能为空。",
         completionsModelRequired: "completions 模型不能为空。",
         editInputMissing: "请先选择至少一张图片。",
-        editInputLimit: (count: number) => `编辑模式最多选择 ${count} 张图片。`,
+        editInputLimit: (count: number) => `图生图模式最多选择 ${count} 张图片。`,
         imageCountRange: (count: number) => `数量必须是 1 到 ${count} 之间的整数。`,
       };
 }

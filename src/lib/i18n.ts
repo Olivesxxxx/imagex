@@ -38,14 +38,14 @@ const SEO_COPY: Record<
   }
 > = {
   zh: {
-    title: "ImageX | OpenAI 图像生成与编辑控制台",
+    title: "ImageX",
     description: "把 OpenAI 兼容的图像生成与编辑搬进浏览器：四类出图端点同面板切换，2K/4K 高清直出，百张批量按你定的节奏跑，密钥与成片留在本机不上传第三方。",
     ogLocale: "zh_CN",
     ogLocaleAlternate: "en_US",
     imageAlt: "ImageX OpenAI 图像生成与编辑控制台",
   },
   en: {
-    title: "ImageX | OpenAI Image Generation and Editing Console",
+    title: "ImageX",
     description: "An OpenAI-compatible image generation and editing console that lives in your browser: four output endpoints in one panel, 2K/4K HD direct output, batch up to a hundred at your own pace, with keys and artifacts kept local and never uploaded to third parties.",
     ogLocale: "en_US",
     ogLocaleAlternate: "zh_CN",
@@ -276,6 +276,7 @@ type Copy = {
     confirm: string;
   };
   generator: {
+    mode: string;
     generate: string;
     edit: string;
     settings: string;
@@ -289,15 +290,23 @@ type Copy = {
     selectAtLeastOneImage: string;
     maxEditImages: (count: number) => string;
     size: string;
+    auto: string;
     sizeGroups: {
       square: string;
       landscape: string;
       portrait: string;
     };
     quality: string;
+    qualityOptions: {
+      auto: string;
+      low: string;
+      medium: string;
+      high: string;
+    };
     count: string;
     keepOriginalPrompt: string;
     keep: string;
+    language: string;
     editOriginalPrompt: string;
     editOriginalPromptTooltip: string;
     promptRequired: string;
@@ -401,7 +410,7 @@ const COPY: Record<Language, Copy> = {
     appName: "ImageX",
     languageName: "中文",
     switchLanguageTooltip: "切换到 English",
-    requestList: "请求列表",
+    requestList: "生成结果列表",
     requestSummary: (settings) => baseRequestControlSummary(settings),
     clearAll: "清空全部",
     cancelRequests: "取消请求",
@@ -471,39 +480,40 @@ const COPY: Record<Language, Copy> = {
       delete: "删除",
       confirmDelete: "再次点击确认删除",
       deletedRequest: "已删除请求",
-      reusePrompt: "复用 Prompt",
+      reusePrompt: "复用提示词",
       responseJson: "响应 JSON",
       download: "下载",
-      editImage: "编辑图片",
+      editImage: "图生图",
       rotateCounterclockwise: "逆时针旋转图片",
       resolution: "响应分辨率",
     },
     promptHistory: {
-      title: "历史 Prompt",
-      empty: "暂无历史 Prompt",
+      title: "历史提示词",
+      empty: "暂无历史提示词",
       pinned: "已置顶",
       pin: "置顶",
       unpin: "取消置顶",
       delete: "删除",
       confirmDelete: "再次点击确认删除",
-      refilled: "历史 Prompt 已回填",
+      refilled: "历史提示词已回填",
     },
     promptEditor: {
-      title: "编辑原始 Prompt",
-      description: "首尾两行固定不可修改，只编辑中间正文。开启此功能也不能保证完全保持原始 Prompt。",
-      header: "请把下面的原始 Prompt 当作最终图像指令执行。",
-      footer: "原始 Prompt:",
+      title: "编辑原始提示词",
+      description: "首尾两行固定不可修改，只编辑中间正文。开启此功能也不能保证完全保持原始提示词。",
+      header: "请把下面的原始提示词当作最终图像指令执行。",
+      footer: "原始提示词:",
       defaultText: DEFAULT_STRICT_PROMPT_TEXT,
-      bodyLabel: "原始 Prompt 正文",
+      bodyLabel: "原始提示词正文",
       cancel: "取消",
       restoreDefault: "恢复默认",
       confirm: "确定",
     },
     generator: {
-      generate: "生图",
-      edit: "编辑",
+      mode: "模式",
+      generate: "文生图",
+      edit: "图生图",
       settings: "配置",
-      promptLabel: "Prompt",
+      promptLabel: "提示词",
       promptPlaceholder: "一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰",
       editPromptPlaceholder: "例如：保留原图主体，只调整光影和风格",
       selectLocalImage: "选择本地图片",
@@ -511,7 +521,7 @@ const COPY: Record<Language, Copy> = {
       choose: "请选择",
       noHistoricalImages: "暂无可选图片",
       selectAtLeastOneImage: "请选择一张或多张图片。",
-      maxEditImages: (count) => `编辑模式最多选择 ${count} 张图片。`,
+      maxEditImages: (count) => `图生图模式最多选择 ${count} 张图片。`,
       size: "尺寸",
       sizeGroups: {
         square: "方形",
@@ -519,21 +529,24 @@ const COPY: Record<Language, Copy> = {
         portrait: "竖屏",
       },
       quality: "质量",
-      count: "请求次数",
-      keepOriginalPrompt: "保持原始 Prompt",
+      qualityOptions: { auto: "自动", low: "低", medium: "中", high: "高" },
+      count: "生图数量",
+      keepOriginalPrompt: "保持原始提示词",
       keep: "保持",
-      editOriginalPrompt: "编辑原始 Prompt 文案",
-      editOriginalPromptTooltip: "编辑原始 Prompt 文案",
-      promptRequired: "请先输入 Prompt。",
+      language: "语言",
+      editOriginalPrompt: "编辑原始提示词文案",
+      editOriginalPromptTooltip: "编辑原始提示词文案",
+      promptRequired: "请先输入提示词。",
       requestNotCreated: "请求未创建",
       connectionRequired: "请先配置 API URL 和 API Key。",
       requestQueued: "请求已加入队列",
       submissionSuccess: (count) => `成功提交 ${count} 个请求。`,
-      generations: "generations",
-      responses: "responses",
-      completions: "completions",
+      auto: "自动",
+      generations: "图片生成",
+      responses: "响应生成",
+      completions: "对话补全",
       edits: "edits",
-      pasteImageHint: "在 Prompt 输入框中粘贴可直接添加图片",
+      pasteImageHint: "在图片区域中粘贴可直接添加图片",
       previewInputImage: "预览输入图片",
       previewPreviousImage: "上一张",
       previewNextImage: "下一张",
@@ -621,7 +634,7 @@ const COPY: Record<Language, Copy> = {
       productSectionLabel: "产品说明",
       productHeading: "关于 ImageX",
       productProse:
-        "ImageX 为不想把图像工作流交给第三方 SaaS 的人而生。它是一个本地优先的 OpenAI 兼容图像控制台——请求与缓存全在浏览器内，API key、prompt 与成片从不离开你的设备，关闭浏览器即清。\n\n一个面板覆盖 OpenAI 兼容生态的全部出图路径：/v1/images/generations 文字生图、/v1/images/edits 本地图编辑、/v1/responses 与 /v1/chat/completions 工具调用出图，按需切换不动客户端。尺寸按横纵分组以像素精确指定，auto 至 1024x1024、2048x2048、最长边 3840x2160 等档位，UI 对接近 2048 / 3840 的档位标注 2K / 4K 便于辨识，由端点原生直出、无需后处理放大；质量分 auto / low / medium / high 可选。\n\n批量与节流由你定义：一次最多跑 100 张拆为独立任务，并发数与请求间隔自定节流，单张失败不影响整批，按时间批次自动编号，状态机覆盖 queued、running、done、error、canceled。strictPrompt 外层锁定语义防模型自改关键词，锁定模板可自定义、可一键开关；历史成片可一键回填做编辑基底，跨请求链式迭代无需重新下载上传；失败请求的错误类型（401、503、上游 error）会被识别区分。",
+        "ImageX 为不想把图像工作流交给第三方 SaaS 的人而生。它是一个本地优先的 OpenAI 兼容图像控制台——请求与缓存全在浏览器内，API key、提示词与成片从不离开你的设备，关闭浏览器即清。\n\n一个面板覆盖 OpenAI 兼容生态的全部出图路径：/v1/images/generations 文生图、/v1/images/edits 图生图、/v1/responses 与 /v1/chat/completions 工具调用出图，按需切换不动客户端。尺寸按横纵分组以像素精确指定，auto 至 1024x1024、2048x2048、最长边 3840x2160 等档位，UI 对接近 2048 / 3840 的档位标注 2K / 4K 便于辨识，由端点原生直出、无需后处理放大；质量分 auto / low / medium / high 可选。\n\n批量与节流由你定义：一次最多跑 100 张拆为独立任务，并发数与请求间隔自定节流，单张失败不影响整批，按时间批次自动编号，状态机覆盖 queued、running、done、error、canceled。strictPrompt 外层锁定语义防模型自改关键词，锁定模板可自定义、可一键开关；历史成片可一键回填做图生图基底，跨请求链式迭代无需重新下载上传；失败请求的错误类型（401、503、上游 error）会被识别区分。",
       footerCopyright: "© 2026 ImageX contributors",
       licenseUrl: "https://github.com/Olivesxxxx/imagex/blob/main/LICENSE",
       githubUrl: "https://github.com/Olivesxxxx/imagex",
@@ -646,7 +659,7 @@ const COPY: Record<Language, Copy> = {
     appName: "ImageX",
     languageName: "English",
     switchLanguageTooltip: "Switch to 中文",
-    requestList: "Requests",
+    requestList: "Generated Results",
     requestSummary: (settings) => englishRequestControlSummary(settings),
     clearAll: "Clear all",
     cancelRequests: "Cancel",
@@ -745,6 +758,7 @@ const COPY: Record<Language, Copy> = {
       confirm: "Confirm",
     },
     generator: {
+      mode: "Mode",
       generate: "Generate",
       edit: "Edit",
       settings: "Settings",
@@ -758,15 +772,18 @@ const COPY: Record<Language, Copy> = {
       selectAtLeastOneImage: "Please choose one or more images.",
       maxEditImages: (count) => `Edit mode supports up to ${count} images.`,
       size: "Size",
+      auto: "auto",
       sizeGroups: {
         square: "Square",
         landscape: "Landscape",
         portrait: "Portrait",
       },
       quality: "Quality",
-      count: "Request count",
+      qualityOptions: { auto: "auto", low: "low", medium: "medium", high: "high" },
+      count: "Image count",
       keepOriginalPrompt: "Keep original prompt",
       keep: "Keep",
+      language: "Language",
       editOriginalPrompt: "Edit strict prompt text",
       editOriginalPromptTooltip: "Edit strict prompt text",
       promptRequired: "Enter a prompt first.",
@@ -778,7 +795,7 @@ const COPY: Record<Language, Copy> = {
       responses: "responses",
       completions: "completions",
       edits: "edits",
-      pasteImageHint: "Paste an image into the Prompt box to add it directly",
+      pasteImageHint: "Paste an image into the image area to add it directly",
       previewInputImage: "Preview input image",
       previewPreviousImage: "Previous image",
       previewNextImage: "Next image",

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { GeneratorPanel } from "@/components/generator-panel";
+import { GeneratorPanel, PromptHistoryPanel } from "@/components/generator-panel";
 import { RequestListPanel } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -268,7 +268,51 @@ export default function App() {
 
   return (
     <>
-      <main id="main" className="grid min-h-dvh min-w-0 grid-cols-1 gap-4 bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[380px_minmax(0,1fr)_400px] lg:overflow-hidden">
+      <main id="main" className="grid min-h-dvh min-w-0 grid-cols-1 gap-4 bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-4 overflow-y-auto pr-1">
+          <ResultPanel
+            selectedRequest={consoleState.selectedRequest}
+            selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
+            statusMessage={consoleState.statusMessage}
+            selectedRequestJson={consoleState.selectedRequestJson}
+            setJsonDialogOpen={consoleState.setJsonDialogOpen}
+            reusePrompt={consoleState.reusePrompt}
+            onEditImage={handleEditImage}
+          />
+          <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
+            <GeneratorPanel
+              mode={consoleState.mode}
+              editImages={consoleState.editImages}
+              historicalEditImageValue={consoleState.historicalEditImageValue}
+              historicalEditImageOptions={consoleState.historicalEditImageOptions}
+              settings={consoleState.settings}
+              prompt={consoleState.prompt}
+              connectionStatus={consoleState.connectionStatus}
+              promptFocusSignal={promptFocusSignal}
+              setPrompt={consoleState.setPrompt}
+              setEditImages={consoleState.setEditImages}
+              updateSettings={consoleState.updateSettings}
+              setSettingsOpen={consoleState.setSettingsOpen}
+              enqueueGeneration={consoleState.enqueueGeneration}
+              enqueueEditGeneration={consoleState.enqueueEditGeneration}
+              addHistoricalEditImage={consoleState.addHistoricalEditImage}
+              onModeChange={handleModeChange}
+              onOpenStrictPromptEditor={() => {
+                setStrictPromptEditorOpen(true);
+              }}
+            />
+            <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-3 shadow-none">
+              <PromptHistoryPanel
+                promptHistory={consoleState.promptHistory}
+                promptHistoryCount={consoleState.promptHistoryCount}
+                promptHistoryPinnedCount={consoleState.promptHistoryPinnedCount}
+                onSelectPrompt={consoleState.selectPromptHistory}
+                onDeletePrompt={consoleState.deletePromptHistory}
+                onTogglePromptPin={consoleState.togglePromptHistoryPin}
+              />
+            </div>
+          </div>
+        </div>
         <RequestListPanel
           filteredRequests={consoleState.filteredRequests}
           selectedRequestId={consoleState.selectedRequestId}
@@ -289,42 +333,6 @@ export default function App() {
           onOpenClearFailed={() => setClearFailedDialogOpen(true)}
           onOpenExportZip={() => setExportZipConfirmOpen(true)}
           extraModalOpen={extraModalOpen}
-        />
-        <ResultPanel
-          selectedRequest={consoleState.selectedRequest}
-          selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
-          statusMessage={consoleState.statusMessage}
-          selectedRequestJson={consoleState.selectedRequestJson}
-          setJsonDialogOpen={consoleState.setJsonDialogOpen}
-          reusePrompt={consoleState.reusePrompt}
-          onEditImage={handleEditImage}
-        />
-        <GeneratorPanel
-          mode={consoleState.mode}
-          editImages={consoleState.editImages}
-          historicalEditImageValue={consoleState.historicalEditImageValue}
-          historicalEditImageOptions={consoleState.historicalEditImageOptions}
-          settings={consoleState.settings}
-          prompt={consoleState.prompt}
-          promptHistory={consoleState.promptHistory}
-          promptHistoryCount={consoleState.promptHistoryCount}
-          promptHistoryPinnedCount={consoleState.promptHistoryPinnedCount}
-          connectionStatus={consoleState.connectionStatus}
-          promptFocusSignal={promptFocusSignal}
-          setPrompt={consoleState.setPrompt}
-          setEditImages={consoleState.setEditImages}
-          updateSettings={consoleState.updateSettings}
-          setSettingsOpen={consoleState.setSettingsOpen}
-          enqueueGeneration={consoleState.enqueueGeneration}
-          enqueueEditGeneration={consoleState.enqueueEditGeneration}
-          selectPromptHistory={consoleState.selectPromptHistory}
-          deletePromptHistory={consoleState.deletePromptHistory}
-          togglePromptHistoryPin={consoleState.togglePromptHistoryPin}
-          addHistoricalEditImage={consoleState.addHistoricalEditImage}
-          onModeChange={handleModeChange}
-          onOpenStrictPromptEditor={() => {
-            setStrictPromptEditorOpen(true);
-          }}
         />
       </main>
 

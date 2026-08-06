@@ -240,9 +240,9 @@ describe("image console logic", () => {
     });
 
     expect(payload.prompt).toMatch(/不要改写、扩写、翻译、润色/);
-    expect(payload.prompt).toMatch(/必须逐字保持原始 Prompt/);
+    expect(payload.prompt).toMatch(/必须逐字保持原始提示词/);
     expect(payload.prompt).not.toMatch(/除非安全策略明确要求/);
-    expect(payload.prompt).toMatch(/原始 Prompt:\nglass jellyfish/);
+    expect(payload.prompt).toMatch(/原始提示词:\nglass jellyfish/);
   });
 
   test("uses a custom strict prompt body between fixed header and footer", () => {

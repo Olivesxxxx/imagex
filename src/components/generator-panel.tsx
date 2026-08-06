@@ -24,7 +24,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -57,6 +56,9 @@ import { MAX_PROMPT_HISTORY, type PromptHistoryEntry } from "@/lib/prompt-histor
 import { cn } from "@/lib/utils";
 
 const DELETE_CONFIRMATION_TIMEOUT_MS = 3000;
+const panelControlClassName = "!h-8 !min-h-8 !max-h-8 !py-1 w-full min-w-0 justify-center rounded-md border border-border px-3 text-xs font-medium";
+const panelLabelClassName = "flex h-4 min-h-4 items-center text-xs font-medium leading-none text-muted-foreground";
+const panelIconButtonClassName = "!h-8 !min-h-8 !max-h-8 !w-8 !min-w-8 !px-0 rounded-md";
 const SIZE_GROUPS = [
   { key: "square", icon: SquareIcon, options: SIZE_OPTION_GROUPS.square },
   { key: "landscape", icon: RectangleHorizontalIcon, options: SIZE_OPTION_GROUPS.landscape },
@@ -76,9 +78,6 @@ export interface GeneratorPanelProps {
   historicalEditImageOptions: HistoricalEditImageOption[];
   settings: AppSettings;
   prompt: string;
-  promptHistory: PromptHistoryEntry[];
-  promptHistoryCount: number;
-  promptHistoryPinnedCount: number;
   connectionStatus: ConnectionStatus;
   promptFocusSignal: number;
   setPrompt: (value: string) => void;
@@ -87,9 +86,6 @@ export interface GeneratorPanelProps {
   setSettingsOpen: (open: boolean) => void;
   enqueueGeneration: (generationMode: "images" | "responses" | "completions") => boolean;
   enqueueEditGeneration: () => boolean;
-  selectPromptHistory: (value: string) => void;
-  deletePromptHistory: (value: string) => void;
-  togglePromptHistoryPin: (value: string) => void;
   addHistoricalEditImage: (value: string) => Promise<void>;
   onModeChange: (mode: ConsoleMode) => void;
   onOpenStrictPromptEditor: () => void;
@@ -105,31 +101,33 @@ function OptionSelect({
   label,
   value,
   options,
+  optionLabels,
   onValueChange,
 }: {
   label: string;
   value: string;
   options: readonly string[];
+  optionLabels?: Readonly<Record<string, string>>;
   onValueChange: (value: string) => void;
 }) {
   return (
-    <Field>
-      <FieldLabel>{label}</FieldLabel>
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <span className={panelLabelClassName}>{label}</span>
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger size="sm" className={panelControlClassName}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
             {options.map((option) => (
               <SelectItem key={option} value={option}>
-                {option}
+                {optionLabels?.[option] ?? option}
               </SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>
       </Select>
-    </Field>
+    </div>
   );
 }
 
@@ -137,14 +135,14 @@ function SizeSelect({ value, onValueChange }: { value: string; onValueChange: (v
   const { copy } = useI18n();
 
   return (
-    <Field>
-      <FieldLabel>{copy.generator.size}</FieldLabel>
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <span className={panelLabelClassName}>{copy.generator.size}</span>
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger size="sm" className={panelControlClassName}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="auto">auto</SelectItem>
+          <SelectItem value="auto">{copy.generator.auto}</SelectItem>
           <SelectSeparator />
           {SIZE_GROUPS.map((group) => (
             <SelectGroup key={group.key}>
@@ -161,11 +159,11 @@ function SizeSelect({ value, onValueChange }: { value: string; onValueChange: (v
           ))}
         </SelectContent>
       </Select>
-    </Field>
+    </div>
   );
 }
 
-function PromptHistoryPanel({
+export function PromptHistoryPanel({
   promptHistory,
   promptHistoryCount,
   promptHistoryPinnedCount,
@@ -186,8 +184,8 @@ function PromptHistoryPanel({
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2" aria-label={copy.promptHistory.title}>
       <div className="flex items-center justify-between gap-2">
-        <FieldTitle>{copy.promptHistory.title}</FieldTitle>
-        <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+        <div className={panelLabelClassName}>{copy.promptHistory.title}</div>
+        <span className={cn(panelLabelClassName, "shrink-0 tabular-nums") }>
           {promptHistoryCount}/{MAX_PROMPT_HISTORY}
           {promptHistoryPinnedCount ? ` · ${promptHistoryPinnedCount} ${copy.promptHistory.pinned}` : ""}
         </span>
@@ -221,7 +219,7 @@ function PromptHistoryPanel({
                   size="icon-xs"
                   className={cn("shrink-0", item.pinned ? "text-primary" : "text-muted-foreground")}
                   aria-pressed={item.pinned}
-                  aria-label={item.pinned ? `${copy.promptHistory.unpin}：${item.prompt}` : `${copy.promptHistory.pin} Prompt：${item.prompt}`}
+                  aria-label={item.pinned ? `${copy.promptHistory.unpin}：${item.prompt}` : `${copy.promptHistory.pin} ${copy.promptHistory.title}：${item.prompt}`}
                   title={item.pinned ? copy.promptHistory.unpin : copy.promptHistory.pin}
                   onClick={() => onTogglePromptPin(item.prompt)}
                 >
@@ -256,7 +254,7 @@ function PromptHistoryPanel({
           </div>
         </ScrollArea>
       ) : (
-        <div className="min-h-0 flex-1 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        <div className="h-12 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
           {copy.promptHistory.empty}
         </div>
       )}
@@ -271,9 +269,6 @@ export function GeneratorPanel({
   historicalEditImageOptions,
   settings,
   prompt,
-  promptHistory,
-  promptHistoryCount,
-  promptHistoryPinnedCount,
   connectionStatus,
   promptFocusSignal,
   setPrompt,
@@ -282,9 +277,6 @@ export function GeneratorPanel({
   setSettingsOpen,
   enqueueGeneration,
   enqueueEditGeneration,
-  selectPromptHistory,
-  deletePromptHistory,
-  togglePromptHistoryPin,
   addHistoricalEditImage,
   onModeChange,
   onOpenStrictPromptEditor,
@@ -368,7 +360,7 @@ export function GeneratorPanel({
     event.currentTarget.value = "";
   }
 
-  function handlePromptPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+  function handlePromptPaste(event: ClipboardEvent<HTMLElement>) {
     if (mode !== "edit") return;
     const items = event.clipboardData?.items;
     if (!items) return;
@@ -391,288 +383,192 @@ export function GeneratorPanel({
   }
 
   return (
-    <form noValidate onSubmit={submitGeneration} className="flex min-h-0 min-w-0 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-none">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={mode} onValueChange={handleModeChange}>
-          <TabsList className="h-10 rounded-full border border-border bg-muted/40 p-1">
-            <TabsTrigger value="generate" className="rounded-full px-4 text-xs">
-              {copy.generator.generate}
-            </TabsTrigger>
-            <TabsTrigger value="edit" className="rounded-full px-4 text-xs">
-              {copy.generator.edit}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                onClick={toggleLanguage}
-                aria-label={copy.switchLanguageTooltip}
-              >
-                <LanguagesIcon data-icon="inline-start" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
-          </Tooltip>
-          <Button
-            type="button"
-            variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
-            size="sm"
-            onClick={() => setSettingsOpen(true)}
-          >
-            {connectionStatus.tone === "busy" ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : <SettingsIcon data-icon="inline-start" />}
-            {connectionStatus.label}
-          </Button>
+    <form noValidate onSubmit={submitGeneration} className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none">
+      <div className="grid shrink-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className={panelLabelClassName}>{copy.generator.mode}</span>
+          <div className="flex items-center gap-2">
+            <Tabs value={mode} onValueChange={handleModeChange}>
+              <TabsList className="!h-8 !min-h-8 !max-h-8 gap-1 rounded-xl border border-border bg-muted/40 p-1">
+                {([ ["generate", copy.generator.generate], ["edit", copy.generator.edit] ] as const).map(([value, label]) => (
+                  <TabsTrigger
+                    key={value}
+                    value={value}
+                    className={cn(
+                      "!h-6 !min-h-6 !max-h-6 min-w-20 flex-none rounded-lg border-transparent px-3 text-xs font-medium",
+                      "data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-sm",
+                    )}
+                  >
+                    {label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <div className="flex shrink-0 items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={toggleLanguage} aria-label={copy.switchLanguageTooltip}>
+                    <LanguagesIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
+                    size="icon-sm"
+                    className={panelIconButtonClassName}
+                    onClick={() => setSettingsOpen(true)}
+                    aria-label={`${copy.generator.settings}: ${connectionStatus.label}`}
+                    title={`${copy.generator.settings}: ${connectionStatus.label}`}
+                  >
+                    {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{`${copy.generator.settings}: ${connectionStatus.label}`}</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
+          <SizeSelect value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
+          <OptionSelect
+            label={copy.generator.quality}
+            value={String(settings.quality)}
+            options={QUALITY_OPTIONS}
+            optionLabels={copy.generator.qualityOptions}
+            onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor="n" className={panelLabelClassName}>{copy.generator.count}</label>
+            <Input id="n" name="n" type="number" min={1} max={100} step={1} inputMode="numeric" value={settings.n} onChange={(event) => updateSettings("n", event.target.value)} onBlur={(event) => updateSettings("n", clampRequestCountInput(event.target.value))} className={cn(panelControlClassName, "bg-transparent text-center")} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className={panelLabelClassName}>{copy.generator.keepOriginalPrompt}</span>
+            <label htmlFor="strictPrompt" className={cn(panelControlClassName, "flex cursor-pointer items-center gap-2 px-2.5")}>
+              <Checkbox id="strictPrompt" checked={settings.strictPrompt} onCheckedChange={(checked) => updateSettings("strictPrompt", checked === true)} />
+              <span className="min-w-0 truncate">{copy.generator.keep}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon-xs" className="ml-auto shrink-0" aria-label={copy.generator.editOriginalPromptTooltip} onClick={onOpenStrictPromptEditor}>
+                    <PencilIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{copy.generator.editOriginalPromptTooltip}</TooltipContent>
+              </Tooltip>
+            </label>
+          </div>
         </div>
       </div>
 
-      <FieldGroup>
-        <Field>
-          <div className="flex w-full items-center justify-between gap-2">
-            <FieldLabel htmlFor="prompt">{copy.generator.promptLabel}</FieldLabel>
-            {mode === "edit" ? (
-              <span className="text-xs text-muted-foreground">{copy.generator.pasteImageHint}</span>
-            ) : null}
-          </div>
-          <Textarea
-            id="prompt"
-            name="prompt"
-            ref={promptTextareaRef}
-            rows={4}
-            maxLength={32000}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            onPaste={handlePromptPaste}
-            placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder}
-            required
-            className="h-[114px] resize-none overflow-y-auto md:h-[98px]"
-          />
-        </Field>
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          mode === "edit"
+            ? "grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.44fr)]"
+            : "flex flex-col",
+        )}
+      >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
+          <label htmlFor="prompt" className={panelLabelClassName}>{copy.generator.promptLabel}</label>
+          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className="min-h-32 flex-1 resize-none overflow-y-auto" />
+        </div>
+
         {mode === "edit" ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="historicalEditImages">{copy.generator.selectHistoricalImage}</FieldLabel>
-              <Select
-                value={historicalEditImageValue}
-                onValueChange={(value) => {
-                  void addHistoricalEditImage(value);
-                }}
-              >
-                <SelectTrigger
-                  id="historicalEditImages"
-                  className="w-full"
-                  disabled={!historicalEditImageOptions.length || editImageSelectionFull}
-                >
-                  <SelectValue placeholder={copy.generator.choose} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {historicalEditImageOptions.length ? (
-                      historicalEditImageOptions.map((option) => (
+          <div className="flex min-h-0 min-w-0 flex-col gap-2">
+            <div className="grid shrink-0 grid-cols-2 gap-2">
+              <div className="flex min-w-0 flex-col gap-1">
+                <label htmlFor="editImages" className={panelLabelClassName}>{copy.generator.selectLocalImage}</label>
+                <button type="button" className={cn(panelControlClassName, "flex cursor-pointer items-center justify-between gap-2 text-muted-foreground")} disabled={editImageSelectionFull} onClick={() => editImagesInputRef.current?.click()}>
+                  <span className="min-w-0 truncate text-left">{copy.generator.choose}</span>
+                  <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
+                </button>
+                <Input id="editImages" ref={editImagesInputRef} type="file" accept="image/*" multiple disabled={editImageSelectionFull} onChange={handleEditImagesChange} className="hidden" />
+              </div>
+              <div className="flex min-w-0 flex-col gap-1">
+                <label htmlFor="historicalEditImages" className={panelLabelClassName}>{copy.generator.selectHistoricalImage}</label>
+                <Select value={historicalEditImageValue} onValueChange={(value) => { void addHistoricalEditImage(value); }}>
+                  <SelectTrigger id="historicalEditImages" size="sm" className={cn(panelControlClassName, "text-muted-foreground")} disabled={!historicalEditImageOptions.length || editImageSelectionFull}>
+                    <SelectValue placeholder={copy.generator.choose} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {historicalEditImageOptions.length ? historicalEditImageOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value} className="min-h-14 items-center py-2 pr-3">
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="flex size-9 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30">
-                              {option.thumbnail?.src ? (
-                                <img
-                                  src={option.thumbnail.src}
-                                  alt=""
-                                  aria-hidden="true"
-                                  className="h-full w-full object-cover object-center"
-                                />
-                              ) : (
-                                <span className="flex h-full w-full items-center justify-center text-muted-foreground">
-                                  <ImageIcon className="size-4" />
-                                </span>
-                              )}
+                              {option.thumbnail?.src ? <img src={option.thumbnail.src} alt="" aria-hidden="true" className="h-full w-full object-cover object-center" /> : <span className="flex h-full w-full items-center justify-center text-muted-foreground"><ImageIcon className="size-4" /></span>}
                             </span>
                             <span className="min-w-0 truncate">{option.label}</span>
                           </span>
                         </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="__empty" disabled>
-                        {copy.generator.noHistoricalImages}
-                      </SelectItem>
-                    )}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="editImages">{copy.generator.selectLocalImage}</FieldLabel>
-              <button
-                type="button"
-                className="flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm whitespace-nowrap text-muted-foreground shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground"
-                disabled={editImageSelectionFull}
-                onClick={() => editImagesInputRef.current?.click()}
-              >
-                <span className="min-w-0 flex-1 truncate text-left">{copy.generator.choose}</span>
-                <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
-              </button>
-              <Input
-                id="editImages"
-                ref={editImagesInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                disabled={editImageSelectionFull}
-                onChange={handleEditImagesChange}
-                className="hidden"
-              />
-            </Field>
-          </div>
-        ) : null}
-        {mode === "edit" ? (
-          <div className="grid gap-2">
-            {editImages.length ? (
-              <div className="grid gap-2">
-                <div
-                  className="grid grid-cols-5 gap-1.5 overflow-hidden pb-1"
-                  data-testid="edit-image-preview-strip"
-                >
+                      )) : <SelectItem value="__empty" disabled>{copy.generator.noHistoricalImages}</SelectItem>}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto rounded-md border border-dashed bg-muted/10 p-2" role="region" aria-label={copy.generator.pasteImageHint} tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.focus(); }} onPaste={handlePromptPaste}>
+              {editImages.length ? (
+                <div className="grid min-h-0 grid-cols-5 gap-2 overflow-hidden" data-testid="edit-image-preview-strip">
                   {editImages.map((image, index) => (
-                    <div
-                      key={`${image.sourceKey || image.name}-${index}`}
-                      className="relative aspect-square min-w-0 overflow-hidden rounded-md border border-border bg-muted/30"
-                    >
-                      <button
-                        type="button"
-                        className="block h-full w-full cursor-zoom-in"
-                        aria-label={`${copy.generator.previewInputImage} ${index + 1}`}
-                        onClick={() => setPreviewEditImageIndex(index)}
-                      >
-                        <img
-                          src={image.src}
-                          alt=""
-                          aria-hidden="true"
-                          className="block h-full w-full object-cover object-center"
-                        />
+                    <div key={`${image.sourceKey || image.name}-${index}`} className="relative aspect-square min-w-0 overflow-hidden rounded-md border border-border bg-muted/30">
+                      <button type="button" className="block h-full w-full cursor-zoom-in" aria-label={`${copy.generator.previewInputImage} ${index + 1}`} onClick={() => setPreviewEditImageIndex(index)}>
+                        <img src={image.src} alt="" aria-hidden="true" className="block h-full w-full object-cover object-center" />
                       </button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon-xs"
-                        className="absolute right-0.5 top-0.5 h-5 w-5 rounded-full bg-background/90 shadow-none"
-                        aria-label={`${copy.historyImage.deleteButton} ${index + 1}`}
-                        onClick={() => {
-                          setEditImages((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                        }}
-                      >
-                        <XIcon data-icon="inline-start" />
+                      <Button type="button" variant="secondary" size="icon-xs" className="absolute right-1 top-1 rounded-full bg-background/90 shadow-none" aria-label={`${copy.historyImage.deleteButton} ${index + 1}`} onClick={() => setEditImages((current) => current.filter((_, currentIndex) => currentIndex !== index))}>
+                        <XIcon />
                       </Button>
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                {copy.generator.selectAtLeastOneImage}
-              </div>
-            )}
+              ) : (
+                <div className="flex min-h-24 flex-1 items-center justify-center px-3 py-2 text-center text-xs text-muted-foreground">{copy.generator.pasteImageHint}</div>
+              )}
+            </div>
           </div>
         ) : null}
-      </FieldGroup>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <SizeSelect value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
-        <OptionSelect
-          label={copy.generator.quality}
-          value={String(settings.quality)}
-          options={QUALITY_OPTIONS}
-          onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
-        />
-        <Field>
-          <FieldLabel htmlFor="n">{copy.generator.count}</FieldLabel>
-          <Input
-            id="n"
-            name="n"
-            type="number"
-            min={1}
-            max={100}
-            step={1}
-            inputMode="numeric"
-            value={settings.n}
-            onChange={(event) => updateSettings("n", event.target.value)}
-            onBlur={(event) => updateSettings("n", clampRequestCountInput(event.target.value))}
-          />
-        </Field>
-        <Field className="gap-2 self-end">
-          <FieldTitle>{copy.generator.keepOriginalPrompt}</FieldTitle>
-          <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 py-1">
-            <label htmlFor="strictPrompt" className="flex min-w-0 cursor-pointer items-center gap-2">
-              <Checkbox
-                id="strictPrompt"
-                checked={settings.strictPrompt}
-                onCheckedChange={(checked) => updateSettings("strictPrompt", checked === true)}
-              />
-              <span className="min-w-0 leading-none">{copy.generator.keep}</span>
-            </label>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="shrink-0"
-                  aria-label={copy.generator.editOriginalPromptTooltip}
-                  onClick={onOpenStrictPromptEditor}
-                >
-                  <PencilIcon data-icon="inline-start" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{copy.generator.editOriginalPromptTooltip}</TooltipContent>
-            </Tooltip>
-          </div>
-        </Field>
       </div>
 
-      <PromptHistoryPanel
-        promptHistory={promptHistory}
-        promptHistoryCount={promptHistoryCount}
-        promptHistoryPinnedCount={promptHistoryPinnedCount}
-        onSelectPrompt={selectPromptHistory}
-        onDeletePrompt={deletePromptHistory}
-        onTogglePromptPin={togglePromptHistoryPin}
-      />
-
-      <div className="grid grid-cols-1 gap-2">
-        {mode === "edit" ? (
-          <Button type="submit" size="lg" className={generationButtonFeedbackClassName}>
-            <ImagePlusIcon data-icon="inline-start" />
-            {copy.generator.edits}
-          </Button>
-        ) : (
-          <>
-            <Button type="submit" size="lg" className={generationButtonFeedbackClassName}>
-              <PlayIcon data-icon="inline-start" />
-              {copy.generator.generations}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pt-1">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {mode === "edit" ? (
+            <Button type="submit" size="sm" className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
+              <ImagePlusIcon data-icon="inline-start" />
+              {copy.generator.edits}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              className={generationButtonFeedbackClassName}
-              onClick={() => enqueueGeneration("responses")}
-            >
-              <ImageIcon data-icon="inline-start" />
-              {copy.generator.responses}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className={generationButtonFeedbackClassName}
-              onClick={() => enqueueGeneration("completions")}
-            >
-              <MessageSquareIcon data-icon="inline-start" />
-              {copy.generator.completions}
-            </Button>
-          </>
-        )}
+          ) : (
+            <>
+              <Button type="submit" size="sm" className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
+                <PlayIcon data-icon="inline-start" />
+                {copy.generator.generations}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
+                onClick={() => enqueueGeneration("responses")}
+              >
+                <ImageIcon data-icon="inline-start" />
+                {copy.generator.responses}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
+                onClick={() => enqueueGeneration("completions")}
+              >
+                <MessageSquareIcon data-icon="inline-start" />
+                {copy.generator.completions}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
       <DialogPrimitive.Root open={previewEditImageIndex !== null} onOpenChange={(open) => { if (!open) setPreviewEditImageIndex(null); }}>
         <DialogPrimitive.Portal>

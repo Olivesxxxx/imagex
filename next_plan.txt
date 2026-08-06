@@ -5,7 +5,7 @@ ImageX 二次开发计划（基于 CPA Image）
 
 源项目已克隆到 D:\Projects\imagex，并已在当前 Windows 机器完成依赖安装、测试、类型检查、生产构建和开发服务启动。
 
-当前开发地址：http://127.0.0.1:5174
+当前开发地址：http://127.0.0.1:3098
 本次启动的进程 PID：12800
 源仓库：https://github.com/codegrazier/cpa-image.git
 当前分支：main
@@ -87,7 +87,7 @@ ImageX 基于 CPA Image，是一个本地优先的 OpenAI 兼容图像生成与�
 
 目标：确认“页面能开”之外，真实 OpenAI 兼容 API 的完整链路也能工作。
 
-1. 浏览器打开 http://127.0.0.1:5174。
+1. 浏览器打开 http://127.0.0.1:3098。
 2. 在设置中填写实际 Base URL、API Key 和对应模型名。
 3. 点击连接测试，确认 /v1/models 可访问。
 4. 用最小参数分别验证：Images Generations、Responses、Chat Completions。
@@ -154,7 +154,7 @@ npm.cmd run typecheck
 npm.cmd run build
 npm.cmd audit
 
-开发服务默认只监听 127.0.0.1:5174，适合当前本机验收。若进程已停止，重新执行 npm.cmd start 即可。
+开发服务默认只监听 127.0.0.1:3098，适合当前本机验收。若进程已停止，重新执行 npm.cmd start 即可。
 
 五、下一次开发会话的建议起点
 

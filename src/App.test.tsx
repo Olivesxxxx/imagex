@@ -116,11 +116,11 @@ describe("App", () => {
     renderApp();
 
     expect(await screen.findByText(/等待生成/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Prompt")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "生图" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "编辑" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "编辑原始 Prompt 文案" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "文生图" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "图生图" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑原始提示词文案" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /配置/ }));
     expect(screen.getByRole("dialog", { name: "连接" })).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("App", () => {
     expect(screen.getByRole("tab", { name: "Generate" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch to 中文" })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en-US");
-    expect(document.title).toBe("ImageX | OpenAI Image Generation and Editing Console");
+    expect(document.title).toBe("ImageX");
     expect(document.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe("https://olivesxxxx.github.io/imagex/en-US/");
     expect(window.location.pathname).toBe("/en-US/");
     expect(window.location.search).toBe("");
@@ -229,7 +229,7 @@ describe("App", () => {
     vi.spyOn(storage, "saveCachedRequests").mockImplementation(() => undefined);
 
     renderApp();
-    const requestList = screen.getByRole("complementary", { name: "请求列表" });
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
     await waitFor(() => expect(within(requestList).getAllByRole("button", { name: /查看 .* 的生成结果/ })).toHaveLength(2));
 
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
@@ -253,8 +253,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     await screen.findByRole("button", { name: /查看 .* 的生成结果/ });
 
     await user.click(screen.getByRole("button", { name: "切换到 English" }));
@@ -316,7 +316,7 @@ describe("App", () => {
     const user = userEvent.setup();
     renderApp();
 
-    const countInput = await screen.findByLabelText("请求次数");
+    const countInput = await screen.findByLabelText("生图数量");
 
     await user.clear(countInput);
     await user.type(countInput, "101");
@@ -341,13 +341,13 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.click(screen.getByRole("button", { name: "编辑原始 Prompt 文案" }));
+    await user.click(screen.getByRole("button", { name: "编辑原始提示词文案" }));
 
-    const editor = screen.getByRole("dialog", { name: "编辑原始 Prompt" });
+    const editor = screen.getByRole("dialog", { name: "编辑原始提示词" });
     expect(within(editor).getByText(STRICT_PROMPT_HEADER)).toBeInTheDocument();
     expect(within(editor).getByText(STRICT_PROMPT_FOOTER)).toBeInTheDocument();
 
-    const body = within(editor).getByLabelText("原始 Prompt 正文");
+    const body = within(editor).getByLabelText("原始提示词正文");
     expect(body).toHaveValue(DEFAULT_STRICT_PROMPT_TEXT);
     await user.clear(body);
     await user.type(body, "只保留主体和光影");
@@ -355,8 +355,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /配置/ }));
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toBeInTheDocument();
     const bodyJson = JSON.parse(String(fetchMock.mock.calls[0][1]?.body || "{}")) as { prompt?: string };
@@ -388,8 +388,8 @@ describe("App", () => {
     await user.type(englishBody, "Keep only the subject and lighting");
     await user.click(within(englishEditor).getByRole("button", { name: "Confirm" }));
 
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const bodyJson = JSON.parse(String(fetchMock.mock.calls[0][1]?.body || "{}")) as { prompt?: string };
     expect(bodyJson.prompt).toContain("Keep only the subject and lighting");
@@ -398,10 +398,10 @@ describe("App", () => {
     window.history.replaceState({}, "", "/");
     localStorage.setItem("ImageX-language", "zh");
     renderApp();
-    await user.click(screen.getByRole("button", { name: "编辑原始 Prompt 文案" }));
+    await user.click(screen.getByRole("button", { name: "编辑原始提示词文案" }));
 
-    const chineseEditor = screen.getByRole("dialog", { name: "编辑原始 Prompt" });
-    expect(within(chineseEditor).getByLabelText("原始 Prompt 正文")).toHaveValue("Keep only the subject and lighting");
+    const chineseEditor = screen.getByRole("dialog", { name: "编辑原始提示词" });
+    expect(within(chineseEditor).getByLabelText("原始提示词正文")).toHaveValue("Keep only the subject and lighting");
   });
 
   test("shows prompt validation errors as toast messages", async () => {
@@ -409,10 +409,10 @@ describe("App", () => {
     const toastErrorSpy = vi.spyOn(toast, "error").mockReturnValue("toast-id");
 
     renderApp();
-    await user.clear(await screen.findByLabelText("Prompt"));
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.clear(await screen.findByLabelText(/^(提示词|Prompt)$/));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
-    expect(toastErrorSpy).toHaveBeenCalledWith("请先输入 Prompt。");
+    expect(toastErrorSpy).toHaveBeenCalledWith("请先输入提示词。");
     expect(screen.queryByText("请求未创建")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /查看 .* 的生成结果/ })).not.toBeInTheDocument();
   });
@@ -424,7 +424,7 @@ describe("App", () => {
 
     renderApp();
     await user.click(screen.getByRole("tab", { name: "Edit" }));
-    await user.type(await screen.findByLabelText("Prompt"), "replace the room scene");
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "replace the room scene");
     await user.click(screen.getByRole("button", { name: /^edits$/ }));
 
     expect(toastErrorSpy).toHaveBeenCalledWith("Please choose one or more images.");
@@ -447,8 +447,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await waitFor(() => expect(toastSuccessSpy).toHaveBeenCalledWith("Successfully submitted 1 request."));
     const requestButton = await screen.findByRole("button", { name: /View .* result/ });
@@ -510,8 +510,8 @@ describe("App", () => {
     }
 
     renderApp();
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
-    const prompt = await screen.findByLabelText("Prompt");
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "glass jellyfish");
 
     const file = new File(["image-bytes"], "input.png", { type: "image/png" });
@@ -562,16 +562,16 @@ describe("App", () => {
     }
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByText("请求未创建")).toBeInTheDocument();
     expect(screen.getByText("请先配置 API URL 和 API Key。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /查看 .* 的生成结果/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
-    await user.type(screen.getByLabelText("Prompt"), "edit prompt");
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    await user.type(screen.getByLabelText(/^(提示词|Prompt)$/), "edit prompt");
     const file = new File(["image-bytes"], "input.png", { type: "image/png" });
     await user.upload(screen.getByLabelText("选择本地图片"), file);
     await user.click(screen.getByRole("button", { name: /^edits$/ }));
@@ -594,7 +594,7 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
 
     const firstFile = new File(["image-0"], "input-1.png", { type: "image/png" });
     await user.upload(screen.getByLabelText("选择本地图片"), firstFile);
@@ -632,7 +632,7 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
 
     const file = new File(["image-0"], "input-1.png", { type: "image/png" });
     await user.upload(screen.getByLabelText("选择本地图片"), file);
@@ -664,7 +664,7 @@ describe("App", () => {
     });
 
     renderApp();
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
 
     const files = [
       new File(["image-0"], "input-1.png", { type: "image/png" }),
@@ -701,7 +701,7 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
 
     const files = [
       new File(["image-0"], "input-1.png", { type: "image/png" }),
@@ -738,9 +738,9 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
 
-    const prompt = screen.getByLabelText("Prompt");
+    const prompt = screen.getByLabelText(/^(提示词|Prompt)$/);
     const file = new File(["pasted"], "pasted.png", { type: "image/png" });
     fireEvent.paste(prompt, {
       clipboardData: {
@@ -788,12 +788,12 @@ describe("App", () => {
     }
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const requestButton = await screen.findByRole("button", { name: /查看 .* 的生成结果/ });
     const requestTitle = requestButton.getAttribute("aria-label")!.match(/^查看 (.+) 的生成结果$/)?.[1] || "";
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
 
     const historicalSelect = screen.getByLabelText("选择已生成图片");
     await user.click(historicalSelect);
@@ -869,20 +869,20 @@ describe("App", () => {
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
     await waitFor(() => expect(within(resultPanel).getByAltText("Generated image 1", { exact: false })).toBeInTheDocument());
 
-    fireEvent.click(within(resultPanel).getByRole("button", { name: "编辑图片" }));
+    fireEvent.click(within(resultPanel).getByRole("button", { name: "图生图" }));
 
-    await waitFor(() => expect(screen.getByRole("tab", { name: "编辑" })).toHaveAttribute("aria-selected", "true"));
-    await waitFor(() => expect(screen.getByLabelText("Prompt")).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "图生图" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
     expect(screen.getByTestId("edit-image-preview-strip")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /删除输入图片 \d+/ })).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "删除输入图片 1" }));
     expect(screen.queryByTestId("edit-image-preview-strip")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "生图" }));
-    await waitFor(() => expect(screen.getByLabelText("Prompt")).toHaveFocus());
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
-    await waitFor(() => expect(screen.getByLabelText("Prompt")).toHaveFocus());
+    await user.click(screen.getByRole("tab", { name: "文生图" }));
+    await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
   });
 
   test("shows all completed request images in the historical edit selector", async () => {
@@ -898,12 +898,12 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ })).toHaveLength(4);
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
     await user.click(screen.getByLabelText("选择已生成图片"));
 
     expect(await screen.findAllByRole("option")).toHaveLength(4);
@@ -923,13 +923,13 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const requestButton = await screen.findByRole("button", { name: /查看 .* 的生成结果/ });
     const requestTitle = requestButton.getAttribute("aria-label")!.match(/^查看 (.+) 的生成结果$/)?.[1] || "";
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
     await user.click(screen.getByLabelText("选择已生成图片"));
 
     expect(await screen.findByRole("option", { name: `${requestTitle}-1` })).toBeInTheDocument();
@@ -947,13 +947,13 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "generate prompt");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     expect(await screen.findByRole("button", { name: "generate prompt" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
-    expect(screen.getByText("暂无历史 Prompt")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    expect(screen.getByText("暂无历史提示词")).toBeInTheDocument();
   });
 
   test("shows the full prompt history content in a tooltip", async () => {
@@ -962,9 +962,9 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "温泉写真，俯拍视角");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const historyButton = await screen.findByRole("button", { name: "温泉写真，俯拍视角" });
     await user.hover(historyButton);
@@ -979,24 +979,24 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "generate draft");
     expect(prompt).toHaveValue("generate draft");
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
-    expect(screen.getByLabelText("Prompt")).toHaveValue("");
-    await waitFor(() => expect(screen.getByLabelText("Prompt")).toHaveFocus());
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveValue("");
+    await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
     expect(screen.getByPlaceholderText("例如：保留原图主体，只调整光影和风格")).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Prompt"), "edit draft");
-    expect(screen.getByLabelText("Prompt")).toHaveValue("edit draft");
+    await user.type(screen.getByLabelText(/^(提示词|Prompt)$/), "edit draft");
+    expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveValue("edit draft");
 
-    await user.click(screen.getByRole("tab", { name: "生图" }));
-    expect(screen.getByLabelText("Prompt")).toHaveValue("generate draft");
-    await waitFor(() => expect(screen.getByLabelText("Prompt")).toHaveFocus());
+    await user.click(screen.getByRole("tab", { name: "文生图" }));
+    expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveValue("generate draft");
+    await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
-    expect(screen.getByLabelText("Prompt")).toHaveValue("edit draft");
-    await waitFor(() => expect(screen.getByLabelText("Prompt")).toHaveFocus());
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveValue("edit draft");
+    await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
   });
 
   test("keeps generate and edit generation settings separate", async () => {
@@ -1004,14 +1004,14 @@ describe("App", () => {
     renderApp();
 
     const generationSize = screen.getAllByRole("combobox")[0];
-    expect(generationSize).toHaveTextContent("auto");
+    expect(generationSize).toHaveTextContent("自动");
 
     await user.click(generationSize);
     expect(await screen.findByText("方形")).toBeInTheDocument();
     expect(screen.getByText("横屏")).toBeInTheDocument();
     expect(screen.getByText("竖屏")).toBeInTheDocument();
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "auto",
+      "自动",
       "1024x1024",
       "2048x2048 (2K)",
       "1440x1088",
@@ -1028,18 +1028,18 @@ describe("App", () => {
     await user.click(await screen.findByRole("option", { name: "1152x2048 (2K)" }));
     expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1152x2048 (2K)");
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
     const editSize = screen.getAllByRole("combobox")[1];
-    expect(editSize).toHaveTextContent("auto");
+    expect(editSize).toHaveTextContent("自动");
 
     await user.click(editSize);
     await user.click(await screen.findByRole("option", { name: "2048x2048 (2K)" }));
     expect(screen.getAllByRole("combobox")[1]).toHaveTextContent("2048x2048 (2K)");
 
-    await user.click(screen.getByRole("tab", { name: "生图" }));
+    await user.click(screen.getByRole("tab", { name: "文生图" }));
     expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1152x2048 (2K)");
 
-    await user.click(screen.getByRole("tab", { name: "编辑" }));
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
     expect(screen.getAllByRole("combobox")[1]).toHaveTextContent("2048x2048 (2K)");
   });
 
@@ -1063,15 +1063,15 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "first");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
-    const requestList = screen.getByRole("complementary", { name: "请求列表" });
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
     expect(await within(requestList).findByText(/HTTP 500 first boom/)).toBeInTheDocument();
 
     await user.clear(prompt);
     await user.type(prompt, "second");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     expect(await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ })).toHaveLength(2);
     expect(screen.getByRole("tab", { name: /已失败\s*1/ })).toBeInTheDocument();
 
@@ -1095,11 +1095,11 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "completed");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
-    const requestList = screen.getByRole("complementary", { name: "请求列表" });
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
     expect(await screen.findByRole("button", { name: /查看 .* 的生成结果/ })).toBeInTheDocument();
 
     await user.click(within(requestList).getByRole("button", { name: "清空完成" }));
@@ -1123,9 +1123,9 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "delete me");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const requestButton = await screen.findByRole("button", { name: /查看 .* 的生成结果/ });
     const requestId = requestButton.getAttribute("aria-label")!.match(/^查看 (.+) 的生成结果$/)?.[1] || "";
@@ -1155,8 +1155,8 @@ describe("App", () => {
     expect(screen.queryByLabelText("背景")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("格式")).not.toBeInTheDocument();
 
-    await user.type(await screen.findByLabelText("Prompt"), "logo");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "logo");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(fetchMock).toHaveBeenCalled();
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
@@ -1176,8 +1176,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const generatedImage = await screen.findByAltText("Generated image 1", { exact: false });
     expect(generatedImage).toHaveAttribute("src", expect.stringMatching(/^blob:/));
@@ -1197,10 +1197,10 @@ describe("App", () => {
     expect(
       [...(completedPanel as HTMLElement).querySelectorAll("button,a")]
         .map((element) => element.getAttribute("aria-label") || (element.textContent || "").trim())
-        .filter((text) => ["下载", "响应 JSON", "复用 Prompt"].includes(text)),
-    ).toEqual(["下载", "响应 JSON", "复用 Prompt"]);
+        .filter((text) => ["下载", "响应 JSON", "复用提示词"].includes(text)),
+    ).toEqual(["下载", "响应 JSON", "复用提示词"]);
 
-    const reusePromptButton = screen.getByRole("button", { name: /复用 Prompt/ });
+    const reusePromptButton = screen.getByRole("button", { name: /复用提示词/ });
     await user.hover(reusePromptButton);
     const reuseTooltip = await screen.findByRole("tooltip");
     expect(within(reuseTooltip).getByText("glass jellyfish")).toBeInTheDocument();
@@ -1230,8 +1230,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findByAltText("Generated image 2", { exact: false })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下载" }));
@@ -1263,8 +1263,8 @@ describe("App", () => {
     storeSettings({ requestIntervalSeconds: 0 });
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toHaveAttribute("src", imageUrl);
     await user.click(screen.getByRole("button", { name: "下载" }));
@@ -1317,8 +1317,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findByAltText("Generated image 2", { exact: false })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "导出 ZIP" }));
@@ -1349,8 +1349,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await screen.findAllByText("生成中");
 
@@ -1385,13 +1385,13 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "first prompt");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await user.clear(prompt);
     await user.type(prompt, "second prompt");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const requestButtons = await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ });
     const secondTitle = requestButtons[1].getAttribute("aria-label")!.match(/^查看 (.+) 的生成结果$/)?.[1] || "";
@@ -1402,7 +1402,7 @@ describe("App", () => {
 
     await user.clear(prompt);
     await user.type(prompt, "third prompt");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(within(resultPanel).getByText(secondTitle)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -1485,9 +1485,9 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const requestButtons = await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ });
     expect(requestButtons).toHaveLength(2);
@@ -1521,8 +1521,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toBeInTheDocument();
 
     const responseJsonButton = screen.getByRole("button", { name: /响应 JSON/ });
@@ -1543,8 +1543,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledTimes(1));
     expect(toastErrorSpy).toHaveBeenCalledWith("浏览器阻止了跨域请求，请检查 API 服务的 CORS 配置。");
@@ -1564,8 +1564,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(toastErrorSpy).not.toHaveBeenCalledWith("浏览器阻止了跨域请求，请检查 API 服务的 CORS 配置。");
@@ -1587,8 +1587,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await screen.findByRole("button", { name: /响应 JSON/ });
     expect(toastErrorSpy).not.toHaveBeenCalledWith("浏览器阻止了跨域请求，请检查 API 服务的 CORS 配置。");
@@ -1665,8 +1665,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "切换到 English" }));
     expect(await screen.findByRole("button", { name: "Switch to 中文" })).toBeInTheDocument();
 
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledTimes(1));
     expect(toastErrorSpy).toHaveBeenCalledWith(
@@ -1689,8 +1689,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
     expect(await within(resultPanel).findByText(/HTTP 502/)).toBeInTheDocument();
@@ -1709,9 +1709,9 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findByRole("button", { name: "glass jellyfish" })).toBeInTheDocument();
     await user.clear(prompt);
@@ -1720,23 +1720,23 @@ describe("App", () => {
 
     vi.useFakeTimers();
     try {
-      fireEvent.click(screen.getByRole("button", { name: "删除 历史 Prompt: glass jellyfish" }));
-      expect(screen.getByRole("button", { name: "再次点击确认删除 历史 Prompt: glass jellyfish" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "删除 历史提示词: glass jellyfish" }));
+      expect(screen.getByRole("button", { name: "再次点击确认删除 历史提示词: glass jellyfish" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "glass jellyfish" })).toBeInTheDocument();
 
       act(() => {
         vi.advanceTimersByTime(3000);
       });
-      expect(screen.getByRole("button", { name: "删除 历史 Prompt: glass jellyfish" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "删除 历史提示词: glass jellyfish" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "glass jellyfish" })).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: "删除 历史 Prompt: glass jellyfish" }));
-      fireEvent.click(screen.getByRole("button", { name: "再次点击确认删除 历史 Prompt: glass jellyfish" }));
+      fireEvent.click(screen.getByRole("button", { name: "删除 历史提示词: glass jellyfish" }));
+      fireEvent.click(screen.getByRole("button", { name: "再次点击确认删除 历史提示词: glass jellyfish" }));
     } finally {
       vi.useRealTimers();
     }
     expect(screen.queryByRole("button", { name: "glass jellyfish" })).not.toBeInTheDocument();
-    expect(screen.getByText("暂无历史 Prompt")).toBeInTheDocument();
+    expect(screen.getByText("暂无历史提示词")).toBeInTheDocument();
   });
 
   test("pins prompt rows to the top and keeps them above newer prompts", async () => {
@@ -1745,12 +1745,12 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "alpha prompt");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
-    const history = screen.getByRole("region", { name: "历史 Prompt" });
-    const pinButton = within(history).getByRole("button", { name: "置顶 Prompt：alpha prompt" });
+    const history = screen.getByRole("region", { name: "历史提示词" });
+    const pinButton = within(history).getByRole("button", { name: "置顶 历史提示词：alpha prompt" });
     expect(pinButton).toHaveAttribute("aria-pressed", "false");
     await user.click(pinButton);
     expect(within(history).getByRole("button", { name: "取消置顶：alpha prompt" })).toHaveAttribute(
@@ -1760,7 +1760,7 @@ describe("App", () => {
 
     await user.clear(prompt);
     await user.type(prompt, "beta prompt");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     const promptButtons = within(history).getAllByRole("button", { name: /^(alpha prompt|beta prompt)$/ });
     expect(promptButtons[0]).toHaveTextContent("alpha prompt");
@@ -1779,8 +1779,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^responses$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(响应生成|responses)$/ }));
 
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toHaveAttribute("src", expect.stringMatching(/^blob:/));
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8317/v1/responses", expect.objectContaining({ method: "POST" }));
@@ -1795,8 +1795,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^responses$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(响应生成|responses)$/ }));
 
     expect(await screen.findByText("responses · auto")).toBeInTheDocument();
     const runningPanel = document.querySelector('section[aria-live="polite"]');
@@ -1804,10 +1804,10 @@ describe("App", () => {
     expect(
       [...(runningPanel as HTMLElement).querySelectorAll("button,a")]
         .map((element) => element.getAttribute("aria-label") || (element.textContent || "").trim())
-        .filter((text) => ["复用 Prompt"].includes(text)),
-    ).toEqual(["复用 Prompt"]);
+        .filter((text) => ["复用提示词"].includes(text)),
+    ).toEqual(["复用提示词"]);
 
-    const requestList = screen.getByRole("complementary", { name: "请求列表" });
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
     await user.click(within(requestList).getAllByRole("button", { name: "取消请求" })[0]);
     const cancelDialog = screen.getByRole("alertdialog", { name: "取消请求" });
     expect(within(cancelDialog).getByText("所有进行中和排队请求将被取消。")).toBeInTheDocument();
@@ -1826,17 +1826,17 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
-    const requestList = screen.getByRole("complementary", { name: "请求列表" });
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
 
     await user.type(prompt, "first request");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     await user.clear(prompt);
     await user.type(prompt, "second request");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     await user.clear(prompt);
     await user.type(prompt, "third request");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     await waitFor(() =>
       expect(within(requestList).getAllByRole("button", { name: /查看 .* 的生成结果/ })).toHaveLength(3),
@@ -1886,8 +1886,8 @@ describe("App", () => {
     );
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^responses$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(响应生成|responses)$/ }));
 
     expect(await screen.findByText("responses · auto")).toBeInTheDocument();
     expect(screen.getAllByText(/HTTP 500 upstream returned a very long failure detail/).length).toBeGreaterThan(0);
@@ -1907,8 +1907,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^completions$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(对话补全|completions)$/ }));
 
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toHaveAttribute("src", expect.stringMatching(/^blob:/));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1918,7 +1918,7 @@ describe("App", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.model).toBe("gpt-5.4-mini");
     expect(body.messages[0].role).toBe("user");
-    expect(body.messages[0].content).toMatch(/原始 Prompt:\nglass jellyfish/);
+    expect(body.messages[0].content).toMatch(/原始提示词:\nglass jellyfish/);
     expect(body.tools[0].type).toBe("image_generation");
   });
 
@@ -1954,8 +1954,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderApp();
-    await user.type(await screen.findByLabelText("Prompt"), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^completions$/ }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(对话补全|completions)$/ }));
 
     const generatedImage = await screen.findByAltText("Generated image 1", { exact: false });
     expect(generatedImage).toHaveAttribute("src", "blob:grok-preview");
@@ -1981,16 +1981,16 @@ describe("App", () => {
     );
 
     renderApp();
-    const prompt = await screen.findByLabelText("Prompt");
+    const prompt = await screen.findByLabelText(/^(提示词|Prompt)$/);
     await user.type(prompt, "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^generations$/ }));
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: /已完成/ }));
     expect(screen.getByRole("button", { name: /查看 .* 的生成结果/ })).toBeInTheDocument();
 
     await user.clear(prompt);
-    await user.click(screen.getByRole("button", { name: /复用 Prompt/ }));
+    await user.click(screen.getByRole("button", { name: /复用提示词/ }));
     expect(prompt).toHaveValue("glass jellyfish");
 
     await user.click(screen.getByRole("button", { name: /响应 JSON/ }));
