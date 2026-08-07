@@ -96,6 +96,7 @@ export interface AppSettings {
   baseUrl: string;
   apiKey: string;
   rememberKey: boolean;
+  developmentMode: boolean;
   generationsModel: string;
   editsModel: string;
   responsesModel: string;
@@ -116,6 +117,7 @@ export type SharedSettings = Pick<
   | "baseUrl"
   | "apiKey"
   | "rememberKey"
+  | "developmentMode"
   | "generationsModel"
   | "editsModel"
   | "responsesModel"
@@ -241,6 +243,7 @@ export const DEFAULTS: AppSettings = {
   baseUrl: DEFAULT_BASE_URL,
   apiKey: "",
   rememberKey: false,
+  developmentMode: false,
   generationsModel: "gpt-image-2",
   editsModel: "gpt-image-2",
   responsesModel: "gpt-5.4-mini",
@@ -260,6 +263,7 @@ export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
   baseUrl: DEFAULTS.baseUrl,
   apiKey: DEFAULTS.apiKey,
   rememberKey: DEFAULTS.rememberKey,
+  developmentMode: DEFAULTS.developmentMode,
   generationsModel: DEFAULTS.generationsModel,
   editsModel: DEFAULTS.editsModel,
   responsesModel: DEFAULTS.responsesModel,
@@ -344,6 +348,7 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
     baseUrl: String(source.baseUrl || DEFAULTS.baseUrl).trim() || DEFAULTS.baseUrl,
     apiKey: String(source.apiKey || "").trim(),
     rememberKey: Boolean(source.rememberKey),
+    developmentMode: Boolean(source.developmentMode),
     generationsModel: String(source.generationsModel || source.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
     editsModel: String(source.editsModel || source.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel,
     responsesModel: String(source.responsesModel || source.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel,

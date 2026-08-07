@@ -194,6 +194,7 @@ type Copy = {
   requestList: string;
   requestSummary: (settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">) => string;
   clearAll: string;
+  clearImages: string;
   cancelRequests: string;
   clearCompleted: string;
   clearFailed: string;
@@ -201,7 +202,9 @@ type Copy = {
     button: string;
     tooltip: string;
     title: string;
+    selectionTitle: string;
     description: (count: number) => string;
+    selectionDescription: (count: number) => string;
     confirm: string;
     progressTitle: string;
     progressDescription: string;
@@ -209,6 +212,18 @@ type Copy = {
     success: (count: number) => string;
     failed: string;
     noImages: string;
+    selectionTooltip: string;
+  };
+  imageSelection: {
+    enter: string;
+    exit: string;
+    selected: (count: number) => string;
+    imageLabel: (requestTitle: string, index: number) => string;
+    deleteTitle: string;
+    deleteDescription: (count: number) => string;
+    deleteConfirm: string;
+    deleteButton: string;
+    exportButton: string;
   };
   requestListTooltips: {
     clearAll: string;
@@ -250,6 +265,7 @@ type Copy = {
     reusePrompt: string;
     responseJson: string;
     download: string;
+    exportImage: string;
     editImage: string;
     rotateCounterclockwise: string;
     resolution: string;
@@ -280,6 +296,7 @@ type Copy = {
     generate: string;
     edit: string;
     settings: string;
+    settingsTooltip: string;
     promptLabel: string;
     promptPlaceholder: string;
     editPromptPlaceholder: string;
@@ -314,10 +331,22 @@ type Copy = {
     connectionRequired: string;
     requestQueued: string;
     submissionSuccess: (count: number) => string;
+    cancelGeneration: string;
     generations: string;
     responses: string;
     completions: string;
     edits: string;
+    actionHelp: {
+      buttonLabel: string;
+      title: string;
+      description: string;
+      generateMode: string;
+      editMode: string;
+      generationsDescription: string;
+      responsesDescription: string;
+      completionsDescription: string;
+      editsDescription: string;
+    };
     pasteImageHint: string;
     previewInputImage: string;
     previewPreviousImage: string;
@@ -329,6 +358,8 @@ type Copy = {
     apiUrl: string;
     apiKey: string;
     rememberKey: string;
+    developmentMode: string;
+    developmentModeDescription: string;
     generationsModel: string;
     editsModel: string;
     responsesModel: string;
@@ -413,6 +444,7 @@ const COPY: Record<Language, Copy> = {
     requestList: "生成结果列表",
     requestSummary: (settings) => baseRequestControlSummary(settings),
     clearAll: "清空全部",
+    clearImages: "清空图片",
     cancelRequests: "取消请求",
     clearCompleted: "清空完成",
     clearFailed: "清空失败",
@@ -420,7 +452,9 @@ const COPY: Record<Language, Copy> = {
       button: "导出 ZIP",
       tooltip: "批量导出全部已完成图片",
       title: "导出全部已完成图片？",
+      selectionTitle: "导出选中的图片？",
       description: (count) => `将把当前 ${count} 个已完成请求中的可用图片打包为 ZIP 下载。`,
+      selectionDescription: (count) => `将把当前选中的 ${count} 张图片打包为 ZIP 下载。`,
       confirm: "确认导出",
       progressTitle: "正在导出 ZIP",
       progressDescription: "正在读取本地图片详情并打包，请不要关闭页面。",
@@ -428,6 +462,18 @@ const COPY: Record<Language, Copy> = {
       success: (count) => `已成功导出 ${count} 张图片。`,
       failed: "导出 ZIP 失败。",
       noImages: "没有可导出的已完成图片。",
+      selectionTooltip: "导出已勾选的图片",
+    },
+    imageSelection: {
+      enter: "选择图片",
+      exit: "退出多选",
+      selected: (count) => `已选 ${count} 张`,
+      imageLabel: (requestTitle, index) => `${requestTitle}：第 ${index} 张图片`,
+      deleteTitle: "删除选中的任务？",
+      deleteDescription: (count) => `将删除包含所选图片的 ${count} 个任务及其本地图片详情。此操作不可撤销。`,
+      deleteConfirm: "确认删除任务",
+      deleteButton: "删除任务",
+      exportButton: "导出图片",
     },
     requestListTooltips: {
       clearAll: "删除所有请求记录和本地图片详情",
@@ -483,7 +529,8 @@ const COPY: Record<Language, Copy> = {
       reusePrompt: "复用提示词",
       responseJson: "响应 JSON",
       download: "下载",
-      editImage: "图生图",
+      exportImage: "导出图片",
+      editImage: "作为参考图",
       rotateCounterclockwise: "逆时针旋转图片",
       resolution: "响应分辨率",
     },
@@ -513,6 +560,7 @@ const COPY: Record<Language, Copy> = {
       generate: "文生图",
       edit: "图生图",
       settings: "配置",
+      settingsTooltip: "打开连接配置",
       promptLabel: "提示词",
       promptPlaceholder: "一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰",
       editPromptPlaceholder: "例如：保留原图主体，只调整光影和风格",
@@ -541,11 +589,23 @@ const COPY: Record<Language, Copy> = {
       connectionRequired: "请先配置 API URL 和 API Key。",
       requestQueued: "请求已加入队列",
       submissionSuccess: (count) => `成功提交 ${count} 个请求。`,
+      cancelGeneration: "中断生图",
       auto: "自动",
       generations: "图片生成",
       responses: "响应生成",
       completions: "对话补全",
-      edits: "edits",
+      edits: "图片编辑",
+      actionHelp: {
+        buttonLabel: "操作按钮说明",
+        title: "操作按钮说明",
+        description: "不同按钮会调用不同的 OpenAI 兼容接口，请根据服务商支持的接口选择。",
+        generateMode: "文生图",
+        editMode: "图生图",
+        generationsDescription: "调用 /v1/images/generations，适用于标准图片生成接口。",
+        responsesDescription: "调用 /v1/responses，适用于通过 Responses 接口返回图片的模型。",
+        completionsDescription: "调用 /v1/chat/completions，适用于通过对话补全接口返回图片的服务。",
+        editsDescription: "调用 /v1/images/edits，使用提示词和已选择的参考图片进行编辑。",
+      },
       pasteImageHint: "在图片区域中粘贴可直接添加图片",
       previewInputImage: "预览输入图片",
       previewPreviousImage: "上一张",
@@ -557,6 +617,8 @@ const COPY: Record<Language, Copy> = {
       apiUrl: "API URL",
       apiKey: "API Key",
       rememberKey: "在本浏览器记住 API Key",
+      developmentMode: "开发模式",
+      developmentModeDescription: "显示本地占位任务和图片，用于测试图片选择、删除与导出流程。",
       generationsModel: "generations 模型",
       editsModel: "edits 模型",
       responsesModel: "responses 模型",
@@ -662,6 +724,7 @@ const COPY: Record<Language, Copy> = {
     requestList: "Generated Results",
     requestSummary: (settings) => englishRequestControlSummary(settings),
     clearAll: "Clear all",
+    clearImages: "Clear images",
     cancelRequests: "Cancel",
     clearCompleted: "Clear done",
     clearFailed: "Clear failed",
@@ -669,7 +732,9 @@ const COPY: Record<Language, Copy> = {
       button: "Export ZIP",
       tooltip: "Export all completed images as a ZIP",
       title: "Export all completed images?",
+      selectionTitle: "Export selected images?",
       description: (count) => `Available images from ${count} completed request${count === 1 ? "" : "s"} will be packaged into a ZIP file.`,
+      selectionDescription: (count) => `The ${count} selected image${count === 1 ? "" : "s"} will be packaged into a ZIP file.`,
       confirm: "Export",
       progressTitle: "Exporting ZIP",
       progressDescription: "Reading local image details and packaging the ZIP. Keep this page open.",
@@ -677,6 +742,18 @@ const COPY: Record<Language, Copy> = {
       success: (count) => `Exported ${count} image${count === 1 ? "" : "s"}.`,
       failed: "Failed to export ZIP.",
       noImages: "No completed images are available to export.",
+      selectionTooltip: "Export selected images",
+    },
+    imageSelection: {
+      enter: "Select images",
+      exit: "Exit multi-select",
+      selected: (count) => `${count} selected`,
+      imageLabel: (requestTitle, index) => `${requestTitle}, image ${index}`,
+      deleteTitle: "Delete selected requests?",
+      deleteDescription: (count) => `This will delete ${count} request${count === 1 ? "" : "s"} containing the selected images and their local image details. This cannot be undone.`,
+      deleteConfirm: "Delete requests",
+      deleteButton: "Delete requests",
+      exportButton: "Export images",
     },
     requestListTooltips: {
       clearAll: "Delete all request records and local image details",
@@ -732,7 +809,8 @@ const COPY: Record<Language, Copy> = {
       reusePrompt: "Reuse prompt",
       responseJson: "Response JSON",
       download: "Download",
-      editImage: "Edit image",
+      exportImage: "Export image",
+      editImage: "Use as reference",
       rotateCounterclockwise: "Rotate image counterclockwise",
       resolution: "Resolution",
     },
@@ -762,6 +840,7 @@ const COPY: Record<Language, Copy> = {
       generate: "Generate",
       edit: "Edit",
       settings: "Settings",
+      settingsTooltip: "Open connection settings",
       promptLabel: "Prompt",
       promptPlaceholder: "A translucent glass mechanical jellyfish floating on a city rooftop at dawn, product photography, crisp detail",
       editPromptPlaceholder: "For example: keep the original subject and only adjust lighting and style",
@@ -791,10 +870,22 @@ const COPY: Record<Language, Copy> = {
       connectionRequired: "Configure the API URL and API key before generating.",
       requestQueued: "Request queued",
       submissionSuccess: (count) => `Successfully submitted ${count} request${count === 1 ? "" : "s"}.`,
+      cancelGeneration: "Stop generation",
       generations: "generations",
       responses: "responses",
       completions: "completions",
-      edits: "edits",
+      edits: "Image edit",
+      actionHelp: {
+        buttonLabel: "Action button help",
+        title: "Action button help",
+        description: "Each button calls a different OpenAI-compatible endpoint. Choose one supported by your provider.",
+        generateMode: "Text to image",
+        editMode: "Image to image",
+        generationsDescription: "Calls /v1/images/generations for the standard image generation workflow.",
+        responsesDescription: "Calls /v1/responses for models that return images through the Responses API.",
+        completionsDescription: "Calls /v1/chat/completions for providers that return images through chat completions.",
+        editsDescription: "Calls /v1/images/edits to edit the selected reference images with your prompt.",
+      },
       pasteImageHint: "Paste an image into the image area to add it directly",
       previewInputImage: "Preview input image",
       previewPreviousImage: "Previous image",
@@ -806,6 +897,8 @@ const COPY: Record<Language, Copy> = {
       apiUrl: "API URL",
       apiKey: "API key",
       rememberKey: "Remember API key in this browser",
+      developmentMode: "Development mode",
+      developmentModeDescription: "Show local placeholder requests and images for testing selection, deletion, and export workflows.",
       generationsModel: "Generations model",
       editsModel: "Edits model",
       responsesModel: "Responses model",

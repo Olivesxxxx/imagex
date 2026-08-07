@@ -1,5 +1,6 @@
 import {
   CheckIcon,
+  CircleHelpIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,7 +38,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segmented-tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
@@ -86,6 +89,8 @@ export interface GeneratorPanelProps {
   setSettingsOpen: (open: boolean) => void;
   enqueueGeneration: (generationMode: "images" | "responses" | "completions") => boolean;
   enqueueEditGeneration: () => boolean;
+  isGenerating: boolean;
+  onCancelGeneration: () => void;
   addHistoricalEditImage: (value: string) => Promise<void>;
   onModeChange: (mode: ConsoleMode) => void;
   onOpenStrictPromptEditor: () => void;
@@ -277,6 +282,8 @@ export function GeneratorPanel({
   setSettingsOpen,
   enqueueGeneration,
   enqueueEditGeneration,
+  isGenerating,
+  onCancelGeneration,
   addHistoricalEditImage,
   onModeChange,
   onOpenStrictPromptEditor,
@@ -285,6 +292,7 @@ export function GeneratorPanel({
   const editImagesInputRef = useRef<HTMLInputElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [previewEditImageIndex, setPreviewEditImageIndex] = useState<number | null>(null);
+  const [actionHelpOpen, setActionHelpOpen] = useState(false);
   const generationButtonFeedbackClassName = "transition-all duration-100 active:translate-y-px active:scale-[0.99] active:brightness-95";
   const editImageSelectionFull = editImages.length >= MAX_EDIT_INPUT_IMAGES;
   const previewEditImage = previewEditImageIndex !== null ? editImages[previewEditImageIndex] ?? null : null;
@@ -389,20 +397,17 @@ export function GeneratorPanel({
           <span className={panelLabelClassName}>{copy.generator.mode}</span>
           <div className="flex items-center gap-2">
             <Tabs value={mode} onValueChange={handleModeChange}>
-              <TabsList className="!h-8 !min-h-8 !max-h-8 gap-1 rounded-xl border border-border bg-muted/40 p-1">
+              <SegmentedTabsList>
                 {([ ["generate", copy.generator.generate], ["edit", copy.generator.edit] ] as const).map(([value, label]) => (
-                  <TabsTrigger
+                  <SegmentedTabsTrigger
                     key={value}
                     value={value}
-                    className={cn(
-                      "!h-6 !min-h-6 !max-h-6 min-w-20 flex-none rounded-lg border-transparent px-3 text-xs font-medium",
-                      "data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-sm",
-                    )}
+                    className="min-w-20 flex-none"
                   >
                     {label}
-                  </TabsTrigger>
+                  </SegmentedTabsTrigger>
                 ))}
-              </TabsList>
+              </SegmentedTabsList>
             </Tabs>
             <div className="flex shrink-0 items-center gap-1">
               <Tooltip>
@@ -417,17 +422,32 @@ export function GeneratorPanel({
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className={panelIconButtonClassName}
+                    onClick={() => setActionHelpOpen(true)}
+                    aria-label={copy.generator.actionHelp.buttonLabel}
+                  >
+                    <CircleHelpIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{copy.generator.actionHelp.buttonLabel}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
                     variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
                     size="icon-sm"
                     className={panelIconButtonClassName}
                     onClick={() => setSettingsOpen(true)}
-                    aria-label={`${copy.generator.settings}: ${connectionStatus.label}`}
-                    title={`${copy.generator.settings}: ${connectionStatus.label}`}
+                    aria-label={copy.generator.settingsTooltip}
+                    title={copy.generator.settingsTooltip}
                   >
                     {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{`${copy.generator.settings}: ${connectionStatus.label}`}</TooltipContent>
+                <TooltipContent>{copy.generator.settingsTooltip}</TooltipContent>
               </Tooltip>
             </div>
           </div>
@@ -535,6 +555,18 @@ export function GeneratorPanel({
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pt-1">
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {isGenerating ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
+              onClick={onCancelGeneration}
+            >
+              <SquareIcon data-icon="inline-start" />
+              {copy.generator.cancelGeneration}
+            </Button>
+          ) : null}
           {mode === "edit" ? (
             <Button type="submit" size="sm" className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
               <ImagePlusIcon data-icon="inline-start" />
@@ -570,6 +602,40 @@ export function GeneratorPanel({
           )}
         </div>
       </div>
+      <Dialog open={actionHelpOpen} onOpenChange={setActionHelpOpen}>
+        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{copy.generator.actionHelp.title}</DialogTitle>
+            <DialogDescription>{copy.generator.actionHelp.description}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <section className="min-w-0">
+              <h3 className="mb-2 text-sm font-semibold">{copy.generator.actionHelp.generateMode}</h3>
+              <div className="grid gap-3 text-sm">
+                <div>
+                  <p className="font-medium">{copy.generator.generations}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{copy.generator.actionHelp.generationsDescription}</p>
+                </div>
+                <div>
+                  <p className="font-medium">{copy.generator.responses}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{copy.generator.actionHelp.responsesDescription}</p>
+                </div>
+                <div>
+                  <p className="font-medium">{copy.generator.completions}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{copy.generator.actionHelp.completionsDescription}</p>
+                </div>
+              </div>
+            </section>
+            <section className="min-w-0">
+              <h3 className="mb-2 text-sm font-semibold">{copy.generator.actionHelp.editMode}</h3>
+              <div className="text-sm">
+                <p className="font-medium">{copy.generator.edits}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">{copy.generator.actionHelp.editsDescription}</p>
+              </div>
+            </section>
+          </div>
+        </DialogContent>
+      </Dialog>
       <DialogPrimitive.Root open={previewEditImageIndex !== null} onOpenChange={(open) => { if (!open) setPreviewEditImageIndex(null); }}>
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />

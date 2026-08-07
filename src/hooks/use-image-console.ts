@@ -136,6 +136,7 @@ function normalizeSettings(values: AppSettings, defaultStrictPromptText: string)
     responsesModel: String(values.responsesModel || DEFAULTS.responsesModel).trim(),
     completionsModel: String(values.completionsModel || DEFAULTS.completionsModel).trim(),
     rememberKey: Boolean(values.rememberKey),
+    developmentMode: Boolean(values.developmentMode),
     strictPromptText: normalizedStrictPromptText,
     strictPrompt: values.strictPrompt ?? DEFAULTS.strictPrompt,
     requestConcurrency: normalizeRequestConcurrency(values.requestConcurrency),
@@ -321,6 +322,12 @@ function revokeRemovedObjectUrls(previousRecords: ImageRequestRecord[], nextReco
 }
 
 function stripRequestRuntimeDetails(request: ImageRequestRecord): ImageRequestRecord {
+  // Development fixtures keep their local images in memory so switching between
+  // fixture tasks does not make the test data disappear.
+  if (isDevelopmentRequest(request)) {
+    return request;
+  }
+
   if (request.status === "queued" || request.status === "running") {
     return request;
   }
@@ -446,6 +453,60 @@ function downloadBlob(blob: Blob, filename: string) {
       // Ignore object URL cleanup failures.
     }
   }, 0);
+}
+
+const DEVELOPMENT_REQUEST_PREFIX = "imagex-development-placeholder-";
+
+function isDevelopmentRequest(request: Pick<ImageRequestRecord, "id">) {
+  return request.id.startsWith(DEVELOPMENT_REQUEST_PREFIX);
+}
+
+function developmentPlaceholderRequests(): ImageRequestRecord[] {
+  const now = Date.now();
+  const image = (index: number): GeneratedImage => ({
+    src: `/placeholders/dev-placeholder-${index}.png`,
+    kind: "url",
+    path: `dev-placeholder-${index}.png`,
+    mimeType: "image/png",
+    width: 800,
+    height: 600,
+  });
+  const groups = [
+    [image(1), image(2)],
+    [image(3), image(4)],
+  ];
+
+  return groups.map((images, index) => ({
+    id: `${DEVELOPMENT_REQUEST_PREFIX}${index + 1}`,
+    title: `DEV-PLACEHOLDER-${index + 1}`,
+    index: index + 1,
+    total: groups.length,
+    method: "gpt-image-2",
+    endpoint: "development://placeholder",
+    payload: {
+      model: "development-placeholder",
+      prompt: "ImageX development mode placeholder",
+      n: images.length,
+      size: "800x600",
+    },
+    sourcePrompt: "ImageX development mode placeholder",
+    imageCount: images.length,
+    imageResolution: "800x600",
+    hasCachedDetails: false,
+    detailsMissing: false,
+    thumbnail: images[0],
+    status: "done",
+    createdAt: now - (groups.length - index) * 1000,
+    startedAt: now - (groups.length - index) * 1000,
+    endedAt: now - (groups.length - index) * 1000 + 500,
+    completedAt: now - (groups.length - index) * 1000 + 500,
+    images,
+    response: { developmentMode: true, imageCount: images.length },
+    error: "",
+    controller: null,
+    cancelRequested: false,
+    editImages: [],
+  }));
 }
 
 function uniqueZipEntryName(name: string, usedNames: Set<string>) {
@@ -672,9 +733,9 @@ export function useImageConsole() {
     const next = updater(previous);
     revokeRemovedObjectUrls(previous, next);
     requestRecordsRef.current = next;
-    void saveCachedRequests(next, language);
+    void saveCachedRequests(next.filter((request) => !isDevelopmentRequest(request)), language);
     setRequestRecords(next);
-  }, []);
+  }, [language]);
 
   const retainRequestDetail = useCallback((requestId: string | null | undefined) => {
     if (!requestId) return;
@@ -691,8 +752,12 @@ export function useImageConsole() {
 
     void loadCachedRequests(language).then((records) => {
       if (cancelled) return;
-      requestRecordsRef.current = records;
-      setRequestRecords(records);
+      const realRecords = records.filter((request) => !isDevelopmentRequest(request));
+      const nextRecords = settingsRef.current.developmentMode
+        ? [...developmentPlaceholderRequests(), ...realRecords]
+        : realRecords;
+      requestRecordsRef.current = nextRecords;
+      setRequestRecords(nextRecords);
       setSelectedRequestId(null);
     });
 
@@ -700,6 +765,23 @@ export function useImageConsole() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const realRecords = requestRecordsRef.current.filter((request) => !isDevelopmentRequest(request));
+    const nextRecords = settings.developmentMode
+      ? [...developmentPlaceholderRequests(), ...realRecords]
+      : realRecords;
+
+    revokeRemovedObjectUrls(requestRecordsRef.current, nextRecords);
+    requestRecordsRef.current = nextRecords;
+    setRequestRecords(nextRecords);
+
+    if (!settings.developmentMode) {
+      setSelectedRequestId((current) =>
+        current?.startsWith(DEVELOPMENT_REQUEST_PREFIX) ? null : current,
+      );
+    }
+  }, [settings.developmentMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -761,7 +843,11 @@ export function useImageConsole() {
 
     setSelectedRequestDetailLoadingId(selectedRequestId);
 
-    void loadRequestDetails(selectedRequestId)
+    const detailLoader = isDevelopmentRequest(selectedRequest)
+      ? Promise.resolve(selectedRequest)
+      : loadRequestDetails(selectedRequestId);
+
+    detailLoader
       .then(async (detail) => {
         if (cancelled) return;
 
@@ -776,18 +862,20 @@ export function useImageConsole() {
 
         if (detail && !cancelled) {
           const responseSource = detail.rawResponse ?? detail.response ?? null;
-          void saveRequestDetails(
-            [
-              {
-                ...selectedRequest,
-                images: normalizedDetailImages,
-                response: responseSource == null ? null : sanitizeResponseForDisplay(responseSource),
-                rawResponse: responseSource,
-                thumbnail,
-              },
-            ],
-            { prune: false },
-          );
+          if (!isDevelopmentRequest(selectedRequest)) {
+            void saveRequestDetails(
+              [
+                {
+                  ...selectedRequest,
+                  images: normalizedDetailImages,
+                  response: responseSource == null ? null : sanitizeResponseForDisplay(responseSource),
+                  rawResponse: responseSource,
+                  thumbnail,
+                },
+              ],
+              { prune: false },
+            );
+          }
         }
 
         retainRequestDetail(selectedRequestId);
@@ -1288,16 +1376,24 @@ export function useImageConsole() {
       }
 
       try {
-        const detail = await loadRequestDetails(requestId);
+        const detail = isDevelopmentRequest(request) ? request : await loadRequestDetails(requestId);
         const sourceImage = detail?.images?.[imageIndex];
         if (!sourceImage) {
           toast.error(copy.runtime.historicalImageNotFound);
           return;
         }
 
-        const mimeType = sourceImage.mimeType || "image/png";
+        let editableSourceImage = sourceImage;
+        if (isDevelopmentRequest(request) && sourceImage.kind === "url" && !sourceImage.blob) {
+          const response = await fetch(sourceImage.src);
+          if (!response.ok) throw new Error(copy.runtime.historicalImageNotEditable);
+          const blob = await response.blob();
+          editableSourceImage = { ...sourceImage, blob, mimeType: blob.type || sourceImage.mimeType };
+        }
+
+        const mimeType = editableSourceImage.mimeType || "image/png";
         const extension = mimeType.replace(/^image\//, "") || "png";
-        const image = prepareEditInputImage(sourceImage, `${request.title}-image-${imageIndex + 1}.${extension}`);
+        const image = prepareEditInputImage(editableSourceImage, `${request.title}-image-${imageIndex + 1}.${extension}`);
 
         if (!image) {
           toast.error(copy.runtime.historicalImageNotEditable);
@@ -1324,6 +1420,7 @@ export function useImageConsole() {
         key === "baseUrl" ||
         key === "apiKey" ||
         key === "rememberKey" ||
+        key === "developmentMode" ||
         key === "generationsModel" ||
         key === "editsModel" ||
         key === "responsesModel" ||
@@ -1650,7 +1747,9 @@ export function useImageConsole() {
     setSelectedRequestDetailLoadingId(null);
     thumbnailBackfillRef.current.clear();
     retainedRequestDetailIdsRef.current = [];
-    const removedIds = requestRecordsRef.current.map((request) => request.id);
+    const removedIds = requestRecordsRef.current
+      .filter((request) => !isDevelopmentRequest(request))
+      .map((request) => request.id);
     revokeObjectUrls(collectObjectUrls(requestRecordsRef.current));
     requestRecordsRef.current = [];
     setRequestRecords([]);
@@ -1662,7 +1761,7 @@ export function useImageConsole() {
 
   const clearCompletedRequests = useCallback(() => {
     const removedIds = requestRecordsRef.current
-      .filter((request) => requestMatchesFilter(request, "done"))
+      .filter((request) => requestMatchesFilter(request, "done") && !isDevelopmentRequest(request))
       .map((request) => request.id);
 
     if (!removedIds.length) return;
@@ -1675,7 +1774,7 @@ export function useImageConsole() {
 
   const clearFailedRequests = useCallback(() => {
     const removedIds = requestRecordsRef.current
-      .filter((request) => requestMatchesFilter(request, "failed"))
+      .filter((request) => requestMatchesFilter(request, "failed") && !isDevelopmentRequest(request))
       .map((request) => request.id);
     setSelectedRequestDetailLoadingId(null);
     commitRecords((records) => records.filter((request) => !requestMatchesFilter(request, "failed")));
@@ -1695,7 +1794,9 @@ export function useImageConsole() {
       setSelectedRequestDetailLoadingId((current) => (current === requestId ? null : current));
 
       commitRecords((records) => records.filter((item) => item.id !== requestId));
-      void deleteRequestDetails([requestId]);
+      if (!isDevelopmentRequest(request)) {
+        void deleteRequestDetails([requestId]);
+      }
 
       setSelectedRequestId((current) => (current === requestId ? nextSelectedRequestId : current));
       setStatusMessageSource({ type: "request-deleted", title: request.title });
@@ -1714,9 +1815,10 @@ export function useImageConsole() {
   );
 
   const exportCompletedImagesZip = useCallback(
-    async (onProgress?: (progress: ExportZipProgress) => void) => {
+    async (onProgress?: (progress: ExportZipProgress) => void, selectedImageKeys?: readonly string[]) => {
       const completedRequests = sortedRequestRecordsForFilter(requestRecordsRef.current, "done");
       const imageItems: Array<{ request: ImageRequestRecord; image: GeneratedImage; index: number }> = [];
+      const selectedKeySet = selectedImageKeys?.length ? new Set(selectedImageKeys) : null;
 
       for (const request of completedRequests) {
         let images = request.images || [];
@@ -1729,6 +1831,7 @@ export function useImageConsole() {
         }
 
         images.forEach((image, index) => {
+          if (selectedKeySet && !selectedKeySet.has(`${request.id}-${index}`)) return;
           imageItems.push({ request, image, index });
         });
       }
@@ -1751,6 +1854,11 @@ export function useImageConsole() {
 
       if (!entries.length) {
         throw new Error(copy.exportZip.noImages);
+      }
+
+      if (selectedKeySet && entries.length === 1) {
+        downloadBlob(entries[0].blob, entries[0].name);
+        return { count: 1, filename: entries[0].name };
       }
 
       const filename = `ImageX-${formatBatchPrefix()}.zip`;

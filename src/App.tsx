@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import {
   isDefaultStrictPromptText,
   normalizeStrictPromptText,
+  requestImageCount,
   type ConsoleMode,
 } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
@@ -126,11 +127,13 @@ function ClearRequestsDialog({
 function ExportZipConfirmDialog({
   open,
   completedCount,
+  selectedImageCount,
   onOpenChange,
   onConfirm,
 }: {
   open: boolean;
   completedCount: number;
+  selectedImageCount: number;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
@@ -139,8 +142,10 @@ function ExportZipConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{copy.exportZip.title}</AlertDialogTitle>
-          <AlertDialogDescription>{copy.exportZip.description(completedCount)}</AlertDialogDescription>
+          <AlertDialogTitle>{selectedImageCount > 0 ? copy.exportZip.selectionTitle : copy.exportZip.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {selectedImageCount > 0 ? copy.exportZip.selectionDescription(selectedImageCount) : copy.exportZip.description(completedCount)}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{copy.clearDialog.cancel}</AlertDialogCancel>
@@ -229,6 +234,8 @@ export default function App() {
   const [exportZipConfirmOpen, setExportZipConfirmOpen] = useState(false);
   const [exportZipProgressOpen, setExportZipProgressOpen] = useState(false);
   const [exportZipProgress, setExportZipProgress] = useState<ExportZipProgress>({ current: 0, total: 0 });
+  const [imageSelectionMode, setImageSelectionMode] = useState(false);
+  const [selectedImageKeys, setSelectedImageKeys] = useState<Set<string>>(new Set());
   const extraModalOpen =
     cancelRequestsDialogOpen ||
     clearFailedDialogOpen ||
@@ -237,19 +244,62 @@ export default function App() {
     exportZipConfirmOpen ||
     exportZipProgressOpen;
 
-  async function handleExportZipConfirm() {
-    setExportZipConfirmOpen(false);
+  async function runImageExport(selectedKeys?: readonly string[]) {
     setExportZipProgress({ current: 0, total: 0 });
     setExportZipProgressOpen(true);
 
     try {
-      const result = await consoleState.exportCompletedImagesZip(setExportZipProgress);
+      const result = await consoleState.exportCompletedImagesZip(setExportZipProgress, selectedKeys);
       setExportZipProgressOpen(false);
       toast.success(copy.exportZip.success(result.count));
     } catch (error) {
       setExportZipProgressOpen(false);
       toast.error((error as Error).message || copy.exportZip.failed);
     }
+  }
+
+  function handleExportZipConfirm() {
+    setExportZipConfirmOpen(false);
+    const selectedKeys = imageSelectionMode && selectedImageKeys.size ? [...selectedImageKeys] : undefined;
+    void runImageExport(selectedKeys);
+  }
+
+  function handleOpenImageExport() {
+    if (imageSelectionMode && selectedImageKeys.size === 1) {
+      void runImageExport([...selectedImageKeys]);
+      return;
+    }
+    setExportZipConfirmOpen(true);
+  }
+
+  function handleExportRequest(requestId: string) {
+    const request = consoleState.requestRecords.find((item) => item.id === requestId);
+    if (!request || request.status !== "done") return;
+    const imageCount = requestImageCount(request);
+    if (!imageCount) return;
+    const imageKeys = Array.from({ length: imageCount }, (_, index) => `${requestId}-${index}`);
+    void runImageExport(imageKeys);
+  }
+
+  function toggleImageSelectionMode() {
+    setImageSelectionMode((current) => {
+      if (current) setSelectedImageKeys(new Set());
+      return !current;
+    });
+  }
+
+  function toggleImageSelection(key: string) {
+    setSelectedImageKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function resetImageSelection() {
+    setImageSelectionMode(false);
+    setSelectedImageKeys(new Set());
   }
 
   function handleModeChange(mode: ConsoleMode) {
@@ -268,8 +318,8 @@ export default function App() {
 
   return (
     <>
-      <main id="main" className="grid min-h-dvh min-w-0 grid-cols-1 gap-4 bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
-        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-4 overflow-y-auto pr-1">
+      <main id="main" className="grid min-h-dvh min-w-0 grid-cols-1 gap-3 bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-y-auto pr-1">
           <ResultPanel
             selectedRequest={consoleState.selectedRequest}
             selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
@@ -279,7 +329,7 @@ export default function App() {
             reusePrompt={consoleState.reusePrompt}
             onEditImage={handleEditImage}
           />
-          <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
+          <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
             <GeneratorPanel
               mode={consoleState.mode}
               editImages={consoleState.editImages}
@@ -295,6 +345,8 @@ export default function App() {
               setSettingsOpen={consoleState.setSettingsOpen}
               enqueueGeneration={consoleState.enqueueGeneration}
               enqueueEditGeneration={consoleState.enqueueEditGeneration}
+              isGenerating={consoleState.requestCounts.active > 0}
+              onCancelGeneration={consoleState.cancelAllRequests}
               addHistoricalEditImage={consoleState.addHistoricalEditImage}
               onModeChange={handleModeChange}
               onOpenStrictPromptEditor={() => {
@@ -326,13 +378,15 @@ export default function App() {
           onSelectRequest={consoleState.setSelectedRequestId}
           onCancelRequest={consoleState.cancelRequest}
           onDeleteRequest={consoleState.deleteRequest}
+          onExportRequest={handleExportRequest}
           onFilterChange={consoleState.setSelectedRequestFilter}
-          onOpenClearAll={() => consoleState.setClearDialogOpen(true)}
-          onCancelRequests={() => setCancelRequestsDialogOpen(true)}
-          onOpenClearCompleted={() => setClearCompletedDialogOpen(true)}
-          onOpenClearFailed={() => setClearFailedDialogOpen(true)}
-          onOpenExportZip={() => setExportZipConfirmOpen(true)}
-          extraModalOpen={extraModalOpen}
+          onOpenExportZip={handleOpenImageExport}
+          imageSelectionMode={imageSelectionMode}
+          selectedImageCount={selectedImageKeys.size}
+           selectedImageKeys={selectedImageKeys}
+           onToggleImageSelectionMode={toggleImageSelectionMode}
+           onToggleImageSelection={toggleImageSelection}
+           extraModalOpen={extraModalOpen}
         />
       </main>
 
@@ -358,6 +412,7 @@ export default function App() {
       <ExportZipConfirmDialog
         open={exportZipConfirmOpen}
         completedCount={consoleState.requestCounts.done}
+        selectedImageCount={imageSelectionMode ? selectedImageKeys.size : 0}
         onOpenChange={setExportZipConfirmOpen}
         onConfirm={handleExportZipConfirm}
       />
@@ -370,6 +425,7 @@ export default function App() {
         confirmLabel={copy.clearDialog.clearAll.confirm}
         onConfirm={() => {
           consoleState.setClearDialogOpen(false);
+          resetImageSelection();
           consoleState.clearAllRequests();
         }}
       />
@@ -392,6 +448,7 @@ export default function App() {
         confirmLabel={copy.clearDialog.clearFailed.confirm}
         onConfirm={() => {
           setClearFailedDialogOpen(false);
+          resetImageSelection();
           consoleState.clearFailedRequests();
         }}
       />
@@ -403,6 +460,7 @@ export default function App() {
         confirmLabel={copy.clearDialog.clearCompleted.confirm}
         onConfirm={() => {
           setClearCompletedDialogOpen(false);
+          resetImageSelection();
           consoleState.clearCompletedRequests();
         }}
       />

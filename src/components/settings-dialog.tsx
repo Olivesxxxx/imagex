@@ -151,6 +151,17 @@ export function SettingsDialog({
                 <FieldLabel htmlFor="rememberKey">{copy.settings.rememberKey}</FieldLabel>
               </FieldContent>
             </Field>
+            <Field orientation="horizontal" className="!items-start">
+              <Checkbox
+                id="developmentMode"
+                checked={settings.developmentMode}
+                onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="developmentMode">{copy.settings.developmentMode}</FieldLabel>
+                <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p>
+              </FieldContent>
+            </Field>
             <FieldSet>
               <FieldTitle>{copy.settings.endpointPreview}</FieldTitle>
               <pre className="min-w-0 whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs leading-relaxed text-muted-foreground">

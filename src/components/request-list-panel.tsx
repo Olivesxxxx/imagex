@@ -4,16 +4,20 @@ import {
   CheckIcon,
   DownloadIcon,
   ImageIcon,
+  ListChecksIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segmented-tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTimedConfirmation } from "@/hooks/use-timed-confirmation";
 import {
@@ -68,6 +72,10 @@ function RequestRow({
   onCancelRequest,
   onDeleteRequest,
   onSelect,
+  onExportRequest,
+  imageSelectionMode,
+  selectedImageKeys,
+  onToggleImageSelection,
 }: {
   request: ImageRequestRecord;
   selected: boolean;
@@ -77,6 +85,10 @@ function RequestRow({
   onCancelRequest?: (id: string) => void;
   onDeleteRequest?: (id: string) => void;
   onSelect: () => void;
+  onExportRequest: (id: string) => void;
+  imageSelectionMode: boolean;
+  selectedImageKeys: ReadonlySet<string>;
+  onToggleImageSelection: (key: string) => void;
 }) {
   const { copy, language } = useI18n();
   const { pendingKey: pendingDeleteRequestId, requestConfirmation } = useTimedConfirmation(DELETE_CONFIRMATION_TIMEOUT_MS);
@@ -84,6 +96,8 @@ function RequestRow({
   const requestDetail =
     request.error || (request.status === "done" ? formatCompletionTime(request.completedAt, language === "en" ? "en" : "zh") : "");
   const thumbnail = request.thumbnail || null;
+  const thumbnailSelectionKey = `${request.id}-0`;
+  const thumbnailSelected = selectedImageKeys.has(thumbnailSelectionKey);
   const isActive = request.status === "queued" || request.status === "running";
   const isConfirmingDelete = !isActive && pendingDeleteRequestId === request.id;
   const actionLabel = isActive
@@ -103,19 +117,19 @@ function RequestRow({
   return (
     <div
       className={cn(
-        "grid min-h-22 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-4 overflow-hidden rounded-xl border border-border bg-card p-3 text-card-foreground transition-[border-color,background-color,box-shadow]",
+        "relative grid min-h-22 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow]",
         "hover:border-foreground/15 hover:bg-muted/40",
         selected && "border-foreground/20 bg-[oklch(0.985_0.006_255)]",
       )}
     >
       <button
         type="button"
-        className="grid min-w-0 cursor-pointer grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-4 text-left focus:outline-none"
+        className="grid min-w-0 cursor-pointer grid-cols-[6rem_minmax(0,1fr)] items-start gap-3 text-left focus:outline-none"
         ref={buttonRef}
         onClick={onSelect}
         aria-label={language === "en" ? `View ${request.title} result` : `查看 ${request.title} 的生成结果`}
       >
-        <span className="flex size-[5.5rem] shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
+        <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30">
           {thumbnail ? (
             <img
               src={thumbnail.src}
@@ -147,7 +161,20 @@ function RequestRow({
           ) : null}
         </span>
       </button>
-      <span className="flex shrink-0 items-start pt-0.5">
+      {imageSelectionMode && request.status === "done" && !request.detailsMissing && thumbnail ? (
+        <label
+          className="absolute top-3 left-3 z-20 flex cursor-pointer items-center"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Checkbox
+            checked={thumbnailSelected}
+            className="bg-background data-[state=checked]:bg-primary"
+            onCheckedChange={() => onToggleImageSelection(thumbnailSelectionKey)}
+            aria-label={copy.imageSelection.imageLabel(request.title, 1)}
+          />
+        </label>
+      ) : null}
+      <span className="flex h-full shrink-0 flex-col items-end justify-between gap-2 pt-0.5">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -174,6 +201,26 @@ function RequestRow({
           </TooltipTrigger>
           <TooltipContent>{actionLabel}</TooltipContent>
         </Tooltip>
+        {request.status === "done" && !request.detailsMissing && thumbnail ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={copy.requestCardStatus.exportImage}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExportRequest(request.id);
+                }}
+              >
+                <DownloadIcon data-icon="inline-start" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{copy.requestCardStatus.exportImage}</TooltipContent>
+          </Tooltip>
+        ) : null}
       </span>
     </div>
   );
@@ -193,12 +240,14 @@ export function RequestListPanel({
   onSelectRequest,
   onCancelRequest,
   onDeleteRequest,
+  onExportRequest,
   onFilterChange,
-  onOpenClearAll,
-  onCancelRequests,
-  onOpenClearCompleted,
-  onOpenClearFailed,
   onOpenExportZip,
+  imageSelectionMode,
+  selectedImageCount,
+  selectedImageKeys,
+  onToggleImageSelectionMode,
+  onToggleImageSelection,
 }: {
   filteredRequests: ImageRequestRecord[];
   selectedRequestId: string | null;
@@ -213,20 +262,28 @@ export function RequestListPanel({
   onSelectRequest: (id: string) => void;
   onCancelRequest: (id: string) => void;
   onDeleteRequest: (id: string) => void;
+  onExportRequest: (id: string) => void;
   onFilterChange: (filter: RequestFilter) => void;
-  onOpenClearAll: () => void;
-  onCancelRequests: () => void;
-  onOpenClearCompleted: () => void;
-  onOpenClearFailed: () => void;
   onOpenExportZip: () => void;
+  imageSelectionMode: boolean;
+  selectedImageCount: number;
+  selectedImageKeys: ReadonlySet<string>;
+  onToggleImageSelectionMode: () => void;
+  onToggleImageSelection: (key: string) => void;
 }) {
   const { copy, language } = useI18n();
   const hasRequests = requestCounts.all > 0;
-  const hasActiveRequests = requestCounts.active > 0;
   const hasDoneRequests = requestCounts.done > 0;
-  const hasFailedRequests = requestCounts.failed > 0;
   const requestSummary = copy.requestSummary(settings);
   const requestButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const [deleteSelectionDialogOpen, setDeleteSelectionDialogOpen] = useState(false);
+  const selectedRequestIds = Array.from(
+    new Set(
+      Array.from(selectedImageKeys)
+        .map((key) => key.slice(0, key.lastIndexOf("-")))
+        .filter(Boolean),
+    ),
+  );
 
   function focusRequest(id: string) {
     requestButtonRefs.current.get(id)?.focus();
@@ -237,7 +294,7 @@ export function RequestListPanel({
       if (event.defaultPrevented) return;
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       if (isEditableKeyboardTarget(event.target)) return;
-      if (settingsOpen || clearDialogOpen || jsonDialogOpen || extraModalOpen) return;
+      if (settingsOpen || clearDialogOpen || jsonDialogOpen || extraModalOpen || deleteSelectionDialogOpen) return;
       if (!filteredRequests.length) return;
 
       event.preventDefault();
@@ -259,11 +316,11 @@ export function RequestListPanel({
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [clearDialogOpen, extraModalOpen, filteredRequests, jsonDialogOpen, onSelectRequest, selectedRequestId, settingsOpen]);
+  }, [clearDialogOpen, deleteSelectionDialogOpen, extraModalOpen, filteredRequests, jsonDialogOpen, onSelectRequest, selectedRequestId, settingsOpen]);
 
   return (
-    <aside className="flex min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none" aria-label={copy.requestList}>
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4">
+    <aside className="relative flex min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none" aria-label={copy.requestList}>
+      <div className="flex min-h-14 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <strong className="shrink-0 text-sm leading-none">{copy.requestList}</strong>
           <Tooltip>
@@ -279,104 +336,39 @@ export function RequestListPanel({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="outline"
+              variant={imageSelectionMode ? "secondary" : "outline"}
               size="sm"
               className="h-7 shrink-0 gap-1.5 px-2 text-xs"
               disabled={!hasDoneRequests}
-              onClick={onOpenExportZip}
+              onClick={onToggleImageSelectionMode}
             >
-              <DownloadIcon data-icon="inline-start" />
-              {copy.exportZip.button}
+              <ListChecksIcon data-icon="inline-start" />
+              {imageSelectionMode
+                ? selectedImageCount > 0
+                  ? copy.imageSelection.selected(selectedImageCount)
+                  : copy.imageSelection.exit
+                : copy.imageSelection.enter}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{copy.exportZip.tooltip}</TooltipContent>
+          <TooltipContent>{imageSelectionMode ? copy.imageSelection.exit : copy.imageSelection.enter}</TooltipContent>
         </Tooltip>
       </div>
 
-      <div className="border-b border-border bg-muted/30 px-3 py-2">
-        <div className="grid grid-cols-4 gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 w-full justify-center gap-0.5 px-1.5 text-[10px] leading-none"
-                disabled={!hasRequests}
-                onClick={onOpenClearAll}
-              >
-                <Trash2Icon data-icon="inline-start" />
-                {copy.clearAll}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copy.requestListTooltips.clearAll}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="h-7 w-full justify-center gap-0.5 px-1.5 text-[10px] leading-none"
-                disabled={!hasActiveRequests}
-                onClick={onCancelRequests}
-              >
-                <XIcon data-icon="inline-start" />
-                {copy.cancelRequests}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copy.requestListTooltips.cancelRequests}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 w-full justify-center gap-0.5 px-1.5 text-[10px] leading-none"
-                disabled={!hasDoneRequests}
-                onClick={onOpenClearCompleted}
-              >
-                <CheckCircle2Icon data-icon="inline-start" />
-                {copy.clearCompleted}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copy.requestListTooltips.clearCompleted}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 w-full justify-center gap-0.5 px-1.5 text-[10px] leading-none"
-                disabled={!hasFailedRequests}
-                onClick={onOpenClearFailed}
-              >
-                <AlertCircleIcon data-icon="inline-start" />
-                {copy.clearFailed}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copy.requestListTooltips.clearFailed}</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
-
-      <div className="border-b border-border px-3 py-2">
+      <div className="px-3 py-2">
         <Tabs value={selectedRequestFilter} onValueChange={(value) => onFilterChange(value as RequestFilter)}>
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 xl:grid-cols-4">
+          <SegmentedTabsList className="w-full">
             {REQUEST_FILTERS.map((filter) => (
-              <TabsTrigger key={filter} value={filter} className="min-w-0 gap-1 text-xs">
+              <SegmentedTabsTrigger key={filter} value={filter} className="gap-1 px-1.5">
                 <span className="truncate">{copy.filterLabels[filter]}</span>
                 <span className="shrink-0 tabular-nums">{requestCounts[filter]}</span>
-              </TabsTrigger>
+              </SegmentedTabsTrigger>
             ))}
-          </TabsList>
+          </SegmentedTabsList>
         </Tabs>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="grid gap-2 p-3">
+        <div className={cn("grid gap-2 p-3", imageSelectionMode && selectedImageCount > 0 && "pb-24")}>
           {!hasRequests ? (
             <Empty className="min-h-40 border">
               <EmptyHeader>
@@ -406,6 +398,10 @@ export function RequestListPanel({
                 onSelect={() => {
                   onSelectRequest(request.id);
                 }}
+                onExportRequest={onExportRequest}
+                imageSelectionMode={imageSelectionMode}
+                selectedImageKeys={selectedImageKeys}
+                onToggleImageSelection={onToggleImageSelection}
               />
             ))
           ) : (
@@ -420,6 +416,58 @@ export function RequestListPanel({
           )}
         </div>
       </ScrollArea>
+
+      {imageSelectionMode && selectedImageCount > 0 ? (
+        <div className="absolute right-3 bottom-3 left-3 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur">
+          <span className="min-w-0 text-xs font-medium text-muted-foreground">
+            {copy.imageSelection.selected(selectedImageCount)}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="h-8 gap-1.5 px-3 text-xs"
+              onClick={() => setDeleteSelectionDialogOpen(true)}
+            >
+              <Trash2Icon data-icon="inline-start" />
+              {copy.imageSelection.deleteButton}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-3 text-xs"
+              onClick={onOpenExportZip}
+            >
+              <DownloadIcon data-icon="inline-start" />
+              {copy.imageSelection.exportButton}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <AlertDialog open={deleteSelectionDialogOpen} onOpenChange={setDeleteSelectionDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{copy.imageSelection.deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{copy.imageSelection.deleteDescription(selectedRequestIds.length)}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{copy.clearDialog.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20"
+              onClick={() => {
+                selectedRequestIds.forEach((id) => onDeleteRequest(id));
+                setDeleteSelectionDialogOpen(false);
+                onToggleImageSelectionMode();
+              }}
+            >
+              {copy.imageSelection.deleteConfirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }

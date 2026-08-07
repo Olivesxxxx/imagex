@@ -4,7 +4,7 @@ import {
   FileJsonIcon,
   ImageIcon,
   Loader2Icon,
-  PencilIcon,
+  QuoteIcon,
   RotateCcwIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -176,7 +176,9 @@ function Gallery({
         return (
           <article
             key={imageKey}
-            className="image-checkerboard group relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-lg border"
+            className={cn(
+              "image-checkerboard group relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-lg border",
+            )}
           >
             {image ? (
               <>
@@ -191,7 +193,7 @@ function Gallery({
                         className="border border-border/70 bg-background/85 shadow-sm backdrop-blur"
                         onClick={() => onEditImage(`${requestId}:${index}`)}
                       >
-                        <PencilIcon data-icon="inline-start" />
+                        <QuoteIcon data-icon="inline-start" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent sideOffset={8}>{copy.requestCardStatus.editImage}</TooltipContent>
@@ -275,13 +277,14 @@ export function ResultPanel({
       aria-label={copy.resultSectionLabel}
     >
       <h2 className="sr-only">{copy.resultSectionLabel}</h2>
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4">
-        <strong className="shrink-0 text-sm">{statusMessage.state}</strong>
-        <span className="min-w-0 truncate text-right text-xs font-medium text-muted-foreground">{statusMessage.detail}</span>
+      <div className="flex min-h-12 items-center gap-3 px-4">
+        <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
+          {statusMessage.state} · {statusMessage.detail}
+        </span>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
+        <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-2">
           <div className="min-w-0 flex-1">
             <strong className="block min-w-0 truncate text-sm font-semibold">
               {selectedRequest?.title || copy.requestCardStatus.unselectedTitle}
@@ -348,8 +351,12 @@ export function ResultPanel({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 p-4">
-          <Gallery request={selectedRequest} loading={selectedRequestDetailLoading} onEditImage={onEditImage} />
+        <div className="min-h-0 flex-1 p-3">
+          <Gallery
+            request={selectedRequest}
+            loading={selectedRequestDetailLoading}
+            onEditImage={onEditImage}
+          />
         </div>
       </div>
     </section>

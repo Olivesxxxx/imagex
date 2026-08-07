@@ -232,6 +232,7 @@ export function saveSettings(values: StoredConsoleSettings) {
     responsesModel: normalized.shared.responsesModel,
     completionsModel: normalized.shared.completionsModel,
     rememberKey: normalized.shared.rememberKey,
+    developmentMode: normalized.shared.developmentMode,
     requestConcurrency: normalized.shared.requestConcurrency,
     requestIntervalSeconds: normalized.shared.requestIntervalSeconds,
     strictPromptText: normalized.shared.strictPromptText,
