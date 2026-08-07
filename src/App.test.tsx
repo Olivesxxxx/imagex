@@ -302,12 +302,12 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "连接" })).not.toBeInTheDocument());
 
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
-    expect(within(resultPanel).getByText("已保存")).toBeInTheDocument();
+    expect(within(resultPanel).getByText(/^已保存\s*·/)).toBeInTheDocument();
     expect(within(resultPanel).getByText(/generations 模型 gpt-image-3/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "切换到 English" }));
 
-    expect(within(resultPanel).getByText("Saved")).toBeInTheDocument();
+    expect(within(resultPanel).getByText(/^Saved\s*·/)).toBeInTheDocument();
     expect(within(resultPanel).getByText(/Generations model gpt-image-3/)).toBeInTheDocument();
     expect(within(resultPanel).queryByText("已保存")).not.toBeInTheDocument();
   });
@@ -425,10 +425,10 @@ describe("App", () => {
     renderApp();
     await user.click(screen.getByRole("tab", { name: "Edit" }));
     await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "replace the room scene");
-    await user.click(screen.getByRole("button", { name: /^edits$/ }));
+    await user.click(screen.getByRole("button", { name: /^Image edit$/ }));
 
     expect(toastErrorSpy).toHaveBeenCalledWith("Please choose one or more images.");
-    expect(screen.getByText("Request not created")).toBeInTheDocument();
+    expect(screen.getByText(/Request not created/)).toBeInTheDocument();
     expect(screen.queryByText("请求未创建")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /View .* result/ })).not.toBeInTheDocument();
   });
@@ -519,7 +519,7 @@ describe("App", () => {
     expect(screen.queryByText("input.png")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除输入图片 1" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /^edits$/ }));
+    await user.click(screen.getByRole("button", { name: /^图片编辑$/ }));
 
     expect(await screen.findByAltText("Generated image 1", { exact: false })).toHaveAttribute("src", expect.stringMatching(/^blob:/));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -566,18 +566,18 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByText("请求未创建")).toBeInTheDocument();
-    expect(screen.getByText("请先配置 API URL 和 API Key。")).toBeInTheDocument();
+    expect(screen.getByText(/请求未创建/)).toBeInTheDocument();
+    expect(screen.getByText(/请先配置 API URL 和 API Key。/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /查看 .* 的生成结果/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "图生图" }));
     await user.type(screen.getByLabelText(/^(提示词|Prompt)$/), "edit prompt");
     const file = new File(["image-bytes"], "input.png", { type: "image/png" });
     await user.upload(screen.getByLabelText("选择本地图片"), file);
-    await user.click(screen.getByRole("button", { name: /^edits$/ }));
+    await user.click(screen.getByRole("button", { name: /^图片编辑$/ }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByText("请求未创建")).toBeInTheDocument();
+    expect(screen.getByText(/请求未创建/)).toBeInTheDocument();
   });
 
   test("limits edit image previews to five thumbnails in a single row", async () => {
@@ -740,9 +740,9 @@ describe("App", () => {
     renderApp();
     await user.click(screen.getByRole("tab", { name: "图生图" }));
 
-    const prompt = screen.getByLabelText(/^(提示词|Prompt)$/);
+    const imagePasteRegion = screen.getByRole("region", { name: /图片区域中粘贴|Paste an image into the image area/ });
     const file = new File(["pasted"], "pasted.png", { type: "image/png" });
-    fireEvent.paste(prompt, {
+    fireEvent.paste(imagePasteRegion, {
       clipboardData: {
         items: [{ type: "image/png", getAsFile: () => file }],
         files: [file],
@@ -869,7 +869,7 @@ describe("App", () => {
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
     await waitFor(() => expect(within(resultPanel).getByAltText("Generated image 1", { exact: false })).toBeInTheDocument());
 
-    fireEvent.click(within(resultPanel).getByRole("button", { name: "图生图" }));
+    fireEvent.click(within(resultPanel).getByRole("button", { name: "作为参考图" }));
 
     await waitFor(() => expect(screen.getByRole("tab", { name: "图生图" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveFocus());
@@ -1029,21 +1029,21 @@ describe("App", () => {
     expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1152x2048 (2K)");
 
     await user.click(screen.getByRole("tab", { name: "图生图" }));
-    const editSize = screen.getAllByRole("combobox")[1];
+    const editSize = screen.getAllByRole("combobox")[0];
     expect(editSize).toHaveTextContent("自动");
 
     await user.click(editSize);
-    await user.click(await screen.findByRole("option", { name: "2048x2048 (2K)" }));
-    expect(screen.getAllByRole("combobox")[1]).toHaveTextContent("2048x2048 (2K)");
+    await user.click(await screen.findByRole("option", { name: "1024x1024" }));
+    expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1024x1024");
 
     await user.click(screen.getByRole("tab", { name: "文生图" }));
     expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1152x2048 (2K)");
 
     await user.click(screen.getByRole("tab", { name: "图生图" }));
-    expect(screen.getAllByRole("combobox")[1]).toHaveTextContent("2048x2048 (2K)");
+    expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1024x1024");
   });
 
-  test("clears failed requests while keeping successful ones", async () => {
+  test("keeps failed and completed counts visible without a legacy clear toolbar", async () => {
     const user = userEvent.setup();
     storeSettings({ requestIntervalSeconds: 0 });
     const fetchMock = vi
@@ -1075,15 +1075,11 @@ describe("App", () => {
     expect(await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ })).toHaveLength(2);
     expect(screen.getByRole("tab", { name: /已失败\s*1/ })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "清空失败" }));
-    const dialog = screen.getByRole("alertdialog", { name: "清空失败" });
-    await user.click(within(dialog).getByRole("button", { name: "确认清空失败" }));
-
-    expect(screen.getByRole("tab", { name: /已失败\s*0/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "清空失败" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /已完成\s*1/ })).toBeInTheDocument();
   });
 
-  test("clears completed requests from the request list toolbar", async () => {
+  test("does not render the legacy completed-request toolbar", async () => {
     const user = userEvent.setup();
     storeSettings({ requestIntervalSeconds: 0 });
     const fetchMock = vi.fn().mockResolvedValue(
@@ -1102,12 +1098,8 @@ describe("App", () => {
     const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
     expect(await screen.findByRole("button", { name: /查看 .* 的生成结果/ })).toBeInTheDocument();
 
-    await user.click(within(requestList).getByRole("button", { name: "清空完成" }));
-    const dialog = screen.getByRole("alertdialog", { name: "清空完成" });
-    await user.click(within(dialog).getByRole("button", { name: "确认清空完成" }));
-
-    expect(screen.getByRole("tab", { name: /已完成\s*0/ })).toBeInTheDocument();
-    expect(within(requestList).getByText("暂无请求")).toBeInTheDocument();
+    expect(within(requestList).queryByRole("button", { name: "清空完成" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /已完成\s*1/ })).toBeInTheDocument();
   });
 
   test("deletes a completed request from the card action and clears its cached details", async () => {
@@ -1276,7 +1268,7 @@ describe("App", () => {
     expect(anchor.download).toBe("");
   });
 
-  test("exports all completed images as a ZIP after confirmation", async () => {
+  test("exports a multi-image request as a ZIP from its result card", async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     const toastSuccessSpy = vi.spyOn(toast, "success").mockImplementation(() => "toast-id");
@@ -1321,11 +1313,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(await screen.findByAltText("Generated image 2", { exact: false })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "导出 ZIP" }));
-
-    const confirmDialog = screen.getByRole("alertdialog", { name: "导出全部已完成图片？" });
-    expect(within(confirmDialog).getByText(/1 个已完成请求/)).toBeInTheDocument();
-    await user.click(within(confirmDialog).getByRole("button", { name: "确认导出" }));
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
+    await user.click(within(requestList).getByRole("button", { name: "导出图片" }));
 
     // 导出进行中：进度对话框渲染，其进度文字容器应暴露 aria-live=polite 与 aria-busy=true
     // 注：进度对话框由普通 Dialog 渲染，role="dialog"（非 alertdialog）；并给 loadRequestDetails
@@ -1809,9 +1798,6 @@ describe("App", () => {
 
     const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
     await user.click(within(requestList).getAllByRole("button", { name: "取消请求" })[0]);
-    const cancelDialog = screen.getByRole("alertdialog", { name: "取消请求" });
-    expect(within(cancelDialog).getByText("所有进行中和排队请求将被取消。")).toBeInTheDocument();
-    await user.click(within(cancelDialog).getByRole("button", { name: "确认取消请求" }));
     expect(await within(requestList).findByText("已取消请求")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /已失败\s*1/ })).toBeInTheDocument();
     expect(screen.queryByText(/responses · auto · n=1/)).not.toBeInTheDocument();
