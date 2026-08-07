@@ -8,10 +8,13 @@ import {
   buildEditImageRequests,
   buildGenerationRequests,
   buildPayload,
+  buildPrivateEditImagePayload,
+  buildPrivateImagePayload,
   buildResponsesImagePayload,
   buildResponsesImageRequests,
   cachedRequestRecords,
   createRequestRecords,
+  DEFAULTS,
   detectMimeFromBase64,
   extractImages,
   filteredRequestRecords,
@@ -66,6 +69,11 @@ function requestRecordFixture(overrides: Partial<ImageRequestRecord>): ImageRequ
 }
 
 describe("image console logic", () => {
+  test("uses the private service default while keeping its credential blank", () => {
+    expect(DEFAULTS.privateBaseUrl).toBe("https://video.codepup.cn");
+    expect(DEFAULTS.privateApiKey).toBe("");
+  });
+
   test("normalizes invalid mode settings back to defaults", () => {
     expect(
       normalizeModeSettings({
@@ -108,6 +116,33 @@ describe("image console logic", () => {
       output_format: "webp",
       moderation: "low",
     });
+  });
+
+  test("builds the documented private generation payload", () => {
+    expect(
+      buildPrivateImagePayload({
+        privateModel: "private-image-model",
+        prompt: "glass jellyfish",
+        strictPrompt: false,
+        n: 2,
+        size: "1024x1536",
+        quality: "high",
+        background: "opaque",
+      }),
+    ).toEqual({
+      model: "private-image-model",
+      prompt: "glass jellyfish",
+      size: "1024x1536",
+      image_size: "1K",
+      aspect_ratio: "2:3",
+      n: 2,
+      quality: "high",
+      background: "opaque",
+    });
+  });
+
+  test("validates images before building a private edit payload", () => {
+    expect(() => buildPrivateEditImagePayload({ prompt: "edit it" }, [])).toThrow(/选择至少一张图片/);
   });
 
   test("uses configurable responses image_generation model", () => {

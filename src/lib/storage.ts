@@ -223,10 +223,18 @@ export function loadSettings(): StoredConsoleSettings {
 
 export function saveSettings(values: StoredConsoleSettings) {
   const normalized = normalizeStoredSettings(values);
+  const persistedShared = {
+    ...normalized.shared,
+    apiKey: normalized.shared.rememberKey ? normalized.shared.apiKey : "",
+    privateApiKey: normalized.shared.rememberKey ? normalized.shared.privateApiKey : "",
+  };
   const persisted: Record<string, unknown> = {
-    shared: normalized.shared,
+    shared: persistedShared,
     modeSettingsByMode: normalized.modeSettingsByMode,
+    protocol: normalized.shared.protocol,
     baseUrl: normalized.shared.baseUrl,
+    privateBaseUrl: normalized.shared.privateBaseUrl,
+    privateModel: normalized.shared.privateModel,
     generationsModel: normalized.shared.generationsModel,
     editsModel: normalized.shared.editsModel,
     responsesModel: normalized.shared.responsesModel,
@@ -246,6 +254,7 @@ export function saveSettings(values: StoredConsoleSettings) {
 
   if (normalized.shared.rememberKey) {
     persisted.apiKey = normalized.shared.apiKey;
+    persisted.privateApiKey = normalized.shared.privateApiKey;
   }
 
   localStorageStore()?.setItem(STORAGE_KEY, JSON.stringify(persisted));

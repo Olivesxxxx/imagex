@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { fetchModels, postImageEdit, postImageGeneration } from "@/lib/api";
+import { fetchModels, postImageEdit, postImageGeneration, postPrivateImageEdit, postPrivateImageGeneration } from "@/lib/api";
 import {
   normalizeChatCompletionsEndpoint,
   normalizeImageEditsEndpoint,
   normalizeImageEndpoint,
   normalizeModelsEndpoint,
+  normalizePrivateImageEditsEndpoint,
+  normalizePrivateImageEndpoint,
   normalizeResponsesEndpoint,
 } from "@/lib/endpoints";
 import {
   buildEditImagePayload,
+  buildPrivateEditImagePayload,
+  buildPrivateImagePayload,
   buildEditImageRequests,
   buildChatCompletionsImagePayload,
   buildChatCompletionsImageRequests,
@@ -131,6 +135,10 @@ function normalizeSettings(values: AppSettings, defaultStrictPromptText: string)
   return {
     ...DEFAULTS,
     ...values,
+    protocol: values.protocol === "private" ? "private" : "openai",
+    privateBaseUrl: String(values.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl,
+    privateApiKey: String(values.privateApiKey || "").trim(),
+    privateModel: String(values.privateModel || DEFAULTS.privateModel).trim() || DEFAULTS.privateModel,
     generationsModel: String(values.generationsModel || DEFAULTS.generationsModel).trim(),
     editsModel: String(values.editsModel || DEFAULTS.editsModel).trim(),
     responsesModel: String(values.responsesModel || DEFAULTS.responsesModel).trim(),
@@ -281,9 +289,9 @@ function statusMessageFromSource(
   }
 }
 
-function missingConnectionMessage(settings: Pick<AppSettings, "baseUrl" | "apiKey">, copy: ReturnType<typeof getCopy>) {
-  const baseUrl = String(settings.baseUrl || "").trim();
-  const apiKey = String(settings.apiKey || "").trim();
+function missingConnectionMessage(settings: Pick<AppSettings, "protocol" | "baseUrl" | "apiKey" | "privateBaseUrl" | "privateApiKey">, copy: ReturnType<typeof getCopy>) {
+  const baseUrl = String(settings.protocol === "private" ? settings.privateBaseUrl : settings.baseUrl || "").trim();
+  const apiKey = String(settings.protocol === "private" ? settings.privateApiKey : settings.apiKey || "").trim();
   if (baseUrl && apiKey) return "";
   return copy.generator.connectionRequired;
 }
@@ -1006,8 +1014,24 @@ export function useImageConsole() {
           throw new Error(copy.runtime.editRequestMissingImages);
         }
 
-        const body =
-          request.method === "edit"
+        const body = request.protocol === "private"
+          ? request.method === "edit"
+            ? await postPrivateImageEdit(
+                request.endpoint,
+                request.apiKey || "",
+                request.payload,
+                request.editImages || [],
+                controller.signal,
+                language,
+              )
+            : await postPrivateImageGeneration(
+                request.endpoint,
+                request.apiKey || "",
+                request.payload,
+                controller.signal,
+                language,
+              )
+          : request.method === "edit"
             ? await postImageEdit(
                 request.endpoint,
                 request.apiKey || "",
@@ -1243,6 +1267,12 @@ export function useImageConsole() {
   }, [copy, requestRecords]);
 
   const endpointPreview = useMemo(() => {
+    if (settings.protocol === "private") {
+      return [
+        `generations (${settings.privateModel})\n${normalizePrivateImageEndpoint(settings.privateBaseUrl)}`,
+        `edits (${settings.privateModel})\n${normalizePrivateImageEditsEndpoint(settings.privateBaseUrl)}`,
+      ].join("\n\n");
+    }
     const baseUrl = settings.baseUrl || DEFAULTS.baseUrl;
     const generationsModel = String(settings.generationsModel || DEFAULTS.generationsModel).trim();
     const editsModel = String(settings.editsModel || DEFAULTS.editsModel).trim();
@@ -1255,6 +1285,9 @@ export function useImageConsole() {
       `completions (${completionsModel})\n${normalizeChatCompletionsEndpoint(baseUrl)}`,
     ].join("\n\n");
   }, [
+    settings.protocol,
+    settings.privateBaseUrl,
+    settings.privateModel,
     settings.baseUrl,
     settings.completionsModel,
     settings.editsModel,
@@ -1417,8 +1450,12 @@ export function useImageConsole() {
   const updateSettings = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setStoredSettings((current) => {
       if (
+        key === "protocol" ||
         key === "baseUrl" ||
         key === "apiKey" ||
+        key === "privateBaseUrl" ||
+        key === "privateApiKey" ||
+        key === "privateModel" ||
         key === "rememberKey" ||
         key === "developmentMode" ||
         key === "generationsModel" ||
@@ -1450,7 +1487,7 @@ export function useImageConsole() {
         },
       };
     });
-    if (key === "baseUrl" || key === "apiKey") {
+    if (key === "protocol" || key === "baseUrl" || key === "apiKey" || key === "privateBaseUrl" || key === "privateApiKey") {
       setTestConnectionStatus({ label: copy.tests.test, tone: "default" });
     }
   }, [copy]);
@@ -1526,7 +1563,12 @@ export function useImageConsole() {
       let endpoint: string;
       let method: GenerationMethod;
       try {
-        if (generationMode === "completions") {
+        if (currentSettings.protocol === "private") {
+          const payload = buildPrivateImagePayload(values, language);
+          requestPayloads = buildGenerationRequests(payload);
+          endpoint = normalizePrivateImageEndpoint(values.privateBaseUrl);
+          method = "gpt-image-2";
+        } else if (generationMode === "completions") {
           const payload = buildChatCompletionsImagePayload(values, language);
           requestPayloads = buildChatCompletionsImageRequests(payload, values.n);
           endpoint = normalizeChatCompletionsEndpoint(values.baseUrl);
@@ -1570,7 +1612,8 @@ export function useImageConsole() {
         method,
       ).map((request) => ({
         ...request,
-        apiKey: currentSettings.apiKey,
+        protocol: currentSettings.protocol,
+        apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.apiKey,
       }));
 
       commitRecords((records) => [...records, ...newRequests]);
@@ -1619,9 +1662,13 @@ export function useImageConsole() {
     const runtimeImages = editImages.map((image) => ({ ...image }));
 
     try {
-      const payload = buildEditImagePayload(values, runtimeImages, language);
+      const payload = currentSettings.protocol === "private"
+        ? buildPrivateEditImagePayload(values, runtimeImages, language)
+        : buildEditImagePayload(values, runtimeImages, language);
       requestPayloads = buildEditImageRequests(payload, values.n);
-      endpoint = normalizeImageEditsEndpoint(values.baseUrl);
+      endpoint = currentSettings.protocol === "private"
+        ? normalizePrivateImageEditsEndpoint(values.privateBaseUrl)
+        : normalizeImageEditsEndpoint(values.baseUrl);
       method = "edit";
     } catch (error) {
       const message = (error as Error).message;
@@ -1651,7 +1698,8 @@ export function useImageConsole() {
       method,
     ).map((request) => ({
       ...request,
-      apiKey: currentSettings.apiKey,
+      protocol: currentSettings.protocol,
+      apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.apiKey,
       editImages: runtimeImages,
     }));
 
@@ -1758,6 +1806,31 @@ export function useImageConsole() {
     void clearCachedRequests();
     setStatusMessageSource({ type: "requests-cleared", kind: "all" });
   }, [clearQueueTimer, copy]);
+
+  const clearAllData = useCallback(() => {
+    clearAllRequests();
+    resetSettings();
+
+    const emptyPrompts = { generate: "", edit: "" } satisfies Record<ConsoleMode, string>;
+    const emptyHistory = { generate: [], edit: [] } satisfies Record<ConsoleMode, string[]>;
+    setPromptByMode(emptyPrompts);
+    setPromptHistoryByMode(emptyHistory);
+    setPinnedPromptHistoryByMode({ generate: [], edit: [] });
+    for (const targetMode of ["generate", "edit"] as const) {
+      saveLastPrompt("", targetMode);
+      savePromptHistory([], targetMode);
+      savePinnedPromptHistory([], targetMode);
+    }
+
+    revokeObjectUrls(editImagesRef.current.map((item) => item.src).filter((src) => src.startsWith("blob:")));
+    editImagesRef.current = [];
+    setEditImages([]);
+    setHistoricalEditImageValue("");
+    setSelectedRequestFilter("all");
+    setJsonDialogOpen(false);
+    modeRef.current = "generate";
+    setMode("generate");
+  }, [clearAllRequests, resetSettings]);
 
   const clearCompletedRequests = useCallback(() => {
     const removedIds = requestRecordsRef.current
@@ -1931,6 +2004,7 @@ export function useImageConsole() {
     deleteRequest,
     cancelAllRequests,
     clearAllRequests,
+    clearAllData,
     clearCompletedRequests,
     clearFailedRequests,
     exportCompletedImagesZip,

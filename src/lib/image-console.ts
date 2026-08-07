@@ -84,6 +84,7 @@ export type ImageSize = (typeof SIZE_OPTIONS)[number];
 export type ImageQuality = (typeof QUALITY_OPTIONS)[number];
 export type ImageBackground = (typeof BACKGROUND_OPTIONS)[number];
 export type ImageOutputFormat = (typeof OUTPUT_FORMAT_OPTIONS)[number];
+export type ApiProtocol = "openai" | "private";
 export type ConsoleMode = "generate" | "edit";
 export type GenerationMethod = "gpt-image-2" | "image_generation" | "completions" | "edit";
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
@@ -93,8 +94,12 @@ export const REQUEST_FILTERS = ["all", "active", "done", "failed"] as const;
 export type RequestFilter = (typeof REQUEST_FILTERS)[number];
 
 export interface AppSettings {
+  protocol: ApiProtocol;
   baseUrl: string;
   apiKey: string;
+  privateBaseUrl: string;
+  privateApiKey: string;
+  privateModel: string;
   rememberKey: boolean;
   developmentMode: boolean;
   generationsModel: string;
@@ -114,8 +119,12 @@ export interface AppSettings {
 
 export type SharedSettings = Pick<
   AppSettings,
+  | "protocol"
   | "baseUrl"
   | "apiKey"
+  | "privateBaseUrl"
+  | "privateApiKey"
+  | "privateModel"
   | "rememberKey"
   | "developmentMode"
   | "generationsModel"
@@ -207,6 +216,7 @@ export interface ImageRequestRecord {
   index: number;
   total: number;
   method: GenerationMethod | "";
+  protocol?: ApiProtocol;
   endpoint: string;
   payload: RequestPayload;
   sourcePrompt: string;
@@ -240,8 +250,12 @@ export interface CachedRequestRecord
 }
 
 export const DEFAULTS: AppSettings = {
+  protocol: "openai",
   baseUrl: DEFAULT_BASE_URL,
   apiKey: "",
+  privateBaseUrl: "https://video.codepup.cn",
+  privateApiKey: "",
+  privateModel: "gpt-image-2",
   rememberKey: false,
   developmentMode: false,
   generationsModel: "gpt-image-2",
@@ -260,8 +274,12 @@ export const DEFAULTS: AppSettings = {
 };
 
 export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
+  protocol: DEFAULTS.protocol,
   baseUrl: DEFAULTS.baseUrl,
   apiKey: DEFAULTS.apiKey,
+  privateBaseUrl: DEFAULTS.privateBaseUrl,
+  privateApiKey: DEFAULTS.privateApiKey,
+  privateModel: DEFAULTS.privateModel,
   rememberKey: DEFAULTS.rememberKey,
   developmentMode: DEFAULTS.developmentMode,
   generationsModel: DEFAULTS.generationsModel,
@@ -345,8 +363,12 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
   const source = isSettingsRecord(values) ? values : {};
   return {
     ...DEFAULT_SHARED_SETTINGS,
+    protocol: source.protocol === "private" ? "private" : "openai",
     baseUrl: String(source.baseUrl || DEFAULTS.baseUrl).trim() || DEFAULTS.baseUrl,
     apiKey: String(source.apiKey || "").trim(),
+    privateBaseUrl: String(source.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl,
+    privateApiKey: String(source.privateApiKey || "").trim(),
+    privateModel: String(source.privateModel || DEFAULTS.privateModel).trim() || DEFAULTS.privateModel,
     rememberKey: Boolean(source.rememberKey),
     developmentMode: Boolean(source.developmentMode),
     generationsModel: String(source.generationsModel || source.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
@@ -534,6 +556,55 @@ export function buildPayload(
     output_format: values.outputFormat || DEFAULTS.outputFormat,
     moderation: "low",
   };
+}
+
+function privateImageDimensions(size: ImageSize | string | undefined) {
+  const normalizedSize = size && size !== "auto" ? String(size) : "1024x1024";
+  const match = /^(\d+)x(\d+)$/.exec(normalizedSize);
+  if (!match) return { size: normalizedSize, imageSize: "1K", aspectRatio: "1:1" };
+  const width = Number.parseInt(match[1], 10);
+  const height = Number.parseInt(match[2], 10);
+  const maxDimension = Math.max(width, height);
+  const imageSize = maxDimension >= 3840 ? "4K" : maxDimension >= 1920 ? "2K" : "1K";
+  function gcd(left: number, right: number): number {
+    return right ? gcd(right, left % right) : left;
+  }
+  const divisor = gcd(width, height) || 1;
+  return { size: normalizedSize, imageSize, aspectRatio: `${width / divisor}:${height / divisor}` };
+}
+
+export function buildPrivateImagePayload(
+  values: Partial<GenerationValues> & Pick<GenerationValues, "prompt">,
+  language: MessageLanguage = "zh",
+): RequestPayload {
+  const prompt = validatePromptAndOutput({
+    prompt: values.prompt,
+    background: values.background || DEFAULTS.background,
+    outputFormat: values.outputFormat || DEFAULTS.outputFormat,
+  }, language);
+  const model = String(values.privateModel || DEFAULTS.privateModel).trim();
+  if (!model) throw new Error(validationCopy(language).generationsModelRequired);
+  const dimensions = privateImageDimensions(values.size);
+  return {
+    model,
+    prompt: applyPromptPolicy(prompt, values.strictPrompt ?? DEFAULTS.strictPrompt, values.strictPromptText),
+    size: dimensions.size,
+    image_size: dimensions.imageSize,
+    aspect_ratio: dimensions.aspectRatio,
+    n: imageCountFromValue(values.n || DEFAULTS.n, language),
+    quality: values.quality || DEFAULTS.quality,
+    background: values.background || DEFAULTS.background,
+  };
+}
+
+export function buildPrivateEditImagePayload(
+  values: Partial<GenerationValues> & Pick<GenerationValues, "prompt">,
+  images: EditInputImage[],
+  language: MessageLanguage = "zh",
+): RequestPayload {
+  if (!Array.isArray(images) || !images.length) throw new Error(validationCopy(language).editInputMissing);
+  if (images.length > MAX_EDIT_INPUT_IMAGES) throw new Error(validationCopy(language).editInputLimit(MAX_EDIT_INPUT_IMAGES));
+  return buildPrivateImagePayload(values, language);
 }
 
 export function buildResponsesImagePayload(
@@ -775,6 +846,7 @@ export function prepareRequestForCache(request: ImageRequestRecord, language: Me
     index: request.index,
     total: request.total,
     method: request.method || "",
+    protocol: request.protocol || "openai",
     endpoint: request.endpoint,
     payload: request.payload,
     sourcePrompt: request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload)),
@@ -814,6 +886,7 @@ export function restoreCachedRequest(
     index: Number.parseInt(String(request.index), 10) || 1,
     total: Number.parseInt(String(request.total), 10) || 1,
     method: request.method || "",
+    protocol: request.protocol === "private" ? "private" : "openai",
     endpoint: String(request.endpoint || ""),
     payload: request.payload || {},
     sourcePrompt: String(request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload))),
@@ -1399,7 +1472,7 @@ export function extractImages(response: unknown, fallbackFormat = "png") {
   const found: GeneratedImage[] = [];
   const seenObjects = new WeakSet<object>();
   const base64Keys = new Set(["b64_json", "image_base64", "base64", "image", "result"]);
-  const urlKeys = new Set(["url", "image_url", "output_url"]);
+  const urlKeys = new Set(["url", "image_url", "output_url", "resultUrl"]);
 
   function addImage(item: GeneratedImage) {
     if (!item.src || found.some((existing) => existing.src === item.src)) return;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { GeneratorPanel, PromptHistoryPanel } from "@/components/generator-panel";
+import { AnnotationWorkspace, type AnnotationImageSource } from "@/components/annotation-workspace";
 import { RequestListPanel } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -224,13 +225,14 @@ function ResponseJsonDialog({
 }
 
 export default function App() {
-  const { copy } = useI18n();
+  const { copy, language } = useI18n();
   const consoleState = useImageConsole();
   const [promptFocusSignal, setPromptFocusSignal] = useState(0);
   const [cancelRequestsDialogOpen, setCancelRequestsDialogOpen] = useState(false);
   const [clearFailedDialogOpen, setClearFailedDialogOpen] = useState(false);
   const [clearCompletedDialogOpen, setClearCompletedDialogOpen] = useState(false);
   const [strictPromptEditorOpen, setStrictPromptEditorOpen] = useState(false);
+  const [annotationTarget, setAnnotationTarget] = useState<{ image: AnnotationImageSource; originalPrompt: string } | null>(null);
   const [exportZipConfirmOpen, setExportZipConfirmOpen] = useState(false);
   const [exportZipProgressOpen, setExportZipProgressOpen] = useState(false);
   const [exportZipProgress, setExportZipProgress] = useState<ExportZipProgress>({ current: 0, total: 0 });
@@ -241,6 +243,7 @@ export default function App() {
     clearFailedDialogOpen ||
     clearCompletedDialogOpen ||
     strictPromptEditorOpen ||
+    Boolean(annotationTarget) ||
     exportZipConfirmOpen ||
     exportZipProgressOpen;
 
@@ -316,10 +319,46 @@ export default function App() {
     void consoleState.addHistoricalEditImage(value);
   }
 
+  function handleAnnotateImage(value: string) {
+    const [requestId, imageIndexText] = String(value || "").split(":");
+    const imageIndex = Number.parseInt(imageIndexText, 10);
+    const request = consoleState.requestRecords.find((item) => item.id === requestId);
+    const image = request?.images?.[imageIndex];
+    if (!request || !image || request.status !== "done") return;
+    setAnnotationTarget({
+      image: {
+        src: image.src,
+        blob: image.blob,
+        mimeType: image.mimeType,
+        name: `${request.title}-${imageIndex + 1}`,
+      },
+      originalPrompt: request.sourcePrompt,
+    });
+  }
+
+  function handleAnnotationSubmit(file: File, instruction: string) {
+    if (!annotationTarget) return;
+    const originalPrompt = annotationTarget.originalPrompt.trim();
+    const addition = instruction.trim() || (language === "en" ? "Apply the changes indicated by the marks in the reference image." : "请按照参考图中的标记进行修改。");
+    handleModeChange("edit");
+    consoleState.setEditImages([
+      {
+        src: URL.createObjectURL(file),
+        name: file.name,
+        mimeType: file.type,
+        file,
+        sourceKey: `annotation:${Date.now()}`,
+      },
+    ]);
+    consoleState.setPrompt(`${addition}\n\n${copy.annotation.originalPrompt}:\n${originalPrompt || copy.annotation.noPrompt}`);
+    setAnnotationTarget(null);
+    toast.success(copy.annotation.submitted);
+  }
+
   return (
     <>
-      <main id="main" className="grid min-h-dvh min-w-0 grid-cols-1 gap-3 bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
-        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-y-auto pr-1">
+      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+        <div className="grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto pr-1">
           <ResultPanel
             selectedRequest={consoleState.selectedRequest}
             selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
@@ -328,6 +367,7 @@ export default function App() {
             setJsonDialogOpen={consoleState.setJsonDialogOpen}
             reusePrompt={consoleState.reusePrompt}
             onEditImage={handleEditImage}
+            onAnnotateImage={handleAnnotateImage}
           />
           <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
             <GeneratorPanel
@@ -399,6 +439,10 @@ export default function App() {
         updateSettings={consoleState.updateSettings}
         saveCurrentSettings={consoleState.saveCurrentSettings}
         resetSettings={consoleState.resetSettings}
+        clearAllData={() => {
+          resetImageSelection();
+          consoleState.clearAllData();
+        }}
         testConnection={consoleState.testConnection}
       />
       <StrictPromptEditorDialog
@@ -408,6 +452,15 @@ export default function App() {
         onSave={(value) => {
           consoleState.updateSettings("strictPromptText", value);
         }}
+      />
+      <AnnotationWorkspace
+        open={Boolean(annotationTarget)}
+        image={annotationTarget?.image || null}
+        originalPrompt={annotationTarget?.originalPrompt || ""}
+        onOpenChange={(open) => {
+          if (!open) setAnnotationTarget(null);
+        }}
+        onSubmit={handleAnnotationSubmit}
       />
       <ExportZipConfirmDialog
         open={exportZipConfirmOpen}

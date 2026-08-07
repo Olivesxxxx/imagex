@@ -15,6 +15,13 @@ export function authHeaders(apiKey: string, contentType: string | null = "applic
   return headers;
 }
 
+function privateAuthHeaders(apiKey: string, contentType: string | null = "application/json") {
+  const headers: Record<string, string> = {};
+  if (contentType) headers["Content-Type"] = contentType;
+  if (apiKey) headers["x-api-key"] = apiKey;
+  return headers;
+}
+
 export async function parseResponseBody(response: Response) {
   const text = await response.text();
   if (!text) return null;
@@ -103,6 +110,49 @@ export async function postImageEdit(
     signal,
   });
 
+  return validatedResponseBody(response, language);
+}
+
+export async function postPrivateImageGeneration(
+  endpoint: string,
+  apiKey: string,
+  payload: unknown,
+  signal: AbortSignal,
+  language: "zh" | "en" = "zh",
+) {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: privateAuthHeaders(apiKey),
+    body: JSON.stringify(payload),
+    signal,
+  });
+  return validatedResponseBody(response, language);
+}
+
+export async function postPrivateImageEdit(
+  endpoint: string,
+  apiKey: string,
+  payload: Record<string, unknown>,
+  images: Array<{ file?: File; blob?: Blob; name: string; mimeType?: string }>,
+  signal: AbortSignal,
+  language: "zh" | "en" = "zh",
+) {
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(payload)) {
+    if (value == null || key === "images") continue;
+    formData.append(key, typeof value === "object" ? JSON.stringify(value) : String(value));
+  }
+  for (const image of images) {
+    const file = image.file || image.blob;
+    if (!file) throw new Error(language === "en" ? "Edit request is missing an uploadable image." : "编辑请求缺少可上传的图片。");
+    formData.append(images.length === 1 ? "image" : "image[]", file, image.name);
+  }
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: privateAuthHeaders(apiKey, null),
+    body: formData,
+    signal,
+  });
   return validatedResponseBody(response, language);
 }
 

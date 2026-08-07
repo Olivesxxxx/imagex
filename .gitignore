@@ -9,3 +9,5 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 coverage/
+codepup_api.txt
+error.txt

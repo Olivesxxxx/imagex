@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { clearRequestDetails, deleteRequestDetails, loadRequestDetails, saveRequestDetails } from "@/lib/storage";
-import { type ImageRequestRecord } from "@/lib/image-console";
+import {
+  clearRequestDetails,
+  deleteRequestDetails,
+  loadRequestDetails,
+  loadSettings,
+  saveRequestDetails,
+  saveSettings,
+} from "@/lib/storage";
+import { DEFAULT_STORED_SETTINGS, STORAGE_KEY, type ImageRequestRecord } from "@/lib/image-console";
 
 type FakeRequest<T = unknown> = IDBRequest<T> & {
   result: T;
@@ -176,10 +183,34 @@ describe("storage", () => {
   const originalIndexedDB = globalThis.indexedDB;
 
   beforeEach(() => {
+    localStorage.clear();
     Object.defineProperty(globalThis, "indexedDB", {
       configurable: true,
       value: createFakeIndexedDB(),
     });
+  });
+
+  test("persists a private API key only when remember key is enabled", () => {
+    const settings = structuredClone(DEFAULT_STORED_SETTINGS);
+    settings.shared.protocol = "private";
+    settings.shared.privateBaseUrl = "https://private.example";
+    settings.shared.privateApiKey = "private-test-key";
+    settings.shared.rememberKey = false;
+
+    saveSettings(settings);
+
+    const withoutRemember = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") as {
+      shared?: { privateApiKey?: string };
+      privateApiKey?: string;
+    };
+    expect(withoutRemember.shared?.privateApiKey).toBe("");
+    expect(withoutRemember.privateApiKey).toBeUndefined();
+    expect(loadSettings().shared.privateApiKey).toBe("");
+
+    settings.shared.rememberKey = true;
+    saveSettings(settings);
+
+    expect(loadSettings().shared.privateApiKey).toBe("private-test-key");
   });
 
   afterEach(() => {

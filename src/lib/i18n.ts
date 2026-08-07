@@ -266,8 +266,12 @@ type Copy = {
     responseJson: string;
     download: string;
     exportImage: string;
+    annotateImage: string;
     editImage: string;
     rotateCounterclockwise: string;
+    previewImage: string;
+    previewPreviousImage: string;
+    previewNextImage: string;
     resolution: string;
   };
   promptHistory: {
@@ -352,6 +356,37 @@ type Copy = {
     previewPreviousImage: string;
     previewNextImage: string;
   };
+  annotation: {
+    title: string;
+    description: string;
+    loading: string;
+    loadFailed: string;
+    canvasLabel: string;
+    strokeSize: string;
+    strokeColor: string;
+    instructionLabel: string;
+    instructionPlaceholder: string;
+    originalPrompt: string;
+    noPrompt: string;
+    textInput: string;
+    textPlaceholder: string;
+    submit: string;
+    cancel: string;
+    undo: string;
+    redo: string;
+    deleteSelected: string;
+    clear: string;
+    exportFailed: string;
+    submitted: string;
+    tools: {
+      select: string;
+      brush: string;
+      arrow: string;
+      rectangle: string;
+      ellipse: string;
+      text: string;
+    };
+  };
   settings: {
     title: string;
     description: string;
@@ -364,10 +399,20 @@ type Copy = {
     editsModel: string;
     responsesModel: string;
     completionsModel: string;
+    privateBaseUrl: string;
+    privateApiKey: string;
+    privateApiKeyPlaceholder: string;
+    privateModel: string;
     concurrency: string;
     interval: string;
     endpointPreview: string;
     reset: string;
+    clearAllData: string;
+    clearAllDataTitle: string;
+    clearAllDataDescription: string;
+    clearAllDataConfirm: string;
+    openAiProtocol: string;
+    privateProtocol: string;
     save: string;
   };
   clearDialog: {
@@ -530,8 +575,12 @@ const COPY: Record<Language, Copy> = {
       responseJson: "响应 JSON",
       download: "下载",
       exportImage: "导出图片",
+      annotateImage: "做标记来重新生图",
       editImage: "作为参考图",
       rotateCounterclockwise: "逆时针旋转图片",
+      previewImage: "查看大图",
+      previewPreviousImage: "上一张大图",
+      previewNextImage: "下一张大图",
       resolution: "响应分辨率",
     },
     promptHistory: {
@@ -606,14 +655,45 @@ const COPY: Record<Language, Copy> = {
         completionsDescription: "调用 /v1/chat/completions，适用于通过对话补全接口返回图片的服务。",
         editsDescription: "调用 /v1/images/edits，使用提示词和已选择的参考图片进行编辑。",
       },
-      pasteImageHint: "在图片区域中粘贴可直接添加图片",
+      pasteImageHint: "将图片拖入或粘贴到此区域，可直接添加图片",
       previewInputImage: "预览输入图片",
       previewPreviousImage: "上一张",
       previewNextImage: "下一张",
     },
+    annotation: {
+      title: "做标记来重新生图",
+      description: "在原图上标出需要修改或补充的区域，标注图会作为新的图生图参考图。",
+      loading: "正在加载原图…",
+      loadFailed: "原图读取失败。请确认图片地址允许浏览器跨域访问后重试。",
+      canvasLabel: "图片标注画布",
+      strokeSize: "笔刷大小",
+      strokeColor: "标记颜色",
+      instructionLabel: "补充说明",
+      instructionPlaceholder: "例如：把圈出的区域改成更明亮的窗户，并补充一盏落地灯。",
+      originalPrompt: "原始提示词（只读）",
+      noPrompt: "暂无原始提示词",
+      textInput: "文字标注",
+      textPlaceholder: "输入标注文字",
+      submit: "提交到图生图",
+      cancel: "取消",
+      undo: "撤销",
+      redo: "重做",
+      deleteSelected: "删除选中标注",
+      clear: "清空标注",
+      exportFailed: "标注图导出失败，请检查图片是否允许浏览器读取。",
+      submitted: "标注图已加入图生图输入区域。",
+      tools: {
+        select: "选择/移动",
+        brush: "画笔",
+        arrow: "箭头",
+        rectangle: "矩形框",
+        ellipse: "圆形框",
+        text: "文字",
+      },
+    },
     settings: {
       title: "连接",
-      description: "配置 OpenAI 兼容地址和 API Key。",
+      description: "配置图片服务协议、接口地址和访问密钥。",
       apiUrl: "API URL",
       apiKey: "API Key",
       rememberKey: "在本浏览器记住 API Key",
@@ -623,10 +703,20 @@ const COPY: Record<Language, Copy> = {
       editsModel: "edits 模型",
       responsesModel: "responses 模型",
       completionsModel: "completions 模型",
+      privateBaseUrl: "私有服务地址",
+      privateApiKey: "x-api-key",
+      privateApiKeyPlaceholder: "请输入 x-api-key",
+      privateModel: "生图模型",
       concurrency: "并发",
       interval: "间隔（秒）",
       endpointPreview: "请求地址",
-      reset: "重置",
+      reset: "重置参数",
+      clearAllData: "完全清除",
+      clearAllDataTitle: "完全清除本机数据？",
+      clearAllDataDescription: "将清除配置、API Key、提示词草稿与历史、所有任务记录、生成图片缓存和当前输入图片。此操作不可撤销。",
+      clearAllDataConfirm: "确认完全清除",
+      openAiProtocol: "OpenAI 协议",
+      privateProtocol: "私有协议",
       save: "保存",
     },
     clearDialog: {
@@ -810,8 +900,12 @@ const COPY: Record<Language, Copy> = {
       responseJson: "Response JSON",
       download: "Download",
       exportImage: "Export image",
+      annotateImage: "Mark up and regenerate",
       editImage: "Use as reference",
       rotateCounterclockwise: "Rotate image counterclockwise",
+      previewImage: "View full image",
+      previewPreviousImage: "Previous full image",
+      previewNextImage: "Next full image",
       resolution: "Resolution",
     },
     promptHistory: {
@@ -886,14 +980,45 @@ const COPY: Record<Language, Copy> = {
         completionsDescription: "Calls /v1/chat/completions for providers that return images through chat completions.",
         editsDescription: "Calls /v1/images/edits to edit the selected reference images with your prompt.",
       },
-      pasteImageHint: "Paste an image into the image area to add it directly",
+      pasteImageHint: "Drop or paste images here to add them directly",
       previewInputImage: "Preview input image",
       previewPreviousImage: "Previous image",
       previewNextImage: "Next image",
     },
+    annotation: {
+      title: "Mark up and regenerate",
+      description: "Mark areas to change or add. The annotated image becomes a new image-edit reference.",
+      loading: "Loading the source image…",
+      loadFailed: "Could not read the source image. Check that its URL allows browser cross-origin access.",
+      canvasLabel: "Image annotation canvas",
+      strokeSize: "Brush size",
+      strokeColor: "Mark color",
+      instructionLabel: "Additional instructions",
+      instructionPlaceholder: "For example: make the circled window brighter and add a floor lamp.",
+      originalPrompt: "Original prompt (read only)",
+      noPrompt: "No original prompt",
+      textInput: "Text annotation",
+      textPlaceholder: "Enter annotation text",
+      submit: "Send to image edit",
+      cancel: "Cancel",
+      undo: "Undo",
+      redo: "Redo",
+      deleteSelected: "Delete selected mark",
+      clear: "Clear marks",
+      exportFailed: "Could not export the marked image. Check whether the image allows browser access.",
+      submitted: "The marked image was added to the image-edit input area.",
+      tools: {
+        select: "Select/move",
+        brush: "Brush",
+        arrow: "Arrow",
+        rectangle: "Rectangle",
+        ellipse: "Circle",
+        text: "Text",
+      },
+    },
     settings: {
       title: "Connection",
-      description: "Configure the OpenAI-compatible base URL and API key.",
+      description: "Configure the image service protocol, endpoint, and access key.",
       apiUrl: "API URL",
       apiKey: "API key",
       rememberKey: "Remember API key in this browser",
@@ -903,10 +1028,20 @@ const COPY: Record<Language, Copy> = {
       editsModel: "Edits model",
       responsesModel: "Responses model",
       completionsModel: "Completions model",
+      privateBaseUrl: "Private service URL",
+      privateApiKey: "x-api-key",
+      privateApiKeyPlaceholder: "Enter x-api-key",
+      privateModel: "Image model",
       concurrency: "Concurrency",
       interval: "Interval (sec)",
       endpointPreview: "Request endpoint",
-      reset: "Reset",
+      reset: "Reset parameters",
+      clearAllData: "Clear all data",
+      clearAllDataTitle: "Clear all local data?",
+      clearAllDataDescription: "This removes settings, API keys, prompt drafts and history, all request records, cached images, and current input images. This cannot be undone.",
+      clearAllDataConfirm: "Confirm clear all",
+      openAiProtocol: "OpenAI protocol",
+      privateProtocol: "Private protocol",
       save: "Save",
     },
     clearDialog: {

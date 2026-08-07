@@ -124,6 +124,10 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /配置/ }));
     expect(screen.getByRole("dialog", { name: "连接" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "OpenAI 协议" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "私有协议" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重置参数" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完全清除" })).toBeInTheDocument();
     expect(screen.getByText(/generations \(gpt-image-2\)/)).toBeInTheDocument();
     expect(screen.getByText(/http:\/\/localhost:8317\/v1\/images\/generations/)).toBeInTheDocument();
     expect(screen.getByText(/edits \(gpt-image-2\)/)).toBeInTheDocument();
@@ -132,6 +136,37 @@ describe("App", () => {
     expect(screen.getByText(/http:\/\/localhost:8317\/v1\/responses/)).toBeInTheDocument();
     expect(screen.getByText(/completions \(gpt-5.4-mini\)/)).toBeInTheDocument();
     expect(screen.getByText(/http:\/\/localhost:8317\/v1\/chat\/completions/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "私有协议" }));
+    expect(screen.getByLabelText("私有服务地址")).toHaveValue("https://video.codepup.cn");
+    expect(screen.getByLabelText("x-api-key")).toHaveValue("");
+    expect(screen.getByLabelText("生图模型")).toHaveValue("gpt-image-2");
+    expect(screen.getByRole("button", { name: "测试" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
+
+  test("fully clears local settings, prompt records, and generated task fixtures after confirmation", async () => {
+    const user = userEvent.setup();
+    storeSettings({ developmentMode: true });
+    localStorage.setItem("ImageX-last-prompt", "draft prompt");
+    localStorage.setItem("ImageX-prompt-history", JSON.stringify(["saved prompt"]));
+    localStorage.setItem("ImageX-pinned-prompts", JSON.stringify(["saved prompt"]));
+
+    renderApp();
+    expect(await screen.findByDisplayValue("draft prompt")).toBeInTheDocument();
+    expect(await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ })).not.toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: /配置/ }));
+    await user.click(screen.getByRole("button", { name: "完全清除" }));
+    const confirmDialog = screen.getByRole("alertdialog", { name: "完全清除本机数据？" });
+    await user.click(within(confirmDialog).getByRole("button", { name: "确认完全清除" }));
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem("ImageX-last-prompt")).toBe("");
+    expect(localStorage.getItem("ImageX-prompt-history")).toBe("[]");
+    expect(localStorage.getItem("ImageX-pinned-prompts")).toBe("[]");
+    expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveValue("");
+    expect(screen.queryByRole("button", { name: /查看 .* 的生成结果/ })).not.toBeInTheDocument();
   });
 
   test("uses browser language on first visit when no saved language exists", () => {
@@ -532,6 +567,93 @@ describe("App", () => {
     expect(body.get("model")).toBe("gpt-image-2");
   });
 
+  test("submits private image generation with x-api-key and the documented payload", async () => {
+    const user = userEvent.setup();
+    storeSettings({
+      protocol: "private",
+      privateBaseUrl: "https://private.example/api",
+      privateApiKey: "private-test-key",
+      privateModel: "private-image-model",
+      strictPrompt: false,
+      requestIntervalSeconds: 0,
+      size: "1024x1536",
+      quality: "high",
+      background: "auto",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+    expect(screen.queryByRole("button", { name: "Responses 生图" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chat Completions 生图" })).not.toBeInTheDocument();
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [endpoint, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(endpoint).toBe("https://private.example/api/images/generations");
+    expect(request.headers).toEqual({
+      "Content-Type": "application/json",
+      "x-api-key": "private-test-key",
+    });
+    expect(request.headers).not.toHaveProperty("Authorization");
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      model: "private-image-model",
+      prompt: "glass jellyfish",
+      size: "1024x1536",
+      image_size: "1K",
+      aspect_ratio: "2:3",
+      n: 1,
+      quality: "high",
+      background: "auto",
+    });
+  });
+
+  test("submits a private single-image edit as multipart image", async () => {
+    const user = userEvent.setup();
+    storeSettings({
+      protocol: "private",
+      privateBaseUrl: "https://private.example",
+      privateApiKey: "private-test-key",
+      privateModel: "private-image-model",
+      strictPrompt: false,
+      requestIntervalSeconds: 0,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderApp();
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "replace the sky");
+    await user.upload(
+      screen.getByLabelText("选择本地图片"),
+      new File(["image-bytes"], "input.png", { type: "image/png" }),
+    );
+    await user.click(screen.getByRole("button", { name: /^图片编辑$/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [endpoint, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(endpoint).toBe("https://private.example/api/images/edits");
+    expect(request.headers).toEqual({ "x-api-key": "private-test-key" });
+    const body = request.body as FormData;
+    expect(body.getAll("image")).toHaveLength(1);
+    expect(body.getAll("image[]")).toHaveLength(0);
+    expect(body.get("model")).toBe("private-image-model");
+    expect(body.get("prompt")).toBe("replace the sky");
+  });
+
   test("blocks generation and edit submissions until API URL and API key are configured", async () => {
     const user = userEvent.setup();
     storeSettings({ apiKey: "" });
@@ -740,7 +862,7 @@ describe("App", () => {
     renderApp();
     await user.click(screen.getByRole("tab", { name: "图生图" }));
 
-    const imagePasteRegion = screen.getByRole("region", { name: /图片区域中粘贴|Paste an image into the image area/ });
+    const imagePasteRegion = screen.getByRole("region", { name: /拖入或粘贴|Drop or paste images/ });
     const file = new File(["pasted"], "pasted.png", { type: "image/png" });
     fireEvent.paste(imagePasteRegion, {
       clipboardData: {
@@ -751,6 +873,29 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "删除输入图片 1" })).toBeInTheDocument();
     expect(screen.getByTestId("edit-image-preview-strip")).toBeInTheDocument();
+  });
+
+  test("adds images dropped from the local file system into edit inputs", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByRole("tab", { name: "图生图" }));
+
+    const dropRegion = screen.getByRole("region", { name: /拖入或粘贴|Drop or paste images/ });
+    const image = new File(["dropped"], "dropped.png", { type: "image/png" });
+    const text = new File(["ignored"], "notes.txt", { type: "text/plain" });
+    const dataTransfer = {
+      files: [image, text],
+      types: ["Files"],
+      dropEffect: "none",
+    };
+
+    fireEvent.dragEnter(dropRegion, { dataTransfer });
+    expect(dropRegion).toHaveClass("bg-muted/50");
+    fireEvent.drop(dropRegion, { dataTransfer });
+
+    expect(await screen.findByRole("button", { name: "删除输入图片 1" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /删除输入图片 \d+/ })).toHaveLength(1);
+    expect(dropRegion).toHaveClass("bg-muted/10");
   });
 
   test("adds historical completed request images into edit inputs", async () => {
@@ -1077,6 +1222,24 @@ describe("App", () => {
 
     expect(screen.queryByRole("button", { name: "清空失败" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /已完成\s*1/ })).toBeInTheDocument();
+  });
+
+  test("opens a full-size result preview when clicking a generated image", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    renderApp();
+    await user.type(screen.getByLabelText(/^(提示词|Prompt)$/), "preview this image");
+    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
+
+    await user.click(await screen.findByRole("button", { name: "查看大图 1" }));
+    const previewDialog = screen.getByRole("dialog", { name: "查看大图" });
+    expect(within(previewDialog).getByRole("img", { name: "查看大图" })).toBeInTheDocument();
   });
 
   test("does not render the legacy completed-request toolbar", async () => {

@@ -5,6 +5,8 @@ import {
   normalizeImageEditsEndpoint,
   normalizeImageEndpoint,
   normalizeModelsEndpoint,
+  normalizePrivateImageEditsEndpoint,
+  normalizePrivateImageEndpoint,
   normalizeResponsesEndpoint,
 } from "@/lib/endpoints";
 
@@ -48,6 +50,28 @@ describe("endpoint normalization", () => {
     expect(normalizeChatCompletionsEndpoint("https://proxy.example.com/openai/v1/")).toBe(
       "https://proxy.example.com/openai/v1/chat/completions",
     );
+  });
+
+  test("normalizes private service URLs into synchronous image endpoints", () => {
+    expect(normalizePrivateImageEndpoint("https://private.example")).toBe(
+      "https://private.example/api/images/generations",
+    );
+    expect(normalizePrivateImageEndpoint("https://private.example/api/")).toBe(
+      "https://private.example/api/images/generations",
+    );
+    expect(normalizePrivateImageEndpoint("https://private.example/api/images/generations")).toBe(
+      "https://private.example/api/images/generations",
+    );
+    expect(normalizePrivateImageEditsEndpoint("https://private.example/api")).toBe(
+      "https://private.example/api/images/edits",
+    );
+    expect(normalizePrivateImageEditsEndpoint("https://private.example/api/images/edits")).toBe(
+      "https://private.example/api/images/edits",
+    );
+    expect(normalizePrivateImageEditsEndpoint("https://private.example/api/images/generations")).toBe(
+      "https://private.example/api/images/edits",
+    );
+    expect(normalizePrivateImageEndpoint("")).toBe("");
   });
 
 });

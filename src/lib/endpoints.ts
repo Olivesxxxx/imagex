@@ -39,3 +39,18 @@ export function normalizeChatCompletionsEndpoint(baseUrl: string) {
 export function normalizeModelsEndpoint(baseUrl: string) {
   return routeFromBaseUrl(baseUrl, "/v1/models");
 }
+
+function privateRouteFromBaseUrl(baseUrl: string, route: string) {
+  const input = trimTrailingSlash(baseUrl).replace(/\/api\/images\/(?:generations|edits)$/i, "");
+  if (!input) return "";
+  if (input.endsWith("/api")) return `${input}${route.replace(/^\/api/, "")}`;
+  return `${input}${route}`;
+}
+
+export function normalizePrivateImageEndpoint(baseUrl: string) {
+  return privateRouteFromBaseUrl(baseUrl, "/api/images/generations");
+}
+
+export function normalizePrivateImageEditsEndpoint(baseUrl: string) {
+  return privateRouteFromBaseUrl(baseUrl, "/api/images/edits");
+}

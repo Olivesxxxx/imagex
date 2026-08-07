@@ -1,13 +1,17 @@
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
   FileJsonIcon,
   ImageIcon,
   Loader2Icon,
+  PencilRulerIcon,
   QuoteIcon,
   RotateCcwIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -115,15 +119,18 @@ function Gallery({
   request,
   loading,
   onEditImage,
+  onAnnotateImage,
 }: {
   request: ImageRequestRecord | null;
   loading: boolean;
   onEditImage: (value: string) => void;
+  onAnnotateImage: (value: string) => void;
 }) {
   const { copy, language } = useI18n();
   const images = request?.status === "done" && !request.detailsMissing ? request.images : [];
   const requestId = request?.id || "";
   const [rotationByImageKey, setRotationByImageKey] = useState<Record<string, number>>({});
+  const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
   const isDetailLoading = Boolean(
     request &&
       request.status === "done" &&
@@ -135,11 +142,27 @@ function Gallery({
 
   useEffect(() => {
     setRotationByImageKey({});
+    setPreviewImageIndex(null);
   }, [requestId]);
+
+  useEffect(() => {
+    if (previewImageIndex === null || displayImageCount < 2) return;
+    function handlePreviewKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setPreviewImageIndex((current) => current === null ? current : (current - 1 + displayImageCount) % displayImageCount);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setPreviewImageIndex((current) => current === null ? current : (current + 1) % displayImageCount);
+      }
+    }
+    window.addEventListener("keydown", handlePreviewKeyDown);
+    return () => window.removeEventListener("keydown", handlePreviewKeyDown);
+  }, [displayImageCount, previewImageIndex]);
 
   if (isDetailLoading) {
     return (
-      <div className="grid h-full min-h-90 place-items-center rounded-lg border border-border bg-card">
+      <div className="grid h-full min-h-0 w-full max-w-full place-items-center overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <Loader2Icon className="size-6 animate-spin" />
           <span className="text-sm">{selectedRequestEmptyText(request, true, language)}</span>
@@ -150,8 +173,8 @@ function Gallery({
 
   if (!displayImageCount) {
     return (
-      <div className="grid h-full min-h-90 grid-cols-1 gap-3">
-        <Empty className="min-h-90 border">
+      <div className="grid h-full min-h-0 w-full max-w-full grid-cols-1 gap-3 overflow-hidden">
+        <Empty className="min-h-0 w-full max-w-full overflow-hidden border">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               {loading ? <Loader2Icon className="animate-spin" /> : <ImageIcon />}
@@ -163,10 +186,13 @@ function Gallery({
     );
   }
 
-  const gridClass = displayImageCount === 1 ? "grid-cols-1" : "grid-cols-[repeat(auto-fit,minmax(220px,1fr))]";
+  const gridClass = displayImageCount === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]";
+
+  const previewImage = previewImageIndex === null ? null : images[previewImageIndex] || null;
 
   return (
-    <div className={cn("grid h-full min-h-90 gap-3", gridClass)}>
+    <>
+      <div className={cn("grid h-full min-h-0 w-full max-w-full gap-3 overflow-hidden", gridClass)}>
       {Array.from({ length: displayImageCount }, (_, index) => {
         const image = (images[index] || null) as GeneratedImage | null;
         const imageKey = `${requestId || "empty"}-${index}`;
@@ -183,6 +209,21 @@ function Gallery({
             {image ? (
               <>
                 <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon-xs"
+                        aria-label={copy.requestCardStatus.annotateImage}
+                        className="border border-border/70 bg-background/85 shadow-sm backdrop-blur"
+                        onClick={() => onAnnotateImage(`${requestId}:${index}`)}
+                      >
+                        <PencilRulerIcon data-icon="inline-start" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent sideOffset={8}>{copy.requestCardStatus.annotateImage}</TooltipContent>
+                  </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -219,13 +260,15 @@ function Gallery({
                     <TooltipContent sideOffset={8}>{copy.requestCardStatus.rotateCounterclockwise}</TooltipContent>
                   </Tooltip>
                 </div>
-                <img
-                  src={image.src}
-                  alt={copy.generatedImageAlt(index, { size: altSize, mode: altMode })}
-                  loading="lazy"
-                  className="block max-h-full max-w-full object-contain transition-transform duration-200"
-                  style={{ transform: `rotate(${rotation}deg)` }}
-                />
+                <button type="button" className="flex h-full w-full min-w-0 cursor-zoom-in items-center justify-center" aria-label={`${copy.requestCardStatus.previewImage} ${index + 1}`} onClick={() => setPreviewImageIndex(index)}>
+                  <img
+                    src={image.src}
+                    alt={copy.generatedImageAlt(index, { size: altSize, mode: altMode })}
+                    loading="lazy"
+                    className="block h-auto max-h-full max-w-full min-w-0 object-contain transition-transform duration-200"
+                    style={{ transform: `rotate(${rotation}deg)` }}
+                  />
+                </button>
               </>
             ) : (
               <div className="flex h-full w-full items-center justify-center">
@@ -235,7 +278,27 @@ function Gallery({
           </article>
         );
       })}
-    </div>
+      </div>
+      <DialogPrimitive.Root open={previewImageIndex !== null} onOpenChange={(open) => { if (!open) setPreviewImageIndex(null); }}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Content aria-describedby={undefined} onClick={() => setPreviewImageIndex(null)} className="fixed inset-0 z-50 flex items-center justify-center outline-none duration-200 data-[state=open]:animate-in data-[state=open]:fade-in-0">
+            <DialogPrimitive.Title className="sr-only">{copy.requestCardStatus.previewImage}</DialogPrimitive.Title>
+            {previewImage ? <img src={previewImage.src} alt={copy.requestCardStatus.previewImage} className="block max-h-[85vh] w-auto max-w-[calc(100vw-7rem)] object-contain" onClick={(event) => event.stopPropagation()} /> : null}
+            {displayImageCount > 1 ? (
+              <>
+                <Button type="button" variant="secondary" size="icon" className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full border border-border/70 bg-background/85 shadow-sm backdrop-blur" aria-label={copy.requestCardStatus.previewPreviousImage} onClick={(event) => { event.stopPropagation(); setPreviewImageIndex((current) => current === null ? current : (current - 1 + displayImageCount) % displayImageCount); }}>
+                  <ChevronLeftIcon />
+                </Button>
+                <Button type="button" variant="secondary" size="icon" className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full border border-border/70 bg-background/85 shadow-sm backdrop-blur" aria-label={copy.requestCardStatus.previewNextImage} onClick={(event) => { event.stopPropagation(); setPreviewImageIndex((current) => current === null ? current : (current + 1) % displayImageCount); }}>
+                  <ChevronRightIcon />
+                </Button>
+              </>
+            ) : null}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+    </>
   );
 }
 
@@ -247,6 +310,7 @@ export function ResultPanel({
   setJsonDialogOpen,
   reusePrompt,
   onEditImage,
+  onAnnotateImage,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
@@ -255,6 +319,7 @@ export function ResultPanel({
   setJsonDialogOpen: (open: boolean) => void;
   reusePrompt: (request: ImageRequestRecord) => void;
   onEditImage: (value: string) => void;
+  onAnnotateImage: (value: string) => void;
 }) {
   const { copy, language } = useI18n();
   const canDownload = selectedRequest?.status === "done";
@@ -272,7 +337,7 @@ export function ResultPanel({
 
   return (
     <section
-      className="flex h-full min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none"
+      className="flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-none"
       aria-live="polite"
       aria-label={copy.resultSectionLabel}
     >
@@ -351,11 +416,12 @@ export function ResultPanel({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 p-3">
+        <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden p-3">
           <Gallery
             request={selectedRequest}
             loading={selectedRequestDetailLoading}
             onEditImage={onEditImage}
+            onAnnotateImage={onAnnotateImage}
           />
         </div>
       </div>

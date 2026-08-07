@@ -19,7 +19,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type SetStateAction } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -259,7 +259,7 @@ export function PromptHistoryPanel({
           </div>
         </ScrollArea>
       ) : (
-        <div className="h-12 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        <div className="h-12 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
           {copy.promptHistory.empty}
         </div>
       )}
@@ -292,6 +292,7 @@ export function GeneratorPanel({
   const editImagesInputRef = useRef<HTMLInputElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [previewEditImageIndex, setPreviewEditImageIndex] = useState<number | null>(null);
+  const [editImageDragActive, setEditImageDragActive] = useState(false);
   const [actionHelpOpen, setActionHelpOpen] = useState(false);
   const generationButtonFeedbackClassName = "transition-all duration-100 active:translate-y-px active:scale-[0.99] active:brightness-95";
   const editImageSelectionFull = editImages.length >= MAX_EDIT_INPUT_IMAGES;
@@ -383,6 +384,26 @@ export function GeneratorPanel({
 
     if (!imageFiles.length) return;
     event.preventDefault();
+    addEditImageFiles(imageFiles);
+  }
+
+  function handleEditImageDrag(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setEditImageDragActive(true);
+  }
+
+  function handleEditImageDragLeave(event: DragEvent<HTMLElement>) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+    setEditImageDragActive(false);
+  }
+
+  function handleEditImageDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    setEditImageDragActive(false);
+    const imageFiles = Array.from(event.dataTransfer.files).filter((file) => file.type.startsWith("image/"));
     addEditImageFiles(imageFiles);
   }
 
@@ -499,7 +520,7 @@ export function GeneratorPanel({
 
         {mode === "edit" ? (
           <div className="flex min-h-0 min-w-0 flex-col gap-2">
-            <div className="grid shrink-0 grid-cols-2 gap-2">
+            <div className="grid min-w-0 shrink-0 gap-2 sm:grid-cols-2">
               <div className="flex min-w-0 flex-col gap-1">
                 <label htmlFor="editImages" className={panelLabelClassName}>{copy.generator.selectLocalImage}</label>
                 <button type="button" className={cn(panelControlClassName, "flex cursor-pointer items-center justify-between gap-2 text-muted-foreground")} disabled={editImageSelectionFull} onClick={() => editImagesInputRef.current?.click()}>
@@ -531,9 +552,23 @@ export function GeneratorPanel({
                 </Select>
               </div>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-auto rounded-md border border-dashed bg-muted/10 p-2" role="region" aria-label={copy.generator.pasteImageHint} tabIndex={0} onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.focus(); }} onPaste={handlePromptPaste}>
+            <div
+              className={cn(
+                "flex min-h-24 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors",
+                editImageDragActive ? "border-foreground/50 bg-muted/50" : "bg-muted/10",
+              )}
+              role="region"
+              aria-label={copy.generator.pasteImageHint}
+              tabIndex={0}
+              onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.focus(); }}
+              onPaste={handlePromptPaste}
+              onDragEnter={handleEditImageDrag}
+              onDragOver={handleEditImageDrag}
+              onDragLeave={handleEditImageDragLeave}
+              onDrop={handleEditImageDrop}
+            >
               {editImages.length ? (
-                <div className="grid min-h-0 grid-cols-5 gap-2 overflow-hidden" data-testid="edit-image-preview-strip">
+                <div className="grid w-full min-w-0 max-w-full grid-cols-5 gap-2 overflow-hidden" data-testid="edit-image-preview-strip">
                   {editImages.map((image, index) => (
                     <div key={`${image.sourceKey || image.name}-${index}`} className="relative aspect-square min-w-0 overflow-hidden rounded-md border border-border bg-muted/30">
                       <button type="button" className="block h-full w-full cursor-zoom-in" aria-label={`${copy.generator.previewInputImage} ${index + 1}`} onClick={() => setPreviewEditImageIndex(index)}>
@@ -578,26 +613,30 @@ export function GeneratorPanel({
                 <PlayIcon data-icon="inline-start" />
                 {copy.generator.generations}
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
-                onClick={() => enqueueGeneration("responses")}
-              >
-                <ImageIcon data-icon="inline-start" />
-                {copy.generator.responses}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
-                onClick={() => enqueueGeneration("completions")}
-              >
-                <MessageSquareIcon data-icon="inline-start" />
-                {copy.generator.completions}
-              </Button>
+              {settings.protocol === "openai" ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
+                    onClick={() => enqueueGeneration("responses")}
+                  >
+                    <ImageIcon data-icon="inline-start" />
+                    {copy.generator.responses}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
+                    onClick={() => enqueueGeneration("completions")}
+                  >
+                    <MessageSquareIcon data-icon="inline-start" />
+                    {copy.generator.completions}
+                  </Button>
+                </>
+              ) : null}
             </>
           )}
         </div>
