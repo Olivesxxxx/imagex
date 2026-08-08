@@ -24,6 +24,7 @@ import {
   buildResponsesImageRequests,
   createRequestRecords,
   DEFAULTS,
+  DEVELOPMENT_FIXTURES_ENABLED,
   extractImages,
   formatRequestTiming,
   formatBatchPrefix,
@@ -120,7 +121,7 @@ function normalizeSettings(values: AppSettings, defaultStrictPromptText: string)
     responsesModel: String(values.responsesModel || DEFAULTS.responsesModel).trim(),
     completionsModel: String(values.completionsModel || DEFAULTS.completionsModel).trim(),
     rememberKey: Boolean(values.rememberKey),
-    developmentMode: Boolean(values.developmentMode),
+    developmentMode: DEVELOPMENT_FIXTURES_ENABLED && Boolean(values.developmentMode),
     strictPromptText: normalizedStrictPromptText,
     strictPrompt: values.strictPrompt ?? DEFAULTS.strictPrompt,
     requestConcurrency: normalizeRequestConcurrency(values.requestConcurrency),
@@ -1333,6 +1334,7 @@ export function useImageConsole() {
   );
 
   const updateSettings = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    if (key === "developmentMode" && !DEVELOPMENT_FIXTURES_ENABLED) return;
     setStoredSettings((current) => {
       if (
         key === "protocol" ||

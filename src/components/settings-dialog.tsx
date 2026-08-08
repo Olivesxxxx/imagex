@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segmented-tabs";
 import { Tabs } from "@/components/ui/tabs";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
-import { DEFAULTS, type AppSettings } from "@/lib/image-console";
+import { DEFAULTS, DEVELOPMENT_FIXTURES_ENABLED, type AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
 
 export interface SettingsDialogProps {
@@ -167,17 +167,19 @@ export function SettingsDialog({
                 <FieldLabel htmlFor="rememberKey">{copy.settings.rememberKey}</FieldLabel>
               </FieldContent>
             </Field>
-            <Field orientation="horizontal" className="!items-start">
-              <Checkbox
-                id="developmentMode"
-                checked={settings.developmentMode}
-                onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor="developmentMode">{copy.settings.developmentMode}</FieldLabel>
-                <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p>
-              </FieldContent>
-            </Field>
+            {DEVELOPMENT_FIXTURES_ENABLED ? (
+              <Field orientation="horizontal" className="!items-start">
+                <Checkbox
+                  id="developmentMode"
+                  checked={settings.developmentMode}
+                  onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="developmentMode">{copy.settings.developmentMode}</FieldLabel>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p>
+                </FieldContent>
+              </Field>
+            ) : null}
             <FieldSet>
               <FieldTitle>{copy.settings.endpointPreview}</FieldTitle>
               <pre className="min-w-0 whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
@@ -214,10 +216,12 @@ export function SettingsDialog({
                 <Checkbox id="privateRememberKey" checked={settings.rememberKey} onCheckedChange={(checked) => updateSettings("rememberKey", checked === true)} />
                 <FieldContent><FieldLabel htmlFor="privateRememberKey">{copy.settings.rememberKey}</FieldLabel></FieldContent>
               </Field>
-              <Field orientation="horizontal" className="!items-start">
-                <Checkbox id="privateDevelopmentMode" checked={settings.developmentMode} onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)} />
-                <FieldContent><FieldLabel htmlFor="privateDevelopmentMode">{copy.settings.developmentMode}</FieldLabel><p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p></FieldContent>
-              </Field>
+              {DEVELOPMENT_FIXTURES_ENABLED ? (
+                <Field orientation="horizontal" className="!items-start">
+                  <Checkbox id="privateDevelopmentMode" checked={settings.developmentMode} onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)} />
+                  <FieldContent><FieldLabel htmlFor="privateDevelopmentMode">{copy.settings.developmentMode}</FieldLabel><p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p></FieldContent>
+                </Field>
+              ) : null}
               <FieldSet>
                 <FieldTitle>{copy.settings.endpointPreview}</FieldTitle>
                 <pre className="min-w-0 whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs leading-relaxed text-muted-foreground">{endpointPreview}</pre>

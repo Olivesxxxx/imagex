@@ -280,6 +280,9 @@ try {
   }
 
   await overwriteSitemapLastmod(dates.dateModified);
+  // Development placeholder images are useful for local testing only and are
+  // intentionally excluded from production deployments.
+  await fs.rm(path.join(distDir, "placeholders"), { recursive: true, force: true });
 } finally {
   if (previousReact === undefined) {
     delete globalThis.React;

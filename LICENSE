@@ -1,6 +1,10 @@
 MIT License
 
 Copyright (c) 2026 ImageX contributors
+Copyright (c) 2026 CPA Image contributors
+
+ImageX is a derivative project based on CPA Image:
+https://github.com/codegrazier/cpa-image
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

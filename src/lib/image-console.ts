@@ -277,6 +277,10 @@ export const DEFAULTS: AppSettings = {
   outputFormat: "png",
 };
 
+// Vite replaces this value at build time. Production bundles must never expose
+// the local development fixtures, even if a user edits browser storage.
+export const DEVELOPMENT_FIXTURES_ENABLED = import.meta.env.DEV;
+
 export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
   protocol: DEFAULTS.protocol,
   baseUrl: DEFAULTS.baseUrl,
@@ -374,7 +378,7 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
     privateApiKey: String(source.privateApiKey || "").trim(),
     privateModel: String(source.privateModel || DEFAULTS.privateModel).trim() || DEFAULTS.privateModel,
     rememberKey: Boolean(source.rememberKey),
-    developmentMode: Boolean(source.developmentMode),
+    developmentMode: DEVELOPMENT_FIXTURES_ENABLED && Boolean(source.developmentMode),
     generationsModel: String(source.generationsModel || source.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
     editsModel: String(source.editsModel || source.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel,
     responsesModel: String(source.responsesModel || source.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel,

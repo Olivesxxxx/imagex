@@ -2,6 +2,15 @@
 
 ImageX 是一个本地优先的 OpenAI 兼容图像生成与编辑控制台。
 
+> [!IMPORTANT]
+> **来源与免责声明**
+>
+> ImageX 基于开源项目 [CPA Image](https://github.com/codegrazier/cpa-image) 二次开发。感谢原作者和贡献者提供的基础项目。
+>
+> 本项目当前仅供学习、研究和技术测试使用，不构成任何商业服务或商业授权。项目发布方明确禁止将本项目或其构建产物打包、转售、出租、二次收费部署或用于其他未经授权的商业化分发。下载、部署或测试本项目后，请在 24 小时内删除相关代码、构建产物和测试数据。
+>
+> 本项目及上游 CPA Image 使用 MIT License。MIT License 在其适用范围内允许复制、修改、分发和商业使用；本段声明表达的是 ImageX 发布方的使用要求，不能单方面否定 MIT License 已授予的权利。如果需要具有强制法律效力的非商业许可证，应由版权所有者另行制定并进行专业法律审查，同时不能限制上游 MIT 代码的既有许可权利。
+
 界面使用 React、TypeScript、Vite、Tailwind CSS 和 shadcn/ui 构建。应用本身不提供后端服务，所有请求都从浏览器发往用户配置的 OpenAI 兼容 API 地址。
 
 ## 功能
@@ -16,7 +25,7 @@ ImageX 是一个本地优先的 OpenAI 兼容图像生成与编辑控制台。
 
 建议使用 Node.js `24` 或更高版本；如果使用 nvm，可以直接运行 `nvm use` 读取 `.nvmrc` 中的推荐版本。Node < 24 的 undici `Blob` 与 jsdom 在测试环境下不互通，会导致 `npm test` 中 URL 图片转 blob 的用例失败。
 
-项目源码以 MIT 许可证开源，但不作为 npm 包发布；`package.json` 中的 `private: true` 用于避免误发布。
+项目源码采用 MIT License，并保留 CPA Image 的上游许可声明；`package.json` 中的 `private: true` 用于避免误发布为 npm 包。
 
 ```bash
 npm install
@@ -57,4 +66,4 @@ git diff --check
 
 ## 许可证
 
-本项目采用 MIT 许可证，详见 `LICENSE`。
+本项目采用 MIT License，详见 [`LICENSE`](./LICENSE)。其中包含来自 [CPA Image](https://github.com/codegrazier/cpa-image) 的上游版权和许可信息。
