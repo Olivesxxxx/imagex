@@ -8,9 +8,10 @@ import {
   Loader2Icon,
   PencilRulerIcon,
   QuoteIcon,
+  RefreshCwIcon,
   RotateCcwIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
@@ -18,30 +19,99 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empt
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   imageDownloadName,
+  imageBlobFromDataUrl,
   payloadSize,
   requestStatusDisplayLabel,
   revisedPromptForResponse,
   reusablePromptForRequest,
+  type AppSettings,
   type GeneratedImage,
   type ImageRequestRecord,
 } from "@/lib/image-console";
 import { getCopy, useI18n, type Language } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { createZipBlob, type ZipFileEntry } from "@/lib/zip";
 
 const REQUEST_ERROR_PREVIEW_LIMIT = 240;
-
-interface StatusMessage {
-  state: string;
-  detail: string;
-}
 
 function truncateDisplayText(value: string, limit: number) {
   if (value.length <= limit) return value;
   return `${value.slice(0, limit)}…`;
 }
 
-function downloadRequestImages(request: Pick<ImageRequestRecord, "images" | "payload" | "title" | "method">) {
+function downloadBlob(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+async function generatedImageBlob(image: GeneratedImage) {
+  if (image.blob instanceof Blob) return image.blob;
+  if (String(image.src || "").startsWith("blob:")) {
+    try {
+      const response = await fetch(image.src);
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      return blob.size ? blob : null;
+    } catch {
+      return null;
+    }
+  }
+  if (image.kind === "base64") {
+    return imageBlobFromDataUrl(image.src, image.mimeType?.replace(/^image\//i, "") || "png");
+  }
+
+  try {
+    const response = await fetch(image.src);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return blob.size ? blob : null;
+  } catch {
+    return null;
+  }
+}
+
+function archiveDownloadName(title: string) {
+  const safeTitle = String(title || "images")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || "images";
+  return `ImageX-${safeTitle}.zip`;
+}
+
+function latencyToneClass(state: "idle" | "measuring" | "ready" | "unavailable", value: number | null) {
+  if (state !== "ready" || value === null) return "text-muted-foreground";
+  if (value <= 150) return "text-emerald-600 dark:text-emerald-400";
+  if (value <= 500) return "text-amber-600 dark:text-amber-400";
+  return "text-rose-600 dark:text-rose-400";
+}
+
+async function downloadRequestImages(request: Pick<ImageRequestRecord, "images" | "payload" | "title" | "method">) {
   const images = request.images || [];
+
+  if (images.length > 1) {
+    const entries: ZipFileEntry[] = [];
+    for (const [index, image] of images.entries()) {
+      if (!image?.src) continue;
+      const blob = await generatedImageBlob(image);
+      if (!blob) continue;
+      entries.push({ name: imageDownloadName(request, index), blob });
+    }
+
+    if (entries.length) {
+      const zipBlob = await createZipBlob(entries);
+      downloadBlob(zipBlob, archiveDownloadName(request.title));
+    }
+    return;
+  }
+
   for (const [index, image] of images.entries()) {
     if (!image?.src) continue;
 
@@ -208,15 +278,15 @@ function Gallery({
           >
             {image ? (
               <>
-                <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-2 opacity-95 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
                         type="button"
                         variant="secondary"
-                        size="icon-xs"
+                        size="icon-sm"
                         aria-label={copy.requestCardStatus.annotateImage}
-                        className="border border-border/70 bg-background/85 shadow-sm backdrop-blur"
+                        className="!size-9 border border-border/80 bg-background/95 shadow-md backdrop-blur transition-transform hover:scale-105 [&_svg]:!size-4.5"
                         onClick={() => onAnnotateImage(`${requestId}:${index}`)}
                       >
                         <PencilRulerIcon data-icon="inline-start" />
@@ -229,9 +299,9 @@ function Gallery({
                       <Button
                         type="button"
                         variant="secondary"
-                        size="icon-xs"
+                        size="icon-sm"
                         aria-label={copy.requestCardStatus.editImage}
-                        className="border border-border/70 bg-background/85 shadow-sm backdrop-blur"
+                        className="!size-9 border border-border/80 bg-background/95 shadow-md backdrop-blur transition-transform hover:scale-105 [&_svg]:!size-4.5"
                         onClick={() => onEditImage(`${requestId}:${index}`)}
                       >
                         <QuoteIcon data-icon="inline-start" />
@@ -244,9 +314,9 @@ function Gallery({
                       <Button
                         type="button"
                         variant="secondary"
-                        size="icon-xs"
+                        size="icon-sm"
                         aria-label={copy.requestCardStatus.rotateCounterclockwise}
-                        className="border border-border/70 bg-background/85 shadow-sm backdrop-blur"
+                        className="!size-9 border border-border/80 bg-background/95 shadow-md backdrop-blur transition-transform hover:scale-105 [&_svg]:!size-4.5"
                         onClick={() =>
                           setRotationByImageKey((current) => ({
                             ...current,
@@ -305,7 +375,7 @@ function Gallery({
 export function ResultPanel({
   selectedRequest,
   selectedRequestDetailLoadingId,
-  statusMessage,
+  settings,
   selectedRequestJson,
   setJsonDialogOpen,
   reusePrompt,
@@ -314,7 +384,7 @@ export function ResultPanel({
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
-  statusMessage: StatusMessage;
+  settings: Pick<AppSettings, "protocol" | "baseUrl" | "privateBaseUrl" | "generationsModel" | "editsModel" | "requestConcurrency" | "requestIntervalSeconds">;
   selectedRequestJson: string;
   setJsonDialogOpen: (open: boolean) => void;
   reusePrompt: (request: ImageRequestRecord) => void;
@@ -334,6 +404,52 @@ export function ResultPanel({
     : copy.requestCardStatus.unselectedSubtitle;
   const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
+  const apiUrl = (settings.protocol === "private" ? settings.privateBaseUrl : settings.baseUrl).trim();
+  const [latency, setLatency] = useState<number | null>(null);
+  const [latencyState, setLatencyState] = useState<"idle" | "measuring" | "ready" | "unavailable">("idle");
+  const latencyAbortRef = useRef<AbortController | null>(null);
+  const latencyRequestRef = useRef(0);
+
+  const refreshLatency = useCallback(async () => {
+    const requestId = ++latencyRequestRef.current;
+    latencyAbortRef.current?.abort();
+    if (!apiUrl) {
+      setLatency(null);
+      setLatencyState("unavailable");
+      return;
+    }
+    const controller = new AbortController();
+    latencyAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+    setLatency(null);
+    setLatencyState("measuring");
+    const startedAt = performance.now();
+    try {
+      const target = new URL(apiUrl, window.location.href).toString();
+      await fetch(target, { method: "HEAD", mode: "no-cors", cache: "no-store", signal: controller.signal });
+      if (requestId !== latencyRequestRef.current) return;
+      setLatency(Math.max(1, Math.round(performance.now() - startedAt)));
+      setLatencyState("ready");
+    } catch {
+      if (requestId !== latencyRequestRef.current) return;
+      setLatencyState("unavailable");
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }, [apiUrl]);
+
+  useEffect(() => () => {
+    latencyRequestRef.current += 1;
+    latencyAbortRef.current?.abort();
+  }, []);
+
+  const latencyLabel = latencyState === "idle"
+    ? "-"
+    : latencyState === "measuring"
+      ? copy.requestCardStatus.latencyMeasuring
+    : latencyState === "ready" && latency !== null
+      ? `${latency} ms`
+      : copy.requestCardStatus.latencyUnavailable;
 
   return (
     <section
@@ -342,87 +458,105 @@ export function ResultPanel({
       aria-label={copy.resultSectionLabel}
     >
       <h2 className="sr-only">{copy.resultSectionLabel}</h2>
-      <div className="flex min-h-12 items-center gap-3 px-4">
-        <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
-          {statusMessage.state} · {statusMessage.detail}
-        </span>
-      </div>
-
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-2">
+        <div className="flex min-h-16 flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-1">
           <div className="min-w-0 flex-1">
             <strong className="block min-w-0 truncate text-sm font-semibold">
               {selectedRequest?.title || copy.requestCardStatus.unselectedTitle}
             </strong>
             <span className="truncate text-xs font-medium text-muted-foreground">{selectedRequestStatusText}</span>
           </div>
-          <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2 self-center">
-            <ActionSlot visible={Boolean(canDownload)} label={copy.requestCardStatus.download}>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!selectedRequest?.images?.length}
-                onClick={() => {
-                  if (!selectedRequest?.images?.length) return;
-                  downloadRequestImages(selectedRequest);
-                }}
-              >
-                <DownloadIcon data-icon="inline-start" />
-                {copy.requestCardStatus.download}
-              </Button>
-            </ActionSlot>
-            <ActionSlot visible={canShowResponseJson} label={copy.requestCardStatus.responseJson}>
+          <div className="flex min-w-0 flex-col items-end gap-2 self-start">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 text-sm font-semibold leading-normal">
+              <span className="max-w-full break-all" title={settings.generationsModel}>generations: {settings.generationsModel}</span>
+              <span className="max-w-full break-all" title={settings.editsModel}>edits: {settings.editsModel}</span>
+            </div>
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-medium leading-normal text-muted-foreground tabular-nums">
+              <span>{copy.settings.concurrency} {settings.requestConcurrency}</span>
+              <span>{copy.requestCardStatus.interval} {settings.requestIntervalSeconds}s</span>
+              <span className={latencyToneClass(latencyState, latency)}>
+                {copy.requestCardStatus.latency} {latencyLabel}
+              </span>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={responseJsonDisabled}
-                    onClick={() => setJsonDialogOpen(true)}
-                  >
-                    <FileJsonIcon data-icon="inline-start" />
-                    {copy.requestCardStatus.responseJson}
+                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" onClick={() => void refreshLatency()} aria-label={copy.requestCardStatus.refreshLatency}>
+                    <RefreshCwIcon className={latencyState === "measuring" ? "animate-spin" : undefined} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent sideOffset={8} className="whitespace-pre-wrap break-words text-left">
-                  {revisedPromptTooltip}
-                </TooltipContent>
+                <TooltipContent>{copy.requestCardStatus.refreshLatency}</TooltipContent>
               </Tooltip>
-            </ActionSlot>
-            <ActionSlot visible={Boolean(selectedRequest)} label={copy.requestCardStatus.reusePrompt}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!canReuse}
-                    onClick={() => {
-                      if (!selectedRequest) return;
-                      reusePrompt(selectedRequest);
-                    }}
-                  >
-                    <CopyIcon data-icon="inline-start" />
-                    {copy.requestCardStatus.reusePrompt}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent sideOffset={8} className="whitespace-pre-wrap break-words text-left">
-                  {inputPromptTooltip}
-                </TooltipContent>
-              </Tooltip>
-            </ActionSlot>
+            </div>
           </div>
-        </div>
+          </div>
 
-        <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden p-3">
+        <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden px-3 pt-1 pb-3">
           <Gallery
             request={selectedRequest}
             loading={selectedRequestDetailLoading}
             onEditImage={onEditImage}
             onAnnotateImage={onAnnotateImage}
           />
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-3">
+          <ActionSlot visible={Boolean(canDownload)} label={copy.requestCardStatus.download}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md"
+              disabled={!selectedRequest?.images?.length}
+              onClick={() => {
+                if (!selectedRequest?.images?.length) return;
+                void downloadRequestImages(selectedRequest);
+              }}
+            >
+              <DownloadIcon data-icon="inline-start" />
+              {copy.requestCardStatus.download}
+            </Button>
+          </ActionSlot>
+          <ActionSlot visible={canShowResponseJson} label={copy.requestCardStatus.responseJson}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-md"
+                  disabled={responseJsonDisabled}
+                  onClick={() => setJsonDialogOpen(true)}
+                >
+                  <FileJsonIcon data-icon="inline-start" />
+                  {copy.requestCardStatus.responseJson}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={8} className="whitespace-pre-wrap break-words text-left">
+                {revisedPromptTooltip}
+              </TooltipContent>
+            </Tooltip>
+          </ActionSlot>
+          <ActionSlot visible={Boolean(selectedRequest)} label={copy.requestCardStatus.reusePrompt}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-md"
+                  disabled={!canReuse}
+                  onClick={() => {
+                    if (!selectedRequest) return;
+                    reusePrompt(selectedRequest);
+                  }}
+                >
+                  <CopyIcon data-icon="inline-start" />
+                  {copy.requestCardStatus.reusePrompt}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={8} className="whitespace-pre-wrap break-words text-left">
+                {inputPromptTooltip}
+              </TooltipContent>
+            </Tooltip>
+          </ActionSlot>
         </div>
       </div>
     </section>

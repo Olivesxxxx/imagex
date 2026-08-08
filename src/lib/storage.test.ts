@@ -9,6 +9,7 @@ import {
   saveSettings,
 } from "@/lib/storage";
 import { DEFAULT_STORED_SETTINGS, STORAGE_KEY, type ImageRequestRecord } from "@/lib/image-console";
+import { createProductSuiteTask, deleteProductSuiteTask, loadProductSuiteTasks, renderProductSuitePrompt, saveProductSuiteTask } from "@/lib/product-suite";
 
 type FakeRequest<T = unknown> = IDBRequest<T> & {
   result: T;
@@ -211,6 +212,40 @@ describe("storage", () => {
     saveSettings(settings);
 
     expect(loadSettings().shared.privateApiKey).toBe("private-test-key");
+  });
+
+  test("persists product suite tasks in browser storage", async () => {
+    const task = createProductSuiteTask(1000);
+    expect(task.info.consistencyRequirement).toBe("");
+    expect(renderProductSuitePrompt(task, "hero")).not.toContain("固定一致性要求");
+    task.name = "Magnetic charger";
+    task.info.sellingPoints = "Fast charging, compact body";
+    task.info.consistencyRequirement = "Keep the product shape unchanged.";
+    task.slots[0].selectedVersion = 2;
+    task.productImage = {
+      blob: new Blob(["image-bytes"], { type: "image/png" }),
+      name: "product.png",
+      mimeType: "image/png",
+    };
+
+    const saved = await saveProductSuiteTask(task);
+    const loaded = await loadProductSuiteTasks();
+
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toMatchObject({
+      id: saved.id,
+      name: "Magnetic charger",
+      info: expect.objectContaining({ sellingPoints: "Fast charging, compact body" }),
+      productImage: expect.objectContaining({ name: "product.png", mimeType: "image/png" }),
+    });
+    expect(loaded[0].slots).toHaveLength(6);
+    expect(loaded[0].slots[0].selectedVersion).toBe(2);
+    expect(loaded[0].slots[1].selectedVersion).toBeNull();
+    expect(renderProductSuitePrompt(loaded[0], "hero")).toContain("Magnetic charger");
+    expect(renderProductSuitePrompt(loaded[0], "hero")).toContain("Keep the product shape unchanged.");
+
+    await deleteProductSuiteTask(saved.id);
+    expect(await loadProductSuiteTasks()).toEqual([]);
   });
 
   afterEach(() => {

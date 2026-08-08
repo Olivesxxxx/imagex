@@ -660,6 +660,28 @@ describe("image console logic", () => {
     expect(reusablePromptForRequest(restored)).toBe("one glass jellyfish");
   });
 
+  test("caches and restores product suite request associations", () => {
+    const record = requestRecordFixture({
+      productSuiteTaskId: "suite-1",
+      productSuiteSlotKey: "hero",
+      productSuiteVersion: 2,
+    });
+
+    const [cached] = cachedRequestRecords([record]);
+    const restored = restoreCachedRequest(cached);
+
+    expect(cached).toMatchObject({
+      productSuiteTaskId: "suite-1",
+      productSuiteSlotKey: "hero",
+      productSuiteVersion: 2,
+    });
+    expect(restored).toMatchObject({
+      productSuiteTaskId: "suite-1",
+      productSuiteSlotKey: "hero",
+      productSuiteVersion: 2,
+    });
+  });
+
   test("keeps localStorage request cache compact when responses contain base64 images", () => {
     const [record] = createRequestRecords(
       [{ model: "gpt-image-2", prompt: "one glass jellyfish", n: 1 }],

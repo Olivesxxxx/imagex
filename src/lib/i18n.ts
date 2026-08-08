@@ -4,7 +4,6 @@ import {
   DEFAULTS,
   DEFAULT_STRICT_PROMPT_TEXT,
   DEFAULT_STRICT_PROMPT_TEXT_EN,
-  requestControlSummary as baseRequestControlSummary,
   type AppSettings,
   type KnownRequestStatus,
   type RequestFilter,
@@ -192,7 +191,6 @@ type Copy = {
   languageName: string;
   switchLanguageTooltip: string;
   requestList: string;
-  requestSummary: (settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">) => string;
   clearAll: string;
   clearImages: string;
   cancelRequests: string;
@@ -234,17 +232,6 @@ type Copy = {
   filterLabels: Record<RequestFilter, string>;
   filterEmptyText: Record<RequestFilter, string>;
   requestStatusLabels: Record<KnownRequestStatus, string>;
-  queueRunning: (settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">, counts: {
-    running: number;
-    queued: number;
-    done: number;
-    failed: number;
-  }) => { state: string; detail: string };
-  queueComplete: (
-    settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">,
-    counts: { done: number; failed: number; canceled: number; imageCount: number },
-  ) => { state: string; detail: string };
-  waitingGeneration: { state: string; detail: string };
   requestCardEmpty: {
     noImage: string;
     queued: string;
@@ -269,6 +256,11 @@ type Copy = {
     annotateImage: string;
     editImage: string;
     rotateCounterclockwise: string;
+    latency: string;
+    interval: string;
+    refreshLatency: string;
+    latencyMeasuring: string;
+    latencyUnavailable: string;
     previewImage: string;
     previewPreviousImage: string;
     previewNextImage: string;
@@ -299,6 +291,7 @@ type Copy = {
     mode: string;
     generate: string;
     edit: string;
+    workflow: string;
     settings: string;
     settingsTooltip: string;
     promptLabel: string;
@@ -340,21 +333,86 @@ type Copy = {
     responses: string;
     completions: string;
     edits: string;
-    actionHelp: {
+    quickStart: {
       buttonLabel: string;
       title: string;
       description: string;
-      generateMode: string;
-      editMode: string;
-      generationsDescription: string;
-      responsesDescription: string;
-      completionsDescription: string;
-      editsDescription: string;
+      steps: string[];
     };
     pasteImageHint: string;
     previewInputImage: string;
     previewPreviousImage: string;
     previewNextImage: string;
+  };
+  productSuite: {
+    title: string;
+    description: string;
+    newTask: string;
+    empty: string;
+    untitled: string;
+    productName: string;
+    productNamePlaceholder: string;
+    productReference: string;
+    chooseImage: string;
+    dropImageHint: string;
+    removeImage: string;
+    brandAsset: string;
+    materialAndColor: string;
+    sellingPoints: string;
+    dimensions: string;
+    dimensionsPlaceholder: string;
+    forbiddenElements: string;
+    consistencyRequirement: string;
+    consistencyRequirementPlaceholder: string;
+    brandTone: string;
+    targetPlatform: string;
+    targetPlatformPlaceholder: string;
+    nextStepHint: string;
+    deleteTask: string;
+    saveTask: string;
+    slotsTitle: string;
+    slotsDescription: string;
+    slotLabels: Record<string, string>;
+    slotEnabled: string;
+    slotPrompt: string;
+    renderedPrompt: string;
+    resetTemplate: string;
+    generateSuite: string;
+    missingProductImage: string;
+    noEnabledSlots: string;
+    confirmTitle: string;
+    confirmDescription: (name: string, count: number) => string;
+    confirmReferenceRule: string;
+    confirmSubmit: string;
+    submitting: string;
+    submitted: (count: number) => string;
+    slotNotSubmitted: string;
+    slotQueued: string;
+    slotRunning: string;
+    slotDone: string;
+    slotFailed: string;
+    slotCanceled: string;
+    resultReady: string;
+    resultUnavailable: string;
+    viewResult: string;
+    exportResult: string;
+    useAsReference: string;
+    annotateResult: string;
+    regenerateSlot: string;
+    retrySlot: string;
+    slotResubmitted: string;
+    retryFailedSlots: (count: number) => string;
+    failedSlotsResubmitted: (count: number) => string;
+    versionHistory: string;
+    viewingVersion: (version: number) => string;
+    finalVersionBadge: (version: number) => string;
+    selectFinalVersion: string;
+    finalVersion: string;
+    finalVersionSelected: (version: number) => string;
+    exportSuite: string;
+    exportingSuite: string;
+    exportSuiteSuccess: (count: number) => string;
+    exportSuiteFailed: string;
   };
   annotation: {
     title: string;
@@ -477,17 +535,12 @@ type Copy = {
   skipToContent: string;
 };
 
-function englishRequestControlSummary(settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">) {
-  return `Concurrency ${settings.requestConcurrency} · Interval ${settings.requestIntervalSeconds}s`;
-}
-
 const COPY: Record<Language, Copy> = {
   zh: {
     appName: "ImageX",
     languageName: "中文",
     switchLanguageTooltip: "切换到 English",
     requestList: "生成结果列表",
-    requestSummary: (settings) => baseRequestControlSummary(settings),
     clearAll: "清空全部",
     clearImages: "清空图片",
     cancelRequests: "取消请求",
@@ -545,15 +598,6 @@ const COPY: Record<Language, Copy> = {
       error: "失败",
       canceled: "取消",
     },
-    queueRunning: (settings, counts) => ({
-      state: "队列运行中",
-      detail: `${baseRequestControlSummary(settings)} · 运行 ${counts.running} · 排队 ${counts.queued} · 完成 ${counts.done} · 失败 ${counts.failed}`,
-    }),
-    queueComplete: (settings, counts) => ({
-      state: `队列完成 ${counts.imageCount} 张`,
-      detail: `${baseRequestControlSummary(settings)} · 完成 ${counts.done} · 失败 ${counts.failed} · 取消 ${counts.canceled}`,
-    }),
-    waitingGeneration: { state: "等待生成", detail: "配置 URL 和 API Key 后即可开始。" },
     requestCardEmpty: {
       noImage: "暂无图片",
       queued: "该请求正在排队",
@@ -578,6 +622,11 @@ const COPY: Record<Language, Copy> = {
       annotateImage: "做标记来重新生图",
       editImage: "作为参考图",
       rotateCounterclockwise: "逆时针旋转图片",
+      latency: "延迟",
+      interval: "间隔",
+      refreshLatency: "刷新 API 延迟",
+      latencyMeasuring: "检测中...",
+      latencyUnavailable: "不可用",
       previewImage: "查看大图",
       previewPreviousImage: "上一张大图",
       previewNextImage: "下一张大图",
@@ -608,6 +657,7 @@ const COPY: Record<Language, Copy> = {
       mode: "模式",
       generate: "文生图",
       edit: "图生图",
+      workflow: "工作流",
       settings: "配置",
       settingsTooltip: "打开连接配置",
       promptLabel: "提示词",
@@ -644,21 +694,92 @@ const COPY: Record<Language, Copy> = {
       responses: "响应生成",
       completions: "对话补全",
       edits: "图片编辑",
-      actionHelp: {
-        buttonLabel: "操作按钮说明",
-        title: "操作按钮说明",
-        description: "不同按钮会调用不同的 OpenAI 兼容接口，请根据服务商支持的接口选择。",
-        generateMode: "文生图",
-        editMode: "图生图",
-        generationsDescription: "调用 /v1/images/generations，适用于标准图片生成接口。",
-        responsesDescription: "调用 /v1/responses，适用于通过 Responses 接口返回图片的模型。",
-        completionsDescription: "调用 /v1/chat/completions，适用于通过对话补全接口返回图片的服务。",
-        editsDescription: "调用 /v1/images/edits，使用提示词和已选择的参考图片进行编辑。",
+      quickStart: {
+        buttonLabel: "快速上手",
+        title: "快速上手",
+        description: "第一次使用时，按下面几步就能开始生图。所有内容都保存在当前浏览器里。",
+        steps: [
+          "先点右侧的配置，填写 API 地址、API Key 和模型；不知道填什么，就使用服务商提供的兼容 OpenAI 的地址。",
+          "选择文生图，输入提示词，再选择尺寸、质量和生图数量，点击图片生成。",
+          "想修改一张已有图片时，切换到图生图，把图片拖入图片区域，再输入修改要求，点击图片编辑。",
+          "生成结果会出现在上方主面板和右侧列表；图片可以查看大图、下载、作为参考图或进入标注重生。",
+          "要批量制作一款商品的六张电商图，切换到工作流，新建任务后填写商品信息并上传产品实拍图。",
+        ],
       },
       pasteImageHint: "将图片拖入或粘贴到此区域，可直接添加图片",
       previewInputImage: "预览输入图片",
       previewPreviousImage: "上一张",
       previewNextImage: "下一张",
+    },
+    productSuite: {
+      title: "产品套图任务",
+      description: "建立本地产品任务，上传一次产品实拍图并配置六个用途槽位；确认后会通过现有图生图队列分别生成。",
+      newTask: "新建任务",
+      empty: "暂无产品套图任务",
+      untitled: "未命名产品",
+      productName: "商品名称",
+      productNamePlaceholder: "例如：磁吸无线充电宝",
+      productReference: "产品实拍参考图",
+      chooseImage: "选择图片",
+      dropImageHint: "将图片拖入此框，或点击按钮从本地选择。",
+      removeImage: "移除图片",
+      brandAsset: "可选商业标识/星星素材",
+      materialAndColor: "材质/颜色",
+      sellingPoints: "核心卖点",
+      dimensions: "尺寸数据",
+      dimensionsPlaceholder: "例如：长 12cm，宽 6cm，厚 1.8cm",
+      forbiddenElements: "禁用元素/不要出现",
+      consistencyRequirement: "产品一致性要求（可选）",
+      consistencyRequirementPlaceholder: "例如：保持产品外观、颜色、结构和比例与参考图一致；不要修改 Logo 或关键细节。",
+      brandTone: "品牌语气/画面风格",
+      targetPlatform: "目标平台",
+      targetPlatformPlaceholder: "例如：淘宝、京东、独立站",
+      nextStepHint: "点击“生成整套”后，只提交已启用槽位，每个槽位固定生成 1 张；主图可额外使用商业标识素材。",
+      deleteTask: "删除任务",
+      saveTask: "保存任务",
+      slotsTitle: "六图槽位",
+      slotsDescription: "每个槽位都有独立提示词模板，提交前可以单独修改；关闭槽位后不会参与后续整套生成。",
+      slotLabels: { hero: "主图", whiteBackground: "白底图", detail: "详情图", size: "尺寸图", closeUp: "细节图", scene: "场景图" },
+      slotEnabled: "启用此槽位",
+      slotPrompt: "提示词模板",
+      renderedPrompt: "最终提示词预览",
+      resetTemplate: "恢复模板",
+      generateSuite: "生成整套",
+      missingProductImage: "请先上传产品实拍参考图。",
+      noEnabledSlots: "请至少启用一个套图槽位。",
+      confirmTitle: "确认生成整套？",
+      confirmDescription: (name, count) => "将为“" + name + "”提交 " + count + " 个图生图任务，每个启用槽位生成 1 张图片。",
+      confirmReferenceRule: "六个槽位都会使用产品实拍图；主图在已上传商业标识素材时会额外使用该素材。",
+      confirmSubmit: "确认提交",
+      submitting: "正在提交",
+      submitted: (count) => "已提交 " + count + " 个套图任务。",
+      slotNotSubmitted: "未提交",
+      slotQueued: "排队中",
+      slotRunning: "生成中",
+      slotDone: "已完成",
+      slotFailed: "失败",
+      slotCanceled: "已取消",
+      resultReady: "已生成，可在主面板查看大图。",
+      resultUnavailable: "图片详情暂不可用",
+      viewResult: "查看结果",
+      exportResult: "导出图片",
+      useAsReference: "作为参考图",
+      annotateResult: "做标记来重新生图",
+      regenerateSlot: "重新生成此槽位",
+      retrySlot: "重试此槽位",
+      slotResubmitted: "槽位已重新加入生成队列。",
+      retryFailedSlots: (count) => `仅重试失败槽位${count ? ` (${count})` : ""}`,
+      failedSlotsResubmitted: (count) => `已重新提交 ${count} 个失败槽位。`,
+      versionHistory: "版本记录",
+      viewingVersion: (version) => `当前查看 v${version}，可打开大图、导出或选为最终版本。`,
+      finalVersionBadge: (version) => `最终 v${version}`,
+      selectFinalVersion: "选为最终版本",
+      finalVersion: "最终版本",
+      finalVersionSelected: (version) => `已将 v${version} 设为最终版本。`,
+      exportSuite: "导出整套",
+      exportingSuite: "正在导出",
+      exportSuiteSuccess: (count) => `已导出 ${count} 张套图和参数清单。`,
+      exportSuiteFailed: "产品套图导出失败。",
     },
     annotation: {
       title: "做标记来重新生图",
@@ -713,7 +834,7 @@ const COPY: Record<Language, Copy> = {
       reset: "重置参数",
       clearAllData: "完全清除",
       clearAllDataTitle: "完全清除本机数据？",
-      clearAllDataDescription: "将清除配置、API Key、提示词草稿与历史、所有任务记录、生成图片缓存和当前输入图片。此操作不可撤销。",
+      clearAllDataDescription: "将清除配置、API Key、提示词草稿与历史、所有任务记录、生成图片缓存、当前输入图片、产品套图任务和产品参考图。此操作不可撤销。",
       clearAllDataConfirm: "确认完全清除",
       openAiProtocol: "OpenAI 协议",
       privateProtocol: "私有协议",
@@ -812,7 +933,6 @@ const COPY: Record<Language, Copy> = {
     languageName: "English",
     switchLanguageTooltip: "Switch to 中文",
     requestList: "Generated Results",
-    requestSummary: (settings) => englishRequestControlSummary(settings),
     clearAll: "Clear all",
     clearImages: "Clear images",
     cancelRequests: "Cancel",
@@ -870,15 +990,6 @@ const COPY: Record<Language, Copy> = {
       error: "Failed",
       canceled: "Canceled",
     },
-    queueRunning: (settings, counts) => ({
-      state: "Queue running",
-      detail: `${englishRequestControlSummary(settings)} · Running ${counts.running} · Queued ${counts.queued} · Done ${counts.done} · Failed ${counts.failed}`,
-    }),
-    queueComplete: (settings, counts) => ({
-      state: `Queue done ${counts.imageCount} images`,
-      detail: `${englishRequestControlSummary(settings)} · Done ${counts.done} · Failed ${counts.failed} · Canceled ${counts.canceled}`,
-    }),
-    waitingGeneration: { state: "Waiting", detail: "Configure URL and API Key to begin." },
     requestCardEmpty: {
       noImage: "No image",
       queued: "This request is queued",
@@ -903,6 +1014,11 @@ const COPY: Record<Language, Copy> = {
       annotateImage: "Mark up and regenerate",
       editImage: "Use as reference",
       rotateCounterclockwise: "Rotate image counterclockwise",
+      latency: "Latency",
+      interval: "Interval",
+      refreshLatency: "Refresh API latency",
+      latencyMeasuring: "Checking...",
+      latencyUnavailable: "Unavailable",
       previewImage: "View full image",
       previewPreviousImage: "Previous full image",
       previewNextImage: "Next full image",
@@ -933,6 +1049,7 @@ const COPY: Record<Language, Copy> = {
       mode: "Mode",
       generate: "Generate",
       edit: "Edit",
+      workflow: "Workflow",
       settings: "Settings",
       settingsTooltip: "Open connection settings",
       promptLabel: "Prompt",
@@ -969,21 +1086,92 @@ const COPY: Record<Language, Copy> = {
       responses: "responses",
       completions: "completions",
       edits: "Image edit",
-      actionHelp: {
-        buttonLabel: "Action button help",
-        title: "Action button help",
-        description: "Each button calls a different OpenAI-compatible endpoint. Choose one supported by your provider.",
-        generateMode: "Text to image",
-        editMode: "Image to image",
-        generationsDescription: "Calls /v1/images/generations for the standard image generation workflow.",
-        responsesDescription: "Calls /v1/responses for models that return images through the Responses API.",
-        completionsDescription: "Calls /v1/chat/completions for providers that return images through chat completions.",
-        editsDescription: "Calls /v1/images/edits to edit the selected reference images with your prompt.",
+      quickStart: {
+        buttonLabel: "Quick start",
+        title: "Quick start",
+        description: "Follow these steps to make your first image. Everything stays in this browser.",
+        steps: [
+          "Open Settings and enter the API URL, API key, and model. If you are unsure, use the OpenAI-compatible details from your provider.",
+          "Choose Generate, enter a prompt, choose size, quality, and image count, then click Image generation.",
+          "To change an existing image, choose Edit, drop an image into the image area, describe the change, and click Image edit.",
+          "Results appear in the main panel and the request list. You can preview, download, reuse, or annotate them.",
+          "To make six ecommerce images for one product, choose Workflow, create a task, fill in the product details, and upload the product photo.",
+        ],
       },
       pasteImageHint: "Drop or paste images here to add them directly",
       previewInputImage: "Preview input image",
       previewPreviousImage: "Previous image",
       previewNextImage: "Next image",
+    },
+    productSuite: {
+      title: "Product suite task",
+      description: "Create a local product task, upload the product reference once, and configure six purpose-built slots. Confirm to submit them separately through the existing image-edit queue.",
+      newTask: "New task",
+      empty: "No product suite tasks yet",
+      untitled: "Untitled product",
+      productName: "Product name",
+      productNamePlaceholder: "For example: magnetic wireless power bank",
+      productReference: "Product reference photo",
+      chooseImage: "Choose image",
+      dropImageHint: "Drop an image into this area, or choose one from your device.",
+      removeImage: "Remove image",
+      brandAsset: "Optional commercial badge/star asset",
+      materialAndColor: "Material/color",
+      sellingPoints: "Key selling points",
+      dimensions: "Dimensions",
+      dimensionsPlaceholder: "For example: 12cm long, 6cm wide, 1.8cm thick",
+      forbiddenElements: "Forbidden elements",
+      consistencyRequirement: "Product consistency requirement (optional)",
+      consistencyRequirementPlaceholder: "For example: preserve the product appearance, color, structure, and proportions from the reference image.",
+      brandTone: "Brand tone / visual style",
+      targetPlatform: "Target platform",
+      targetPlatformPlaceholder: "For example: Amazon, Shopify, TikTok Shop",
+      nextStepHint: "Generate suite submits only enabled slots, with exactly one image per slot. The hero may also use the optional commercial badge asset.",
+      deleteTask: "Delete task",
+      saveTask: "Save task",
+      slotsTitle: "Six image slots",
+      slotsDescription: "Each slot has its own prompt template. Edit it before submission; disabled slots will be skipped by the future batch generation.",
+      slotLabels: { hero: "Hero", whiteBackground: "White background", detail: "Detail", size: "Size", closeUp: "Close-up", scene: "Scene" },
+      slotEnabled: "Enable this slot",
+      slotPrompt: "Prompt template",
+      renderedPrompt: "Rendered prompt preview",
+      resetTemplate: "Restore template",
+      generateSuite: "Generate suite",
+      missingProductImage: "Upload a product reference photo first.",
+      noEnabledSlots: "Enable at least one product suite slot.",
+      confirmTitle: "Generate this suite?",
+      confirmDescription: (name, count) => "This will submit " + count + " image-edit task" + (count === 1 ? "" : "s") + " for “" + name + "”, with one image per enabled slot.",
+      confirmReferenceRule: "Every slot uses the product reference photo. The hero slot also uses the optional commercial badge asset when available.",
+      confirmSubmit: "Submit suite",
+      submitting: "Submitting",
+      submitted: (count) => "Submitted " + count + " product suite task" + (count === 1 ? "" : "s") + ".",
+      slotNotSubmitted: "Not submitted",
+      slotQueued: "Queued",
+      slotRunning: "Generating",
+      slotDone: "Completed",
+      slotFailed: "Failed",
+      slotCanceled: "Canceled",
+      resultReady: "Generated. Open the main panel to view the full image.",
+      resultUnavailable: "Image details unavailable",
+      viewResult: "View result",
+      exportResult: "Export image",
+      useAsReference: "Use as reference",
+      annotateResult: "Mark up and regenerate",
+      regenerateSlot: "Regenerate slot",
+      retrySlot: "Retry slot",
+      slotResubmitted: "The slot was added to the generation queue again.",
+      retryFailedSlots: (count) => `Retry failed slots${count ? ` (${count})` : ""}`,
+      failedSlotsResubmitted: (count) => `Resubmitted ${count} failed slot${count === 1 ? "" : "s"}.`,
+      versionHistory: "Version history",
+      viewingVersion: (version) => `Viewing v${version}. Open, export, or choose it as the final version.`,
+      finalVersionBadge: (version) => `Final v${version}`,
+      selectFinalVersion: "Choose as final",
+      finalVersion: "Final version",
+      finalVersionSelected: (version) => `Selected v${version} as the final version.`,
+      exportSuite: "Export suite",
+      exportingSuite: "Exporting",
+      exportSuiteSuccess: (count) => `Exported ${count} suite image${count === 1 ? "" : "s"} and the manifest.`,
+      exportSuiteFailed: "Could not export the product suite.",
     },
     annotation: {
       title: "Mark up and regenerate",
@@ -1038,7 +1226,7 @@ const COPY: Record<Language, Copy> = {
       reset: "Reset parameters",
       clearAllData: "Clear all data",
       clearAllDataTitle: "Clear all local data?",
-      clearAllDataDescription: "This removes settings, API keys, prompt drafts and history, all request records, cached images, and current input images. This cannot be undone.",
+      clearAllDataDescription: "This removes settings, API keys, prompt drafts and history, all request records, cached images, current input images, product suite tasks, and product reference photos. This cannot be undone.",
       clearAllDataConfirm: "Confirm clear all",
       openAiProtocol: "OpenAI protocol",
       privateProtocol: "Private protocol",
@@ -1194,11 +1382,4 @@ export function useI18n() {
 
 export function getCopy(language: Language) {
   return COPY[language];
-}
-
-export function requestSummaryForLanguage(
-  settings: Pick<AppSettings, "requestConcurrency" | "requestIntervalSeconds">,
-  language: Language = "zh",
-) {
-  return getCopy(language).requestSummary(settings);
 }

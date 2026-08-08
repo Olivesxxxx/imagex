@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { GeneratorPanel, PromptHistoryPanel } from "@/components/generator-panel";
+import { GeneratorPanel, PromptHistoryPanel, QuickStartDialog } from "@/components/generator-panel";
 import { AnnotationWorkspace, type AnnotationImageSource } from "@/components/annotation-workspace";
 import { RequestListPanel } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
+import { ProductSuitePanel } from "@/components/product-suite-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,8 +17,22 @@ import {
   normalizeStrictPromptText,
   requestImageCount,
   type ConsoleMode,
+  type EditInputImage,
+  type GeneratedImage,
 } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
+import { renderProductSuitePrompt, type ProductSuiteAsset, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
+import { loadRequestDetails } from "@/lib/storage";
+
+function productSuiteAssetToEditImage(asset: ProductSuiteAsset, sourceKey: string): EditInputImage {
+  return {
+    src: URL.createObjectURL(asset.blob),
+    name: asset.name,
+    mimeType: asset.mimeType,
+    blob: asset.blob,
+    sourceKey,
+  };
+}
 
 function StrictPromptEditorDialog({
   open,
@@ -232,6 +247,9 @@ export default function App() {
   const [clearFailedDialogOpen, setClearFailedDialogOpen] = useState(false);
   const [clearCompletedDialogOpen, setClearCompletedDialogOpen] = useState(false);
   const [strictPromptEditorOpen, setStrictPromptEditorOpen] = useState(false);
+  const [productSuiteOpen, setProductSuiteOpen] = useState(false);
+  const [productSuiteHasDraft, setProductSuiteHasDraft] = useState(false);
+  const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [annotationTarget, setAnnotationTarget] = useState<{ image: AnnotationImageSource; originalPrompt: string } | null>(null);
   const [exportZipConfirmOpen, setExportZipConfirmOpen] = useState(false);
   const [exportZipProgressOpen, setExportZipProgressOpen] = useState(false);
@@ -243,6 +261,7 @@ export default function App() {
     clearFailedDialogOpen ||
     clearCompletedDialogOpen ||
     strictPromptEditorOpen ||
+    quickStartOpen ||
     Boolean(annotationTarget) ||
     exportZipConfirmOpen ||
     exportZipProgressOpen;
@@ -284,6 +303,11 @@ export default function App() {
     void runImageExport(imageKeys);
   }
 
+  function handleSelectProductSuiteRequest(requestId: string) {
+    consoleState.setSelectedRequestId(requestId);
+    setProductSuiteOpen(false);
+  }
+
   function toggleImageSelectionMode() {
     setImageSelectionMode((current) => {
       if (current) setSelectedImageKeys(new Set());
@@ -319,12 +343,17 @@ export default function App() {
     void consoleState.addHistoricalEditImage(value);
   }
 
-  function handleAnnotateImage(value: string) {
+  async function handleAnnotateImage(value: string) {
     const [requestId, imageIndexText] = String(value || "").split(":");
     const imageIndex = Number.parseInt(imageIndexText, 10);
     const request = consoleState.requestRecords.find((item) => item.id === requestId);
-    const image = request?.images?.[imageIndex];
-    if (!request || !image || request.status !== "done") return;
+    if (!request || request.status !== "done") return;
+    let image: GeneratedImage | null = request.images?.[imageIndex] ?? null;
+    if (!image && request.hasCachedDetails && !request.detailsMissing) {
+      image = (await loadRequestDetails(requestId))?.images?.[imageIndex] ?? null;
+    }
+    if (!image && imageIndex === 0) image = request.thumbnail || null;
+    if (!image) return;
     setAnnotationTarget({
       image: {
         src: image.src,
@@ -355,54 +384,174 @@ export default function App() {
     toast.success(copy.annotation.submitted);
   }
 
+  function handleProductSuiteSubmit(task: ProductSuiteTask) {
+    if (!task.productImage) return 0;
+    const productImage = productSuiteAssetToEditImage(task.productImage, "product-suite:" + task.id + ":product");
+    const brandAsset = task.brandAsset
+      ? productSuiteAssetToEditImage(task.brandAsset, "product-suite:" + task.id + ":brand")
+      : null;
+    const enabledSlots = task.slots.filter((slot) => slot.enabled);
+    let submittedCount = 0;
+    let lastPrompt = "";
+    let lastImages: EditInputImage[] = [productImage];
+    let brandAssetUsed = false;
+
+    for (const slot of enabledSlots) {
+      const prompt = renderProductSuitePrompt(task, slot.key, language === "en" ? "en" : "zh");
+      const slotImages = slot.key === "hero" && brandAsset ? [productImage, brandAsset] : [productImage];
+      const submitted = consoleState.enqueueEditGeneration({
+        prompt,
+        editImages: slotImages,
+        count: 1,
+        silent: true,
+        productSuite: {
+          taskId: task.id,
+          slotKey: slot.key,
+          version: 1,
+        },
+      });
+      if (!submitted) break;
+      submittedCount += 1;
+      if (slot.key === "hero" && brandAsset) brandAssetUsed = true;
+      lastPrompt = prompt;
+      lastImages = slotImages;
+    }
+
+    if (submittedCount > 0) {
+      handleModeChange("edit");
+      consoleState.setEditImages(lastImages);
+      consoleState.setPrompt(lastPrompt);
+      if (brandAsset && !brandAssetUsed) URL.revokeObjectURL(brandAsset.src);
+    } else {
+      URL.revokeObjectURL(productImage.src);
+      if (brandAsset) URL.revokeObjectURL(brandAsset.src);
+    }
+
+    return submittedCount;
+  }
+
+  function handleProductSuiteSlotSubmit(task: ProductSuiteTask, slotKey: ProductSuiteSlotKey, version: number) {
+    if (!task.productImage) return 0;
+    const productImage = productSuiteAssetToEditImage(task.productImage, `product-suite:${task.id}:product`);
+    const brandAsset = slotKey === "hero" && task.brandAsset
+      ? productSuiteAssetToEditImage(task.brandAsset, `product-suite:${task.id}:brand`)
+      : null;
+    const editImages = brandAsset ? [productImage, brandAsset] : [productImage];
+    const prompt = renderProductSuitePrompt(task, slotKey, language === "en" ? "en" : "zh");
+    const submitted = consoleState.enqueueEditGeneration({
+      prompt,
+      editImages,
+      count: 1,
+      silent: true,
+      productSuite: {
+        taskId: task.id,
+        slotKey,
+        version,
+      },
+    });
+
+    if (!submitted) {
+      URL.revokeObjectURL(productImage.src);
+      if (brandAsset) URL.revokeObjectURL(brandAsset.src);
+      return 0;
+    }
+
+    handleModeChange("edit");
+    consoleState.setEditImages(editImages);
+    consoleState.setPrompt(prompt);
+    return 1;
+  }
+
+  const workflowUsesTaskLayout = productSuiteOpen && productSuiteHasDraft;
+
   return (
     <>
-      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
-        <div className="grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto pr-1">
-          <ResultPanel
-            selectedRequest={consoleState.selectedRequest}
-            selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
-            statusMessage={consoleState.statusMessage}
-            selectedRequestJson={consoleState.selectedRequestJson}
-            setJsonDialogOpen={consoleState.setJsonDialogOpen}
-            reusePrompt={consoleState.reusePrompt}
-            onEditImage={handleEditImage}
-            onAnnotateImage={handleAnnotateImage}
-          />
-          <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
-            <GeneratorPanel
-              mode={consoleState.mode}
-              editImages={consoleState.editImages}
-              historicalEditImageValue={consoleState.historicalEditImageValue}
-              historicalEditImageOptions={consoleState.historicalEditImageOptions}
+      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+        <div className={productSuiteOpen && !productSuiteHasDraft
+          ? "grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto pr-1"
+          : productSuiteOpen
+            ? "flex min-h-0 w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1"
+          : "grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto pr-1"}>
+          <div className={workflowUsesTaskLayout ? "h-[clamp(280px,52dvh,620px)] shrink-0" : "min-h-0"}>
+            <ResultPanel
+              selectedRequest={consoleState.selectedRequest}
+              selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
               settings={consoleState.settings}
-              prompt={consoleState.prompt}
-              connectionStatus={consoleState.connectionStatus}
-              promptFocusSignal={promptFocusSignal}
-              setPrompt={consoleState.setPrompt}
-              setEditImages={consoleState.setEditImages}
-              updateSettings={consoleState.updateSettings}
-              setSettingsOpen={consoleState.setSettingsOpen}
-              enqueueGeneration={consoleState.enqueueGeneration}
-              enqueueEditGeneration={consoleState.enqueueEditGeneration}
-              isGenerating={consoleState.requestCounts.active > 0}
-              onCancelGeneration={consoleState.cancelAllRequests}
-              addHistoricalEditImage={consoleState.addHistoricalEditImage}
-              onModeChange={handleModeChange}
-              onOpenStrictPromptEditor={() => {
-                setStrictPromptEditorOpen(true);
-              }}
+              selectedRequestJson={consoleState.selectedRequestJson}
+              setJsonDialogOpen={consoleState.setJsonDialogOpen}
+              reusePrompt={consoleState.reusePrompt}
+              onEditImage={handleEditImage}
+              onAnnotateImage={handleAnnotateImage}
             />
-            <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-3 shadow-none">
-              <PromptHistoryPanel
-                promptHistory={consoleState.promptHistory}
-                promptHistoryCount={consoleState.promptHistoryCount}
-                promptHistoryPinnedCount={consoleState.promptHistoryPinnedCount}
-                onSelectPrompt={consoleState.selectPromptHistory}
-                onDeletePrompt={consoleState.deletePromptHistory}
-                onTogglePromptPin={consoleState.togglePromptHistoryPin}
+          </div>
+          <div className={workflowUsesTaskLayout
+            ? "flex w-full max-w-full min-w-0 flex-none flex-col"
+            : productSuiteOpen
+              ? "flex min-h-0 flex-1 flex-col"
+              : "hidden"}>
+              <ProductSuitePanel
+                open={productSuiteOpen}
+                onOpenChange={setProductSuiteOpen}
+                onModeChange={handleModeChange}
+                onDraftStateChange={setProductSuiteHasDraft}
+                settings={consoleState.settings}
+                updateSettings={consoleState.updateSettings}
+                connectionStatus={consoleState.connectionStatus}
+                setSettingsOpen={consoleState.setSettingsOpen}
+                onOpenQuickStart={() => setQuickStartOpen(true)}
+                onSubmitBatch={handleProductSuiteSubmit}
+                onSubmitSlot={handleProductSuiteSlotSubmit}
+                onSelectRequest={handleSelectProductSuiteRequest}
+                onExportRequest={handleExportRequest}
+                onExportSuite={(task) => consoleState.exportProductSuite(task)}
+                onUseAsReference={(value) => {
+                  setProductSuiteOpen(false);
+                  handleEditImage(value);
+                }}
+                onAnnotateResult={(value) => {
+                  setProductSuiteOpen(false);
+                  void handleAnnotateImage(value);
+                }}
+                requestRecords={consoleState.requestRecords}
               />
-            </div>
+          </div>
+          <div className={productSuiteOpen ? "hidden" : "col-span-full grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]"}>
+                <GeneratorPanel
+                  mode={consoleState.mode}
+                  editImages={consoleState.editImages}
+                  historicalEditImageValue={consoleState.historicalEditImageValue}
+                  historicalEditImageOptions={consoleState.historicalEditImageOptions}
+                  settings={consoleState.settings}
+                  prompt={consoleState.prompt}
+                  connectionStatus={consoleState.connectionStatus}
+                  promptFocusSignal={promptFocusSignal}
+                  setPrompt={consoleState.setPrompt}
+                  setEditImages={consoleState.setEditImages}
+                  updateSettings={consoleState.updateSettings}
+                  setSettingsOpen={consoleState.setSettingsOpen}
+                  enqueueGeneration={consoleState.enqueueGeneration}
+                  enqueueEditGeneration={consoleState.enqueueEditGeneration}
+                  isGenerating={consoleState.requestCounts.active > 0}
+                  onCancelGeneration={consoleState.cancelAllRequests}
+                  addHistoricalEditImage={consoleState.addHistoricalEditImage}
+                  onModeChange={handleModeChange}
+                  onOpenStrictPromptEditor={() => {
+                    setStrictPromptEditorOpen(true);
+                  }}
+                  onOpenQuickStart={() => setQuickStartOpen(true)}
+                  onOpenProductSuite={() => setProductSuiteOpen(true)}
+                  workflowOpen={productSuiteOpen}
+                />
+                <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-3 shadow-none">
+                  <PromptHistoryPanel
+                    promptHistory={consoleState.promptHistory}
+                    promptHistoryCount={consoleState.promptHistoryCount}
+                    promptHistoryPinnedCount={consoleState.promptHistoryPinnedCount}
+                    onSelectPrompt={consoleState.selectPromptHistory}
+                    onDeletePrompt={consoleState.deletePromptHistory}
+                    onTogglePromptPin={consoleState.togglePromptHistoryPin}
+                  />
+                </div>
           </div>
         </div>
         <RequestListPanel
@@ -411,7 +560,6 @@ export default function App() {
           selectedRequestFilter={consoleState.selectedRequestFilter}
           requestCounts={consoleState.requestCounts}
           now={consoleState.now}
-          settings={consoleState.settings}
           settingsOpen={consoleState.settingsOpen}
           clearDialogOpen={consoleState.clearDialogOpen}
           jsonDialogOpen={consoleState.jsonDialogOpen}
@@ -453,6 +601,7 @@ export default function App() {
           consoleState.updateSettings("strictPromptText", value);
         }}
       />
+      <QuickStartDialog open={quickStartOpen} onOpenChange={setQuickStartOpen} />
       <AnnotationWorkspace
         open={Boolean(annotationTarget)}
         image={annotationTarget?.image || null}

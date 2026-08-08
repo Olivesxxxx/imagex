@@ -27,7 +27,6 @@ import {
   generationMethodDisplayName,
   payloadSize,
   requestStatusDisplayLabel,
-  type AppSettings,
   type ImageRequestRecord,
   type RequestFilter,
 } from "@/lib/image-console";
@@ -232,7 +231,6 @@ export function RequestListPanel({
   selectedRequestFilter,
   requestCounts,
   now,
-  settings,
   settingsOpen,
   clearDialogOpen,
   jsonDialogOpen,
@@ -254,7 +252,6 @@ export function RequestListPanel({
   selectedRequestFilter: RequestFilter;
   requestCounts: Record<RequestFilter, number>;
   now: number;
-  settings: AppSettings;
   settingsOpen: boolean;
   clearDialogOpen: boolean;
   jsonDialogOpen: boolean;
@@ -274,7 +271,6 @@ export function RequestListPanel({
   const { copy, language } = useI18n();
   const hasRequests = requestCounts.all > 0;
   const hasDoneRequests = requestCounts.done > 0;
-  const requestSummary = copy.requestSummary(settings);
   const requestButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const [deleteSelectionDialogOpen, setDeleteSelectionDialogOpen] = useState(false);
   const selectedRequestIds = Array.from(
@@ -323,14 +319,6 @@ export function RequestListPanel({
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <strong className="shrink-0 text-sm leading-none">{copy.requestList}</strong>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="min-w-0 truncate text-xs font-medium tabular-nums text-muted-foreground">
-                {requestSummary}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{requestSummary}</TooltipContent>
-          </Tooltip>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

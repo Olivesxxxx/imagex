@@ -78,6 +78,15 @@
   }
 }
 
+@media (min-width: 64rem) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
 @layer utilities {
   .image-checkerboard {
     background:

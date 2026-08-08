@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 export type AnnotationTool = "select" | "brush" | "arrow" | "rectangle" | "ellipse" | "text";
 type Point = { x: number; y: number };
+type ResizeHandle = "start" | "end" | "north-west" | "north-east" | "south-east" | "south-west";
 type Annotation = {
   id: string;
   type: Exclude<AnnotationTool, "select">;
@@ -33,6 +34,8 @@ type Annotation = {
   end?: Point;
   text?: string;
   fontSize?: number;
+  textWidth?: number;
+  textHeight?: number;
 };
 
 export interface AnnotationImageSource {
@@ -72,8 +75,8 @@ function annotationBounds(annotation: Annotation): { left: number; top: number; 
     return {
       left: annotation.start.x,
       top: annotation.start.y,
-      right: annotation.start.x + Math.max(fontSize, (annotation.text?.length || 1) * fontSize * 0.62),
-      bottom: annotation.start.y + fontSize,
+      right: annotation.start.x + Math.max(fontSize, annotation.textWidth || (annotation.text?.length || 1) * fontSize * 0.62),
+      bottom: annotation.start.y + Math.max(fontSize, annotation.textHeight || fontSize),
     };
   }
   if (annotation.start && annotation.end) {
@@ -87,8 +90,8 @@ function annotationBounds(annotation: Annotation): { left: number; top: number; 
   return { left: annotation.start?.x || 0, top: annotation.start?.y || 0, right: annotation.start?.x || 0, bottom: annotation.start?.y || 0 };
 }
 
-function hitTest(annotation: Annotation, point: Point) {
-  const tolerance = Math.max(12, annotation.size * 2);
+function hitTest(annotation: Annotation, point: Point, screenTolerance = 12) {
+  const tolerance = Math.max(screenTolerance, annotation.size * 2);
   if (annotation.type === "brush") {
     const points = annotation.points || [];
     return points.some((current, index) => index > 0 && distanceToSegment(point, points[index - 1], current) <= tolerance);
@@ -98,6 +101,45 @@ function hitTest(annotation: Annotation, point: Point) {
   }
   const bounds = annotationBounds(annotation);
   return point.x >= bounds.left - tolerance && point.x <= bounds.right + tolerance && point.y >= bounds.top - tolerance && point.y <= bounds.bottom + tolerance;
+}
+
+function resizeHandles(annotation: Annotation): Array<{ handle: ResizeHandle; point: Point }> {
+  if (annotation.type === "arrow" && annotation.start && annotation.end) {
+    return [
+      { handle: "start", point: annotation.start },
+      { handle: "end", point: annotation.end },
+    ];
+  }
+  if ((annotation.type === "rectangle" || annotation.type === "ellipse") && annotation.start && annotation.end) {
+    const bounds = annotationBounds(annotation);
+    return [
+      { handle: "north-west", point: { x: bounds.left, y: bounds.top } },
+      { handle: "north-east", point: { x: bounds.right, y: bounds.top } },
+      { handle: "south-east", point: { x: bounds.right, y: bounds.bottom } },
+      { handle: "south-west", point: { x: bounds.left, y: bounds.bottom } },
+    ];
+  }
+  return [];
+}
+
+function hitResizeHandle(annotation: Annotation, point: Point, tolerance: number) {
+  return resizeHandles(annotation).find((item) => Math.hypot(point.x - item.point.x, point.y - item.point.y) <= tolerance)?.handle || null;
+}
+
+function resizeAnnotation(annotation: Annotation, handle: ResizeHandle, point: Point): Annotation {
+  if (annotation.type === "arrow" && annotation.start && annotation.end) {
+    if (handle === "start") return { ...annotation, start: point };
+    if (handle === "end") return { ...annotation, end: point };
+    return annotation;
+  }
+  if ((annotation.type === "rectangle" || annotation.type === "ellipse") && annotation.start && annotation.end) {
+    const bounds = annotationBounds(annotation);
+    if (handle === "north-west") return { ...annotation, start: point, end: { x: bounds.right, y: bounds.bottom } };
+    if (handle === "north-east") return { ...annotation, start: { x: bounds.left, y: point.y }, end: { x: point.x, y: bounds.bottom } };
+    if (handle === "south-east") return { ...annotation, start: { x: bounds.left, y: bounds.top }, end: point };
+    if (handle === "south-west") return { ...annotation, start: { x: point.x, y: bounds.top }, end: { x: bounds.right, y: point.y } };
+  }
+  return annotation;
 }
 
 function translateAnnotation(annotation: Annotation, dx: number, dy: number): Annotation {
@@ -134,7 +176,15 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
   const [textEditorStyle, setTextEditorStyle] = useState<CSSProperties>({});
   const [instruction, setInstruction] = useState("");
   const [exportError, setExportError] = useState("");
-  const dragRef = useRef<{ id: string; start: Point; original: Annotation; before: Annotation[] } | null>(null);
+  const interactionRef = useRef<{
+    kind: "move" | "resize";
+    id: string;
+    start: Point;
+    original: Annotation;
+    before: Annotation[];
+    handle?: ResizeHandle;
+    changed: boolean;
+  } | null>(null);
 
   const setCurrentAnnotations = useCallback((next: Annotation[]) => {
     annotationsRef.current = next;
@@ -160,6 +210,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     setFuture([]);
     setSelectedId(null);
     setDraft(null);
+    interactionRef.current = null;
     setTextAnchor(null);
     setTextValue("");
     cancelTextEntryRef.current = false;
@@ -264,10 +315,29 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
       }
       if (annotation.id === selectedId) {
         const bounds = annotationBounds(annotation);
-        context.setLineDash([8, 5]);
-        context.lineWidth = 2;
+        const canvasRect = canvas.getBoundingClientRect();
+        const displayScale = canvasRect.width > 0 ? canvas.width / canvasRect.width : 1;
+        const selectionOffset = 8 * displayScale;
+        context.setLineDash([8 * displayScale, 5 * displayScale]);
+        context.lineWidth = 2 * displayScale;
         context.strokeStyle = "#0ea5e9";
-        context.strokeRect(bounds.left - 8, bounds.top - 8, Math.max(16, bounds.right - bounds.left + 16), Math.max(16, bounds.bottom - bounds.top + 16));
+        context.strokeRect(
+          bounds.left - selectionOffset,
+          bounds.top - selectionOffset,
+          Math.max(selectionOffset * 2, bounds.right - bounds.left + selectionOffset * 2),
+          Math.max(selectionOffset * 2, bounds.bottom - bounds.top + selectionOffset * 2),
+        );
+        const handleRadius = 6 * displayScale;
+        context.setLineDash([]);
+        context.lineWidth = 2 * displayScale;
+        for (const item of resizeHandles(annotation)) {
+          context.beginPath();
+          context.arc(item.point.x, item.point.y, handleRadius, 0, Math.PI * 2);
+          context.fillStyle = "#ffffff";
+          context.fill();
+          context.strokeStyle = "#0284c7";
+          context.stroke();
+        }
       }
       context.restore();
     }
@@ -293,11 +363,21 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     const stageRect = stage.getBoundingClientRect();
     const rawLeft = canvasRect.left - stageRect.left + (textAnchor.x / canvas.width) * canvasRect.width;
     const rawTop = canvasRect.top - stageRect.top + (textAnchor.y / canvas.height) * canvasRect.height;
-    const width = Math.min(240, Math.max(140, stageRect.width - 16));
+    const context = canvas.getContext("2d");
+    const fontSize = Math.max(28, strokeSize * 3);
+    let measuredWidth = Math.max(72, textValue.length * 14);
+    if (context && typeof context.measureText === "function" && textValue) {
+      context.save();
+      context.font = `${fontSize}px sans-serif`;
+      measuredWidth = context.measureText(textValue).width * (canvasRect.width / canvas.width);
+      context.restore();
+    }
+    const availableWidth = Math.max(48, stageRect.width - 16);
+    const width = Math.min(availableWidth, Math.max(96, measuredWidth + 28));
     const left = Math.max(8, Math.min(rawLeft, stageRect.width - width - 8));
     const top = Math.max(20, Math.min(rawTop, stageRect.height - 20));
     setTextEditorStyle({ left, top, width });
-  }, [textAnchor]);
+  }, [strokeSize, textAnchor, textValue]);
 
   useEffect(() => {
     if (!textAnchor) return;
@@ -325,10 +405,59 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     };
   }
 
+  function canvasUnitsForScreenPixels(pixels: number) {
+    const canvas = canvasRef.current;
+    if (!canvas) return pixels;
+    const rect = canvas.getBoundingClientRect();
+    return rect.width > 0 ? pixels * (canvas.width / rect.width) : pixels;
+  }
+
+  function beginTextEditing(annotation: Annotation) {
+    if (annotation.type !== "text" || !annotation.start) return;
+    cancelTextEntryRef.current = false;
+    setSelectedId(annotation.id);
+    setTextAnchor(annotation.start);
+    setTextValue(annotation.text || "");
+  }
+
   function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!imageReady) return;
     const point = pointFromEvent(event);
     if (textAnchor) return;
+    const handleTolerance = canvasUnitsForScreenPixels(10);
+    const selected = annotationsRef.current.find((item) => item.id === selectedId);
+    const selectedHandle = selected ? hitResizeHandle(selected, point, handleTolerance) : null;
+    if (selected && selectedHandle) {
+      event.currentTarget.focus({ preventScroll: true });
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      interactionRef.current = {
+        kind: "resize",
+        id: selected.id,
+        start: point,
+        original: selected,
+        before: annotationsRef.current,
+        handle: selectedHandle,
+        changed: false,
+      };
+      return;
+    }
+    const hitTolerance = canvasUnitsForScreenPixels(12);
+    const hit = [...annotationsRef.current].reverse().find((item) => hitTest(item, point, hitTolerance));
+    if (hit) {
+      event.currentTarget.focus({ preventScroll: true });
+      setSelectedId(hit.id);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      interactionRef.current = {
+        kind: "move",
+        id: hit.id,
+        start: point,
+        original: hit,
+        before: annotationsRef.current,
+        changed: false,
+      };
+      return;
+    }
+    setSelectedId(null);
     if (tool === "text") {
       cancelTextEntryRef.current = false;
       setTextAnchor(point);
@@ -336,11 +465,8 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
       return;
     }
     event.currentTarget.focus({ preventScroll: true });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     if (tool === "select") {
-      const hit = [...annotationsRef.current].reverse().find((item) => hitTest(item, point));
-      setSelectedId(hit?.id || null);
-      if (hit) dragRef.current = { id: hit.id, start: point, original: hit, before: annotationsRef.current };
       return;
     }
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -353,9 +479,14 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
 
   function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
     const point = pointFromEvent(event);
-    if (dragRef.current) {
-      const { id, start, original } = dragRef.current;
-      const next = annotationsRef.current.map((item) => item.id === id ? translateAnnotation(original, point.x - start.x, point.y - start.y) : item);
+    if (interactionRef.current) {
+      const interaction = interactionRef.current;
+      const changed = Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) > 0.5;
+      interaction.changed ||= changed;
+      const updated = interaction.kind === "resize" && interaction.handle
+        ? resizeAnnotation(interaction.original, interaction.handle, point)
+        : translateAnnotation(interaction.original, point.x - interaction.start.x, point.y - interaction.start.y);
+      const next = annotationsRef.current.map((item) => item.id === interaction.id ? updated : item);
       setCurrentAnnotations(next);
       return;
     }
@@ -364,14 +495,18 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
   }
 
   function handlePointerUp() {
-    if (dragRef.current) {
-      const before = dragRef.current.before;
-      dragRef.current = null;
-      const nextPast = [...pastRef.current, before];
-      pastRef.current = nextPast;
-      futureRef.current = [];
-      setPast(nextPast);
-      setFuture([]);
+    if (interactionRef.current) {
+      const interaction = interactionRef.current;
+      interactionRef.current = null;
+      if (interaction.changed) {
+        const nextPast = [...pastRef.current, interaction.before];
+        pastRef.current = nextPast;
+        futureRef.current = [];
+        setPast(nextPast);
+        setFuture([]);
+      } else if (interaction.original.type === "text") {
+        beginTextEditing(interaction.original);
+      }
       return;
     }
     if (draft) {
@@ -382,8 +517,26 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
   }
 
   function finishTextEntry() {
+    const editingId = selectedId && annotationsRef.current.find((item) => item.id === selectedId && item.type === "text")?.id;
     if (!cancelTextEntryRef.current && textAnchor && textValue.trim()) {
-      commit([...annotationsRef.current, { id: `${Date.now()}-text`, type: "text", color: strokeColor, size: 2, fontSize: Math.max(28, strokeSize * 3), start: textAnchor, text: textValue.trim() }]);
+      const text = textValue.trim();
+      const fontSize = Math.max(28, strokeSize * 3);
+      const context = canvasRef.current?.getContext("2d");
+      let textWidth = Math.max(fontSize, text.length * fontSize * 0.62);
+      let textHeight = fontSize;
+      if (context && typeof context.measureText === "function") {
+        context.save();
+        context.font = `${fontSize}px sans-serif`;
+        const metrics = context.measureText(text);
+        context.restore();
+        textWidth = Math.max(fontSize, metrics.width);
+        textHeight = Math.max(fontSize, (metrics.actualBoundingBoxAscent || 0) + (metrics.actualBoundingBoxDescent || 0));
+      }
+      if (editingId) {
+        commit(annotationsRef.current.map((item) => item.id === editingId ? { ...item, text, fontSize, textWidth, textHeight, start: textAnchor } : item));
+      } else {
+        commit([...annotationsRef.current, { id: `${Date.now()}-text`, type: "text", color: strokeColor, size: 2, fontSize, textWidth, textHeight, start: textAnchor, text }]);
+      }
     }
     cancelTextEntryRef.current = false;
     setTextAnchor(null);

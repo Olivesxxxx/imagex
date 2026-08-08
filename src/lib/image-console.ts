@@ -86,6 +86,7 @@ export type ImageBackground = (typeof BACKGROUND_OPTIONS)[number];
 export type ImageOutputFormat = (typeof OUTPUT_FORMAT_OPTIONS)[number];
 export type ApiProtocol = "openai" | "private";
 export type ConsoleMode = "generate" | "edit";
+export type GeneratorModeTab = ConsoleMode | "workflow";
 export type GenerationMethod = "gpt-image-2" | "image_generation" | "completions" | "edit";
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
 export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
@@ -239,6 +240,9 @@ export interface ImageRequestRecord {
   cancelRequested?: boolean;
   apiKey?: string;
   editImages?: EditInputImage[];
+  productSuiteTaskId?: string;
+  productSuiteSlotKey?: string;
+  productSuiteVersion?: number;
 }
 
 export interface CachedRequestRecord
@@ -870,6 +874,9 @@ export function prepareRequestForCache(request: ImageRequestRecord, language: Me
     endedAt,
     completedAt: request.completedAt ?? null,
     error,
+    productSuiteTaskId: request.productSuiteTaskId,
+    productSuiteSlotKey: request.productSuiteSlotKey,
+    productSuiteVersion: request.productSuiteVersion,
   };
 }
 
@@ -912,6 +919,9 @@ export function restoreCachedRequest(
     controller: null,
     cancelRequested: false,
     editImages: [],
+    productSuiteTaskId: String(request.productSuiteTaskId || "").trim() || undefined,
+    productSuiteSlotKey: String(request.productSuiteSlotKey || "").trim() || undefined,
+    productSuiteVersion: Number.isFinite(Number(request.productSuiteVersion)) ? Number(request.productSuiteVersion) : undefined,
   };
 }
 

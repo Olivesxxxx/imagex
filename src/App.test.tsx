@@ -10,6 +10,7 @@ import { LanguageProvider, getSeoMetadata, getCopy, type Language } from "@/lib/
 import {
   DEFAULT_STRICT_PROMPT_TEXT,
   DEFAULT_STRICT_PROMPT_TEXT_EN,
+  REQUEST_CACHE_KEY,
   STORAGE_KEY,
   STRICT_PROMPT_FOOTER,
   STRICT_PROMPT_HEADER,
@@ -115,11 +116,14 @@ describe("App", () => {
     const user = userEvent.setup();
     renderApp();
 
-    expect(await screen.findByText(/等待生成/)).toBeInTheDocument();
+    expect(await screen.findByText("未选择请求")).toBeInTheDocument();
     expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "文生图" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "图生图" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "快速上手" }));
+    expect(screen.getByRole("dialog", { name: "快速上手" })).toHaveTextContent("第一次使用时");
+    await user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "编辑原始提示词文案" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /配置/ }));
@@ -143,6 +147,209 @@ describe("App", () => {
     expect(screen.getByLabelText("生图模型")).toHaveValue("gpt-image-2");
     expect(screen.getByRole("button", { name: "测试" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
+
+  test("opens the local product suite task workspace", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(await screen.findByRole("tab", { name: "工作流" }));
+
+    const dialog = await screen.findByRole("region", { name: "产品套图任务" });
+    expect(within(dialog).getByText(/上传一次产品实拍图/)).toBeInTheDocument();
+    await user.click(within(dialog).getAllByRole("button", { name: "新建任务" })[0]);
+    await user.type(within(dialog).getByLabelText("商品名称"), "磁吸无线充电宝");
+    const productDropZone = within(dialog).getByRole("region", { name: "产品实拍参考图" });
+    const droppedProduct = new File(["product"], "product.png", { type: "image/png" });
+    const dataTransfer = { files: [droppedProduct], types: ["Files"], dropEffect: "none" };
+    fireEvent.dragEnter(productDropZone, { dataTransfer });
+    expect(productDropZone).toHaveClass("bg-muted/50");
+    fireEvent.drop(productDropZone, { dataTransfer });
+    expect(within(productDropZone).getByRole("button", { name: "移除图片" })).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue("磁吸无线充电宝")).toBeInTheDocument();
+    expect(within(dialog).getByText("六图槽位")).toBeInTheDocument();
+    expect(within(dialog).getAllByLabelText("提示词模板")).toHaveLength(6);
+    expect(within(dialog).getByText("主图")).toBeInTheDocument();
+    expect(within(dialog).getByText(/点击“生成整套”后/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("tab", { name: "文生图" }));
+    expect(screen.queryByRole("region", { name: "产品套图任务" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "文生图" })).toBeInTheDocument();
+  });
+
+  test("requires a product reference image before submitting a product suite", async () => {
+    const user = userEvent.setup();
+    const toastErrorSpy = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    renderApp();
+
+    await user.click(await screen.findByRole("tab", { name: "工作流" }));
+    const dialog = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(within(dialog).getAllByRole("button", { name: "新建任务" })[0]);
+    await user.click(within(dialog).getByRole("button", { name: "生成整套" }));
+
+    expect(toastErrorSpy).toHaveBeenCalledWith("请先上传产品实拍参考图。");
+    expect(screen.queryByRole("alertdialog", { name: "确认生成整套？" })).not.toBeInTheDocument();
+  });
+
+  test("requires at least one enabled product suite slot", async () => {
+    const user = userEvent.setup();
+    const toastErrorSpy = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    renderApp();
+
+    await user.click(await screen.findByRole("tab", { name: "工作流" }));
+    const dialog = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(within(dialog).getAllByRole("button", { name: "新建任务" })[0]);
+    const fileInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    await user.upload(fileInputs[0], new File(["product"], "product.png", { type: "image/png" }));
+    for (const checkbox of within(dialog).getAllByLabelText("启用此槽位")) {
+      await user.click(checkbox);
+    }
+    await user.click(within(dialog).getByRole("button", { name: "生成整套" }));
+
+    expect(toastErrorSpy).toHaveBeenCalledWith("请至少启用一个套图槽位。");
+    expect(screen.queryByRole("alertdialog", { name: "确认生成整套？" })).not.toBeInTheDocument();
+  });
+
+  test("submits one edit request per enabled suite slot and adds the brand asset only to the hero", async () => {
+    const user = userEvent.setup();
+    let regeneratedHeroRequestId = "";
+    let originalHeroTitle = "";
+    storeSettings({ requestConcurrency: 2, requestIntervalSeconds: 0, n: 9 });
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(
+      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp();
+
+    await user.click(await screen.findByRole("tab", { name: "工作流" }));
+    const dialog = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(within(dialog).getAllByRole("button", { name: "新建任务" })[0]);
+    await user.type(within(dialog).getByLabelText("商品名称"), "磁吸无线充电宝");
+    const fileInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    await user.upload(fileInputs[0], new File(["product"], "product.png", { type: "image/png" }));
+    await user.upload(fileInputs[1], new File(["brand"], "star.png", { type: "image/png" }));
+
+    const slotCheckboxes = within(dialog).getAllByLabelText("启用此槽位");
+    for (const checkbox of slotCheckboxes.slice(2)) {
+      await user.click(checkbox);
+    }
+    await user.click(within(dialog).getByRole("button", { name: "生成整套" }));
+
+    const confirmation = await screen.findByRole("alertdialog", { name: "确认生成整套？" });
+    expect(within(confirmation).getByText(/提交 2 个图生图任务/)).toBeInTheDocument();
+    await user.click(within(confirmation).getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const forms = fetchMock.mock.calls.map((call) => call[1]?.body as FormData);
+    expect(forms.map((form) => form.getAll("image[]").length)).toEqual([2, 1]);
+    expect(forms[0].get("prompt")).toContain("电商主图");
+    expect(forms[1].get("prompt")).toContain("白底图");
+    expect(forms.every((form) => form.get("n") === "1")).toBe(true);
+    await waitFor(() => {
+      const cached = JSON.parse(localStorage.getItem(REQUEST_CACHE_KEY) || "[]") as ImageRequestRecord[];
+      const suiteRequests = cached.filter((request) => request.productSuiteTaskId);
+      expect(suiteRequests).toHaveLength(2);
+      expect(suiteRequests.map((request) => request.productSuiteSlotKey)).toEqual(["hero", "whiteBackground"]);
+      expect(suiteRequests.every((request) => request.productSuiteVersion === 1)).toBe(true);
+      originalHeroTitle = suiteRequests.find((request) => request.productSuiteSlotKey === "hero")?.title || "";
+      expect(originalHeroTitle).not.toBe("");
+    });
+    expect(screen.queryByRole("region", { name: "产品套图任务" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
+      const requestButtons = within(requestList).getAllByRole("button", { name: /查看 .* 的生成结果/ });
+      expect(requestButtons).toHaveLength(2);
+      for (const button of requestButtons) {
+        expect(within(button).getByText("完成")).toBeInTheDocument();
+      }
+    });
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const reopenedDialog = await screen.findByRole("region", { name: "产品套图任务" });
+    expect(within(reopenedDialog).getAllByText(/已完成 · v1/)).toHaveLength(2);
+    expect(within(reopenedDialog).getAllByText("未提交")).toHaveLength(4);
+    await user.click(within(reopenedDialog).getAllByRole("button", { name: "重新生成此槽位" })[0]);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => {
+      const cached = JSON.parse(localStorage.getItem(REQUEST_CACHE_KEY) || "[]") as ImageRequestRecord[];
+      const suiteRequests = cached.filter((request) => request.productSuiteTaskId);
+      expect(suiteRequests.filter((request) => request.productSuiteSlotKey === "hero").map((request) => request.productSuiteVersion)).toEqual([1, 2]);
+      expect(suiteRequests.filter((request) => request.productSuiteSlotKey === "whiteBackground")).toHaveLength(1);
+      const regeneratedHero = suiteRequests.find((request) => request.productSuiteSlotKey === "hero" && request.productSuiteVersion === 2);
+      regeneratedHeroRequestId = regeneratedHero?.id || "";
+      expect(regeneratedHeroRequestId).not.toBe("");
+    });
+    const heroCard = within(reopenedDialog).getByRole("article", { name: "主图" });
+    await waitFor(() => expect(within(heroCard).getByText("已完成 · v2")).toBeInTheDocument());
+    expect(within(heroCard).getByRole("button", { name: "v2 · 已完成" })).toBeInTheDocument();
+    await user.click(within(heroCard).getByRole("button", { name: "v1 · 已完成" }));
+    await user.click(within(heroCard).getByRole("button", { name: "选为最终版本" }));
+    expect(await within(heroCard).findByText("最终 v1")).toBeInTheDocument();
+    await user.click(within(heroCard).getByRole("button", { name: "主图 查看结果" }));
+    expect(screen.queryByRole("region", { name: "产品套图任务" })).not.toBeInTheDocument();
+    expect(await within(screen.getByRole("region", { name: "生成结果" })).findByText(originalHeroTitle)).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const finalDialog = await screen.findByRole("region", { name: "产品套图任务" });
+    expect(await within(finalDialog).findByText("最终 v1")).toBeInTheDocument();
+    const finalHeroCard = within(finalDialog).getByRole("article", { name: "主图" });
+    expect(within(finalHeroCard).getByRole("button", { name: "作为参考图" })).toBeInTheDocument();
+    expect(within(finalHeroCard).getByRole("button", { name: "做标记来重新生图" })).toBeInTheDocument();
+    const suiteDownloadClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:product-suite-download");
+    await user.click(within(finalDialog).getByRole("button", { name: "导出整套" }));
+    await waitFor(() => expect(suiteDownloadClick).toHaveBeenCalled());
+    expect((suiteDownloadClick.mock.instances[0] as HTMLAnchorElement).download).toMatch(/^ImageX-磁吸无线充电宝\.zip$/);
+  });
+
+  test("retries only failed product suite slots", async () => {
+    const user = userEvent.setup();
+    storeSettings({ requestConcurrency: 1, requestIntervalSeconds: 0 });
+    let callCount = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return Promise.resolve(new Response(JSON.stringify({ error: { message: "temporary failure" } }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp();
+
+    await user.click(await screen.findByRole("tab", { name: "工作流" }));
+    const dialog = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(within(dialog).getAllByRole("button", { name: "新建任务" })[0]);
+    const fileInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    await user.upload(fileInputs[0], new File(["product"], "product.png", { type: "image/png" }));
+    for (const checkbox of within(dialog).getAllByLabelText("启用此槽位").slice(2)) {
+      await user.click(checkbox);
+    }
+    await user.click(within(dialog).getByRole("button", { name: "生成整套" }));
+    await user.click(within(await screen.findByRole("alertdialog", { name: "确认生成整套？" })).getByRole("button", { name: "确认提交" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const cached = JSON.parse(localStorage.getItem(REQUEST_CACHE_KEY) || "[]") as ImageRequestRecord[];
+      expect(cached.filter((request) => request.productSuiteSlotKey === "hero")[0]?.status).toBe("error");
+      expect(cached.filter((request) => request.productSuiteSlotKey === "whiteBackground")[0]?.status).toBe("done");
+    });
+
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const reopenedDialog = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(within(reopenedDialog).getByRole("button", { name: "仅重试失败槽位 (1)" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => {
+      const cached = JSON.parse(localStorage.getItem(REQUEST_CACHE_KEY) || "[]") as ImageRequestRecord[];
+      const heroRequests = cached.filter((request) => request.productSuiteSlotKey === "hero");
+      const whiteRequests = cached.filter((request) => request.productSuiteSlotKey === "whiteBackground");
+      expect(heroRequests.map((request) => [request.productSuiteVersion, request.status])).toEqual([[1, "error"], [2, "done"]]);
+      expect(whiteRequests.map((request) => [request.productSuiteVersion, request.status])).toEqual([[1, "done"]]);
+    });
   });
 
   test("fully clears local settings, prompt records, and generated task fixtures after confirmation", async () => {
@@ -321,7 +528,7 @@ describe("App", () => {
     expect(screen.getByDisplayValue("proxy-key")).toBeInTheDocument();
   });
 
-  test("relocalizes dynamic status messages after switching language", async () => {
+  test("relocalizes the result header and model status after switching language", async () => {
     const user = userEvent.setup();
     storeSettings({
       generationsModel: "gpt-image-3",
@@ -337,14 +544,14 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "连接" })).not.toBeInTheDocument());
 
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
-    expect(within(resultPanel).getByText(/^已保存\s*·/)).toBeInTheDocument();
-    expect(within(resultPanel).getByText(/generations 模型 gpt-image-3/)).toBeInTheDocument();
+    expect(within(resultPanel).getByText("未选择请求")).toBeInTheDocument();
+    expect(within(resultPanel).getByText("generations: gpt-image-3")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "切换到 English" }));
 
-    expect(within(resultPanel).getByText(/^Saved\s*·/)).toBeInTheDocument();
-    expect(within(resultPanel).getByText(/Generations model gpt-image-3/)).toBeInTheDocument();
-    expect(within(resultPanel).queryByText("已保存")).not.toBeInTheDocument();
+    const localizedResultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
+    expect(within(localizedResultPanel).getByText("No request selected")).toBeInTheDocument();
+    expect(within(localizedResultPanel).getByText("generations: gpt-image-3")).toBeInTheDocument();
   });
 
   test("clamps request count to the supported range on blur", async () => {
@@ -463,7 +670,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Image edit$/ }));
 
     expect(toastErrorSpy).toHaveBeenCalledWith("Please choose one or more images.");
-    expect(screen.getByText(/Request not created/)).toBeInTheDocument();
+    expect(screen.queryByText(/Request not created/)).not.toBeInTheDocument();
     expect(screen.queryByText("请求未创建")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /View .* result/ })).not.toBeInTheDocument();
   });
@@ -656,6 +863,7 @@ describe("App", () => {
 
   test("blocks generation and edit submissions until API URL and API key are configured", async () => {
     const user = userEvent.setup();
+    const toastErrorSpy = vi.spyOn(toast, "error").mockReturnValue("toast-id");
     storeSettings({ apiKey: "" });
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
@@ -688,8 +896,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByText(/请求未创建/)).toBeInTheDocument();
-    expect(screen.getByText(/请先配置 API URL 和 API Key。/)).toBeInTheDocument();
+    expect(screen.queryByText(/请求未创建/)).not.toBeInTheDocument();
+    expect(toastErrorSpy).toHaveBeenCalledWith("请先配置 API URL 和 API Key。");
     expect(screen.queryByRole("button", { name: /查看 .* 的生成结果/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "图生图" }));
@@ -699,7 +907,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^图片编辑$/ }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByText(/请求未创建/)).toBeInTheDocument();
+    expect(screen.queryByText(/请求未创建/)).not.toBeInTheDocument();
   });
 
   test("limits edit image previews to five thumbnails in a single row", async () => {
@@ -1336,6 +1544,9 @@ describe("App", () => {
 
     const generatedImage = await screen.findByAltText("Generated image 1", { exact: false });
     expect(generatedImage).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+    for (const name of ["做标记来重新生图", "作为参考图", "逆时针旋转图片"]) {
+      expect(screen.getByRole("button", { name })).toHaveClass("!size-9");
+    }
     const rotateImageButton = screen.getByRole("button", { name: "逆时针旋转图片" });
     await user.click(rotateImageButton);
     expect(generatedImage).toHaveStyle({ transform: "rotate(-90deg)" });
@@ -1370,19 +1581,17 @@ describe("App", () => {
     }));
   });
 
-  test("downloads every image from multi-image generation responses", async () => {
+  test("exports multi-image generation responses as a ZIP", async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:request-download");
     storeSettings({ requestIntervalSeconds: 0 });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }, { b64_json: WEBP_BASE64 }] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(
+      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }, { b64_json: WEBP_BASE64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )));
 
     renderApp();
     await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
@@ -1391,11 +1600,9 @@ describe("App", () => {
     expect(await screen.findByAltText("Generated image 2", { exact: false })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下载" }));
 
-    expect(clickSpy).toHaveBeenCalledTimes(2);
-    const downloads = clickSpy.mock.instances.map((anchor) => (anchor as HTMLAnchorElement).download);
-    expect(downloads).toHaveLength(2);
-    expect(downloads[0]).toMatch(/-1\.png$/);
-    expect(downloads[1]).toMatch(/-2\.png$/);
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    const download = (clickSpy.mock.instances[0] as HTMLAnchorElement).download;
+    expect(download).toMatch(/^ImageX-.*\.zip$/);
   });
 
   test("opens remote URL fallback images in a new tab when download cannot use a blob", async () => {
