@@ -127,26 +127,52 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "编辑原始提示词文案" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /配置/ }));
-    expect(screen.getByRole("dialog", { name: "连接" })).toBeInTheDocument();
+    const settingsDialog = screen.getByRole("dialog", { name: "连接" });
+    expect(settingsDialog).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OpenAI 协议" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "私有协议" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重置参数" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完全清除" })).toBeInTheDocument();
-    expect(screen.getByText(/generations \(gpt-image-2\)/)).toBeInTheDocument();
-    expect(screen.getByText(/http:\/\/localhost:8317\/v1\/images\/generations/)).toBeInTheDocument();
-    expect(screen.getByText(/edits \(gpt-image-2\)/)).toBeInTheDocument();
-    expect(screen.getByText(/http:\/\/localhost:8317\/v1\/images\/edits/)).toBeInTheDocument();
-    expect(screen.getByText(/responses \(gpt-5.4-mini\)/)).toBeInTheDocument();
-    expect(screen.getByText(/http:\/\/localhost:8317\/v1\/responses/)).toBeInTheDocument();
-    expect(screen.getByText(/completions \(gpt-5.4-mini\)/)).toBeInTheDocument();
-    expect(screen.getByText(/http:\/\/localhost:8317\/v1\/chat\/completions/)).toBeInTheDocument();
+    await user.click(within(settingsDialog).getByRole("button", { name: "供应商配置" }));
+    const dialog = screen.getByRole("dialog", { name: /供应商配置/ });
+    expect(within(dialog).getByText(/generations \(gpt-image-2\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/http:\/\/localhost:8317\/v1\/images\/generations/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/edits \(gpt-image-2\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/http:\/\/localhost:8317\/v1\/images\/edits/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/responses \(gpt-5.4-mini\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/http:\/\/localhost:8317\/v1\/responses/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/completions \(gpt-5.4-mini\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/http:\/\/localhost:8317\/v1\/chat\/completions/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "私有协议" }));
+    await user.click(within(dialog).getByRole("tab", { name: "私有协议" }));
     expect(screen.getByLabelText("私有服务地址")).toHaveValue("https://video.codepup.cn");
     expect(screen.getByLabelText("x-api-key")).toHaveValue("");
     expect(screen.getByLabelText("生图模型")).toHaveValue("gpt-image-2");
     expect(screen.getByRole("button", { name: "测试" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
+
+  test("switches OpenAI providers and manages a custom provider locally", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByRole("button", { name: /配置/ }));
+    const dialog = screen.getByRole("dialog", { name: "连接" });
+
+    await user.click(within(dialog).getByRole("combobox"));
+    expect(await screen.findByRole("option", { name: "灵速" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Geek" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("option", { name: "Geek" }));
+    await user.click(within(dialog).getByRole("button", { name: "供应商配置" }));
+    expect(within(dialog).getByLabelText("API URL")).toHaveValue("https://hk3.geek2api.com/v1");
+
+    await user.click(within(dialog).getByRole("button", { name: "返回供应商列表" }));
+    await user.click(within(dialog).getByRole("button", { name: /新增供应商/ }));
+    expect(within(dialog).getByLabelText("供应商名称")).toHaveValue("供应商");
+    await user.click(within(dialog).getByRole("button", { name: "删除供应商" }));
+    const confirm = screen.getByRole("alertdialog", { name: "删除供应商？" });
+    await user.click(within(confirm).getByRole("button", { name: "确认删除" }));
+    await user.click(within(dialog).getByRole("button", { name: "供应商配置" }));
+    expect(within(dialog).getByLabelText("供应商名称")).toHaveValue("灵速");
   });
 
   test("opens the local product suite task workspace", async () => {
@@ -267,8 +293,7 @@ describe("App", () => {
     });
     await user.click(screen.getByRole("tab", { name: "工作流" }));
     const reopenedDialog = await screen.findByRole("region", { name: "产品套图任务" });
-    expect(within(reopenedDialog).getAllByText(/已完成 · v1/)).toHaveLength(2);
-    expect(within(reopenedDialog).getAllByText("未提交")).toHaveLength(4);
+    expect(within(reopenedDialog).getAllByText("尚未选定最终版本")).toHaveLength(6);
     await user.click(within(reopenedDialog).getAllByRole("button", { name: "重新生成此槽位" })[0]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     await waitFor(() => {
@@ -281,16 +306,15 @@ describe("App", () => {
       expect(regeneratedHeroRequestId).not.toBe("");
     });
     const heroCard = within(reopenedDialog).getByRole("article", { name: "主图" });
-    await waitFor(() => expect(within(heroCard).getByText("已完成 · v2")).toBeInTheDocument());
+    await waitFor(() => expect(within(heroCard).getByRole("button", { name: "v2 · 已完成" })).toBeInTheDocument());
     expect(within(heroCard).getByRole("button", { name: "v2 · 已完成" })).toBeInTheDocument();
     await user.click(within(heroCard).getByRole("button", { name: "v1 · 已完成" }));
     await user.click(within(heroCard).getByRole("button", { name: "选为最终版本" }));
     expect(await within(heroCard).findByText("最终 v1")).toBeInTheDocument();
-    await user.click(within(heroCard).getByRole("button", { name: "主图 查看结果" }));
-    expect(screen.queryByRole("region", { name: "产品套图任务" })).not.toBeInTheDocument();
+    await user.click(within(heroCard).getByRole("button", { name: "查看结果" }));
+    expect(screen.getByRole("region", { name: "产品套图任务" })).toBeInTheDocument();
     expect(await within(screen.getByRole("region", { name: "生成结果" })).findByText(originalHeroTitle)).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "工作流" }));
-    const finalDialog = await screen.findByRole("region", { name: "产品套图任务" });
+    const finalDialog = screen.getByRole("region", { name: "产品套图任务" });
     expect(await within(finalDialog).findByText("最终 v1")).toBeInTheDocument();
     const finalHeroCard = within(finalDialog).getByRole("article", { name: "主图" });
     expect(within(finalHeroCard).getByRole("button", { name: "作为参考图" })).toBeInTheDocument();
@@ -374,6 +398,61 @@ describe("App", () => {
     expect(localStorage.getItem("ImageX-pinned-prompts")).toBe("[]");
     expect(screen.getByLabelText(/^(提示词|Prompt)$/)).toHaveValue("");
     expect(screen.queryByRole("button", { name: /查看 .* 的生成结果/ })).not.toBeInTheDocument();
+  });
+
+  test("shows product suite development fixtures with versions and failures", async () => {
+    const user = userEvent.setup();
+    storeSettings({ developmentMode: true });
+
+    renderApp();
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+
+    const workflow = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(await within(workflow).findByRole("button", { name: /开发示例/ }));
+    expect((await within(workflow).findAllByRole("button", { name: "v2 · 已完成" })).length).toBeGreaterThanOrEqual(1);
+    expect(within(workflow).getAllByRole("button", { name: "v1 · 失败" }).length).toBeGreaterThanOrEqual(1);
+    const heroSlot = within(workflow).getByRole("article", { name: "主图" });
+    expect(within(heroSlot).getByText("最终 v1")).toBeInTheDocument();
+  });
+
+  test("separates workflow result navigation from large-image preview and shows slot version mapping", async () => {
+    const user = userEvent.setup();
+    storeSettings({ developmentMode: true });
+    renderApp();
+
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const workflow = await screen.findByRole("region", { name: "产品套图任务" });
+    const heroSlot = within(workflow).getByRole("article", { name: "主图" });
+    await user.click(within(heroSlot).getByRole("button", { name: "主图 查看大图" }));
+    expect(screen.getByRole("dialog", { name: "查看大图" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
+    expect(within(requestList).getAllByText("主图 · v1").length).toBeGreaterThan(0);
+    await user.click(within(requestList).getAllByRole("button", { name: /查看大图 .+/ })[0]);
+    expect(screen.getByRole("dialog", { name: "查看大图" })).toBeInTheDocument();
+  });
+
+  test("clearing a suite slot also removes its matching result-list requests after confirmation", async () => {
+    const user = userEvent.setup();
+    storeSettings({ developmentMode: true });
+    renderApp();
+
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const workflow = await screen.findByRole("region", { name: "产品套图任务" });
+    const heroSlot = within(workflow).getByRole("article", { name: "主图" });
+    expect(within(heroSlot).getByRole("button", { name: "v1 · 已完成" })).toBeInTheDocument();
+
+    await user.click(within(heroSlot).getByRole("button", { name: "清空版本记录" }));
+    const confirmation = await screen.findByRole("alertdialog", { name: "清空版本记录？" });
+    expect(within(confirmation).getByText(/右侧生成结果列表/)).toBeInTheDocument();
+    await user.click(within(confirmation).getByRole("button", { name: "确认清空" }));
+
+    await waitFor(() => expect(within(heroSlot).queryByRole("button", { name: "v1 · 已完成" })).not.toBeInTheDocument());
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
+    expect(within(requestList).queryByText("DEV-SUITE-hero-v1")).not.toBeInTheDocument();
+    expect(within(requestList).queryByText("DEV-SUITE-hero-v25")).not.toBeInTheDocument();
+    expect(within(requestList).getByText("DEV-SUITE-whiteBackground-v1")).toBeInTheDocument();
   });
 
   test("uses browser language on first visit when no saved language exists", () => {
@@ -519,6 +598,7 @@ describe("App", () => {
 
     renderApp();
     await user.click(await screen.findByRole("button", { name: /配置/ }));
+    await user.click(screen.getByRole("button", { name: "供应商配置" }));
 
     expect(screen.getByDisplayValue("https://proxy.example.com/openai/v1")).toBeInTheDocument();
     expect(screen.getByLabelText("generations 模型")).toHaveValue("gpt-image-3");
@@ -1396,7 +1476,7 @@ describe("App", () => {
     expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("1024x1024");
   });
 
-  test("keeps failed and completed counts visible without a legacy clear toolbar", async () => {
+  test("keeps failed and completed counts visible with a clear failed action", async () => {
     const user = userEvent.setup();
     storeSettings({ requestIntervalSeconds: 0 });
     const fetchMock = vi
@@ -1428,8 +1508,9 @@ describe("App", () => {
     expect(await screen.findAllByRole("button", { name: /查看 .* 的生成结果/ })).toHaveLength(2);
     expect(screen.getByRole("tab", { name: /已失败\s*1/ })).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: "清空失败" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /已完成\s*1/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "清空失败" }));
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
   });
 
   test("opens a full-size result preview when clicking a generated image", async () => {
@@ -2204,19 +2285,19 @@ describe("App", () => {
     await user.click(within(firstCardRow).getByRole("button", { name: "取消请求" }));
     await waitFor(() => {
       const buttons = within(requestList).getAllByRole("button", { name: /查看 .* 的生成结果/ });
-      expect(buttons[1].parentElement).toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
-      expect(buttons[2].parentElement).not.toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
+      expect(buttons[1].parentElement?.parentElement).toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
+      expect(buttons[2].parentElement?.parentElement).not.toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
     });
 
     await user.click(thirdCard);
     await waitFor(() => {
       const buttons = within(requestList).getAllByRole("button", { name: /查看 .* 的生成结果/ });
-      expect(buttons[0].parentElement).toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
+      expect(buttons[0].parentElement?.parentElement).toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
     });
     await user.click(within(thirdCardRow).getByRole("button", { name: "取消请求" }));
     await waitFor(() => {
       const buttons = within(requestList).getAllByRole("button", { name: /查看 .* 的生成结果/ });
-      expect(buttons[1].parentElement).toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
+      expect(buttons[1].parentElement?.parentElement).toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
     });
     expect(firstCardRow).not.toHaveClass("border-foreground/20", "bg-[oklch(0.985_0.006_255)]");
   });

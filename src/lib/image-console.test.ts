@@ -15,6 +15,7 @@ import {
   cachedRequestRecords,
   createRequestRecords,
   DEFAULTS,
+  DEFAULT_OPENAI_PROVIDERS,
   detectMimeFromBase64,
   extractImages,
   filteredRequestRecords,
@@ -25,6 +26,7 @@ import {
   missingImageOutputMessage,
   imageDownloadName,
   normalizeModeSettings,
+  normalizeSharedSettings,
   normalizeRequestConcurrency,
   normalizeRequestIntervalSeconds,
   prepareImageForDetailCache,
@@ -69,6 +71,18 @@ function requestRecordFixture(overrides: Partial<ImageRequestRecord>): ImageRequ
 }
 
 describe("image console logic", () => {
+  test("provides editable default OpenAI providers and preserves an explicit empty list", () => {
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Geek"]);
+    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(3);
+    expect(normalizeSharedSettings({}).openaiProviders.at(-1)).toMatchObject({ id: "legacy-custom" });
+    expect(normalizeSharedSettings({ openaiProviders: [] }).openaiProviders).toEqual([]);
+    expect(normalizeSharedSettings({
+      openaiProviders: [{ id: "custom", name: "我的接口", baseUrl: "https://example.com/v1", apiKey: "key" }],
+      activeOpenAIProviderId: "custom",
+      baseUrl: "https://example.com/v1",
+    })).toMatchObject({ activeOpenAIProviderId: "custom", baseUrl: "https://example.com/v1" });
+  });
+
   test("uses the private service default while keeping its credential blank", () => {
     expect(DEFAULTS.privateBaseUrl).toBe("https://video.codepup.cn");
     expect(DEFAULTS.privateApiKey).toBe("");

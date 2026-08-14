@@ -58,7 +58,7 @@ function StrictPromptEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
+      <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{copy.promptEditor.title}</DialogTitle>
           <DialogDescription>{copy.promptEditor.description}</DialogDescription>
@@ -229,7 +229,7 @@ function ResponseJsonDialog({
           <DialogTitle>{copy.responseJson.title}</DialogTitle>
           <DialogDescription className="sr-only">{copy.responseJson.description}</DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 min-w-0 overflow-auto">
+        <div className="standard-scrollbar min-h-0 min-w-0 overflow-auto">
           <pre className="min-h-96 max-w-full whitespace-pre-wrap break-all bg-foreground p-5 text-xs leading-relaxed text-background">
             {json}
           </pre>
@@ -256,6 +256,7 @@ export default function App() {
   const [exportZipProgress, setExportZipProgress] = useState<ExportZipProgress>({ current: 0, total: 0 });
   const [imageSelectionMode, setImageSelectionMode] = useState(false);
   const [selectedImageKeys, setSelectedImageKeys] = useState<Set<string>>(new Set());
+  const [previewTarget, setPreviewTarget] = useState<{ requestId: string; imageIndex: number; signal: number } | null>(null);
   const extraModalOpen =
     cancelRequestsDialogOpen ||
     clearFailedDialogOpen ||
@@ -303,9 +304,25 @@ export default function App() {
     void runImageExport(imageKeys);
   }
 
+  function scrollToResultPanel() {
+    window.requestAnimationFrame(() => {
+      document.getElementById("result-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function handleSelectRequest(requestId: string) {
+    consoleState.setSelectedRequestId(requestId);
+    scrollToResultPanel();
+  }
+
+  function handlePreviewRequest(requestId: string, imageIndex = 0) {
+    consoleState.setSelectedRequestId(requestId);
+    setPreviewTarget({ requestId, imageIndex, signal: Date.now() + Math.random() });
+  }
+
   function handleSelectProductSuiteRequest(requestId: string) {
     consoleState.setSelectedRequestId(requestId);
-    setProductSuiteOpen(false);
+    scrollToResultPanel();
   }
 
   function toggleImageSelectionMode() {
@@ -468,11 +485,11 @@ export default function App() {
     <>
       <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
         <div className={productSuiteOpen && !productSuiteHasDraft
-          ? "grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto pr-1"
+          ? "standard-scrollbar grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto"
           : productSuiteOpen
-            ? "flex min-h-0 w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1"
-          : "grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto pr-1"}>
-          <div className={workflowUsesTaskLayout ? "h-[clamp(280px,52dvh,620px)] shrink-0" : "min-h-0"}>
+            ? "standard-scrollbar flex min-h-0 w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto"
+          : "standard-scrollbar grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto"}>
+          <div id="result-panel" className={workflowUsesTaskLayout ? "h-[clamp(280px,52dvh,620px)] shrink-0" : "min-h-0"}>
             <ResultPanel
               selectedRequest={consoleState.selectedRequest}
               selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
@@ -482,6 +499,7 @@ export default function App() {
               reusePrompt={consoleState.reusePrompt}
               onEditImage={handleEditImage}
               onAnnotateImage={handleAnnotateImage}
+              previewTarget={previewTarget}
             />
           </div>
           <div className={workflowUsesTaskLayout
@@ -502,8 +520,10 @@ export default function App() {
                 onSubmitBatch={handleProductSuiteSubmit}
                 onSubmitSlot={handleProductSuiteSlotSubmit}
                 onSelectRequest={handleSelectProductSuiteRequest}
+                onPreviewRequest={handlePreviewRequest}
                 onExportRequest={handleExportRequest}
                 onExportSuite={(task) => consoleState.exportProductSuite(task)}
+                onClearVersions={consoleState.clearProductSuiteVersions}
                 onUseAsReference={(value) => {
                   setProductSuiteOpen(false);
                   handleEditImage(value);
@@ -563,11 +583,13 @@ export default function App() {
           settingsOpen={consoleState.settingsOpen}
           clearDialogOpen={consoleState.clearDialogOpen}
           jsonDialogOpen={consoleState.jsonDialogOpen}
-          onSelectRequest={consoleState.setSelectedRequestId}
+          onSelectRequest={handleSelectRequest}
           onCancelRequest={consoleState.cancelRequest}
           onDeleteRequest={consoleState.deleteRequest}
           onExportRequest={handleExportRequest}
+          onPreviewRequest={handlePreviewRequest}
           onFilterChange={consoleState.setSelectedRequestFilter}
+          onOpenClearFailed={() => setClearFailedDialogOpen(true)}
           onOpenExportZip={handleOpenImageExport}
           imageSelectionMode={imageSelectionMode}
           selectedImageCount={selectedImageKeys.size}

@@ -75,7 +75,7 @@ import {
 import { applyCompletedRequestResult, applyFailedRequestResult, imageSizeBytes } from "@/lib/request-result";
 import { adjacentVisibleRequestId, isActiveRequest, nextQueueRunPlan } from "@/lib/request-queue";
 import { createZipBlob, type ZipFileEntry } from "@/lib/zip";
-import { clearProductSuiteTasks, renderProductSuitePrompt, type ProductSuiteTask } from "@/lib/product-suite";
+import { clearProductSuiteTasks, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, renderProductSuitePrompt, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
 import {
   clearCachedRequests,
   loadCachedRequests,
@@ -104,6 +104,7 @@ export interface ExportZipProgress {
 }
 
 function normalizeSettings(values: AppSettings, defaultStrictPromptText: string): AppSettings {
+  const shared = normalizeSharedSettings(values);
   const strictPromptText = normalizeStrictPromptText(values.strictPromptText);
   const normalizedStrictPromptText = isDefaultStrictPromptText(strictPromptText)
     ? defaultStrictPromptText
@@ -112,6 +113,10 @@ function normalizeSettings(values: AppSettings, defaultStrictPromptText: string)
   return {
     ...DEFAULTS,
     ...values,
+    baseUrl: shared.baseUrl,
+    apiKey: shared.apiKey,
+    openaiProviders: shared.openaiProviders,
+    activeOpenAIProviderId: shared.activeOpenAIProviderId,
     protocol: values.protocol === "private" ? "private" : "openai",
     privateBaseUrl: String(values.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl,
     privateApiKey: String(values.privateApiKey || "").trim(),
@@ -351,6 +356,63 @@ function isDevelopmentRequest(request: Pick<ImageRequestRecord, "id">) {
   return request.id.startsWith(DEVELOPMENT_REQUEST_PREFIX);
 }
 
+function developmentSuiteImage(index: number): GeneratedImage {
+  return {
+    src: `/placeholders/dev-placeholder-${index}.png`,
+    kind: "url",
+    path: `development-product-suite-${index}.png`,
+    mimeType: "image/png",
+    width: 800,
+    height: 600,
+  };
+}
+
+function createDevelopmentSuiteRequest(
+  slotKey: string,
+  version: number,
+  status: "done" | "error",
+  imageIndex: number,
+  offset = 120000,
+): ImageRequestRecord {
+  const createdAt = Date.now() - offset;
+  const image = status === "done" ? developmentSuiteImage(imageIndex) : null;
+  return {
+    id: `${DEVELOPMENT_REQUEST_PREFIX}suite-${slotKey}-v${version}`,
+    title: `DEV-SUITE-${slotKey}-v${version}`,
+    index: version,
+    total: 1,
+    method: "edit",
+    protocol: "openai",
+    endpoint: "development://product-suite-placeholder",
+    payload: {
+      model: "development-product-suite",
+      prompt: `ImageX product suite development fixture: ${slotKey}`,
+      n: 1,
+      size: "800x600",
+    },
+    sourcePrompt: `ImageX product suite development fixture: ${slotKey}`,
+    imageCount: image ? 1 : 0,
+    imageResolution: image ? "800x600" : "",
+    hasCachedDetails: Boolean(image),
+    detailsMissing: false,
+    thumbnail: image,
+    status,
+    createdAt,
+    startedAt: createdAt,
+    endedAt: createdAt + 500,
+    completedAt: status === "done" ? createdAt + 500 : null,
+    images: image ? [image] : [],
+    response: status === "done" ? { developmentMode: true, productSuite: true, imageCount: 1 } : null,
+    error: status === "error" ? "开发示例：模拟生成失败，可点击重试生成新版本。" : "",
+    controller: null,
+    cancelRequested: false,
+    editImages: [],
+    productSuiteTaskId: DEVELOPMENT_PRODUCT_SUITE_TASK_ID,
+    productSuiteSlotKey: slotKey,
+    productSuiteVersion: version,
+  };
+}
+
 function developmentPlaceholderRequests(): ImageRequestRecord[] {
   const now = Date.now();
   const image = (index: number): GeneratedImage => ({
@@ -366,7 +428,7 @@ function developmentPlaceholderRequests(): ImageRequestRecord[] {
     [image(3), image(4)],
   ];
 
-  return groups.map((images, index) => ({
+  const placeholders: ImageRequestRecord[] = groups.map((images, index) => ({
     id: `${DEVELOPMENT_REQUEST_PREFIX}${index + 1}`,
     title: `DEV-PLACEHOLDER-${index + 1}`,
     index: index + 1,
@@ -397,6 +459,40 @@ function developmentPlaceholderRequests(): ImageRequestRecord[] {
     cancelRequested: false,
     editImages: [],
   }));
+
+  return [
+    ...placeholders,
+    createDevelopmentSuiteRequest("hero", 1, "done", 1, 180000),
+    createDevelopmentSuiteRequest("hero", 2, "done", 2, 150000),
+    createDevelopmentSuiteRequest("hero", 3, "done", 3, 135000),
+    createDevelopmentSuiteRequest("hero", 4, "done", 4, 120000),
+    createDevelopmentSuiteRequest("hero", 5, "done", 1, 105000),
+    createDevelopmentSuiteRequest("hero", 6, "done", 2, 90000),
+    createDevelopmentSuiteRequest("hero", 7, "done", 3, 75000),
+    createDevelopmentSuiteRequest("hero", 8, "done", 4, 60000),
+    createDevelopmentSuiteRequest("hero", 9, "done", 1, 55000),
+    createDevelopmentSuiteRequest("hero", 10, "done", 2, 50000),
+    createDevelopmentSuiteRequest("hero", 11, "done", 3, 45000),
+    createDevelopmentSuiteRequest("hero", 12, "done", 4, 40000),
+    createDevelopmentSuiteRequest("hero", 13, "done", 1, 35000),
+    createDevelopmentSuiteRequest("hero", 14, "done", 2, 30000),
+    createDevelopmentSuiteRequest("hero", 15, "done", 3, 28000),
+    createDevelopmentSuiteRequest("hero", 16, "done", 4, 26000),
+    createDevelopmentSuiteRequest("hero", 17, "done", 1, 24000),
+    createDevelopmentSuiteRequest("hero", 18, "done", 2, 22000),
+    createDevelopmentSuiteRequest("hero", 19, "done", 3, 20000),
+    createDevelopmentSuiteRequest("hero", 20, "done", 4, 18000),
+    createDevelopmentSuiteRequest("hero", 21, "done", 1, 16000),
+    createDevelopmentSuiteRequest("hero", 22, "done", 2, 14000),
+    createDevelopmentSuiteRequest("hero", 23, "done", 3, 12000),
+    createDevelopmentSuiteRequest("hero", 24, "done", 4, 10000),
+    createDevelopmentSuiteRequest("hero", 25, "done", 1, 8000),
+    createDevelopmentSuiteRequest("whiteBackground", 1, "done", 3, 165000),
+    createDevelopmentSuiteRequest("detail", 1, "error", 1, 160000),
+    createDevelopmentSuiteRequest("size", 1, "done", 4, 145000),
+    createDevelopmentSuiteRequest("closeUp", 1, "error", 2, 140000),
+    createDevelopmentSuiteRequest("closeUp", 2, "done", 3, 120000),
+  ];
 }
 
 function uniqueZipEntryName(name: string, usedNames: Set<string>) {
@@ -1340,6 +1436,8 @@ export function useImageConsole() {
         key === "protocol" ||
         key === "baseUrl" ||
         key === "apiKey" ||
+        key === "openaiProviders" ||
+        key === "activeOpenAIProviderId" ||
         key === "privateBaseUrl" ||
         key === "privateApiKey" ||
         key === "privateModel" ||
@@ -1353,12 +1451,34 @@ export function useImageConsole() {
         key === "requestConcurrency" ||
         key === "requestIntervalSeconds"
       ) {
+        let nextShared = {
+          ...current.shared,
+          [key]: value,
+        } as SharedSettings;
+
+        if (key === "openaiProviders") {
+          const providers = Array.isArray(value) ? value : [];
+          const active = providers.find((provider) => provider.id === current.shared.activeOpenAIProviderId)
+            || providers[0];
+          nextShared = {
+            ...nextShared,
+            activeOpenAIProviderId: active?.id || "",
+            ...(active ? { baseUrl: active.baseUrl, apiKey: active.apiKey } : {}),
+          };
+        } else if (key === "activeOpenAIProviderId") {
+          const active = current.shared.openaiProviders.find((provider) => provider.id === value);
+          if (active) nextShared = { ...nextShared, baseUrl: active.baseUrl, apiKey: active.apiKey };
+        } else if ((key === "baseUrl" || key === "apiKey") && current.shared.activeOpenAIProviderId) {
+          nextShared.openaiProviders = current.shared.openaiProviders.map((provider) =>
+            provider.id === current.shared.activeOpenAIProviderId
+              ? { ...provider, ...(key === "baseUrl" ? { baseUrl: String(value) } : { apiKey: String(value) }) }
+              : provider,
+          );
+        }
+
         return {
           ...current,
-          shared: {
-            ...current.shared,
-            [key]: value,
-          } as SharedSettings,
+          shared: nextShared,
         };
       }
 
@@ -1374,7 +1494,7 @@ export function useImageConsole() {
         },
       };
     });
-    if (key === "protocol" || key === "baseUrl" || key === "apiKey" || key === "privateBaseUrl" || key === "privateApiKey") {
+    if (key === "protocol" || key === "baseUrl" || key === "apiKey" || key === "openaiProviders" || key === "activeOpenAIProviderId" || key === "privateBaseUrl" || key === "privateApiKey") {
       setTestConnectionStatus({ label: copy.tests.test, tone: "default" });
     }
   }, [copy]);
@@ -1531,6 +1651,25 @@ export function useImageConsole() {
       return false;
     }
 
+    if (DEVELOPMENT_FIXTURES_ENABLED && settingsRef.current.developmentMode && overrides?.productSuite) {
+      const version = overrides.productSuite.version || 1;
+      const fixture = createDevelopmentSuiteRequest(
+        overrides.productSuite.slotKey,
+        version,
+        "done",
+        (version % 4) + 1,
+        30000,
+      );
+      const simulatedRequest: ImageRequestRecord = {
+        ...fixture,
+        id: `${fixture.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      };
+      commitRecords((records) => [...records, simulatedRequest]);
+      setSelectedRequestId((currentId) => currentId || simulatedRequest.id);
+      if (!overrides.silent) toast.success(copy.generator.submissionSuccess(1));
+      return true;
+    }
+
     const editModeSettings = mergeSettingsForMode(
       storedSettingsRef.current.shared,
       storedSettingsRef.current.modeSettingsByMode.edit,
@@ -1580,6 +1719,9 @@ export function useImageConsole() {
       method,
     ).map((request) => ({
       ...request,
+      title: overrides?.productSuite
+        ? `${request.title} · ${productSuiteSlotLabel(overrides.productSuite.slotKey, language === "en" ? "en" : "zh")} · v${overrides.productSuite.version || 1}`
+        : request.title,
       protocol: currentSettings.protocol,
       apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.apiKey,
       editImages: runtimeImages,
@@ -1728,6 +1870,31 @@ export function useImageConsole() {
     commitRecords((records) => records.filter((request) => !requestMatchesFilter(request, "failed")));
     void deleteRequestDetails(removedIds);
   }, [commitRecords, copy]);
+
+  const clearProductSuiteVersions = useCallback((taskId: string, slotKey?: ProductSuiteSlotKey) => {
+    const removedRequests = requestRecordsRef.current.filter((request) =>
+      request.productSuiteTaskId === taskId &&
+      (!slotKey || request.productSuiteSlotKey === slotKey),
+    );
+    if (!removedRequests.length) return;
+
+    const removedIds = new Set(removedRequests.map((request) => request.id));
+    const persistedIds = removedRequests.filter((request) => !isDevelopmentRequest(request)).map((request) => request.id);
+
+    // Clearing a workflow history must also stop matching queued/running requests;
+    // otherwise a late response could recreate a record in the result list.
+    for (const request of removedRequests) {
+      if (!isActiveRequest(request)) continue;
+      cancelRequestedRef.current.add(request.id);
+      controllersRef.current.get(request.id)?.abort();
+    }
+    clearQueueTimer();
+    setSelectedRequestDetailLoadingId(null);
+    commitRecords((records) => records.filter((request) => !removedIds.has(request.id)));
+    setSelectedRequestId((current) => current && removedIds.has(current) ? null : current);
+    if (persistedIds.length) void deleteRequestDetails(persistedIds);
+    scheduleQueueRef.current();
+  }, [clearQueueTimer, commitRecords]);
 
   const deleteRequest = useCallback(
     (requestId: string) => {
@@ -1957,6 +2124,7 @@ export function useImageConsole() {
     clearAllData,
     clearCompletedRequests,
     clearFailedRequests,
+    clearProductSuiteVersions,
     exportCompletedImagesZip,
     exportProductSuite,
     reusePrompt,

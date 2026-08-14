@@ -342,7 +342,7 @@ export function QuickStartDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
+        <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{quickStart.title}</DialogTitle>
           <DialogDescription>{quickStart.description}</DialogDescription>
@@ -611,7 +611,7 @@ export function GeneratorPanel({
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
           <label htmlFor="prompt" className={panelLabelClassName}>{copy.generator.promptLabel}</label>
-          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className="min-h-32 flex-1 resize-none overflow-y-auto" />
+          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className="standard-scrollbar min-h-32 flex-1 resize-none overflow-y-auto" />
         </div>
 
         {mode === "edit" ? (

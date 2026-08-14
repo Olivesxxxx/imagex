@@ -214,6 +214,19 @@ describe("storage", () => {
     expect(loadSettings().shared.privateApiKey).toBe("private-test-key");
   });
 
+  test("applies remember-key preference to every OpenAI provider", () => {
+    const settings = structuredClone(DEFAULT_STORED_SETTINGS);
+    settings.shared.openaiProviders[0].apiKey = "provider-secret";
+    settings.shared.rememberKey = false;
+
+    saveSettings(settings);
+    expect(loadSettings().shared.openaiProviders[0]?.apiKey).toBe("");
+
+    settings.shared.rememberKey = true;
+    saveSettings(settings);
+    expect(loadSettings().shared.openaiProviders[0]?.apiKey).toBe("provider-secret");
+  });
+
   test("persists product suite tasks in browser storage", async () => {
     const task = createProductSuiteTask(1000);
     expect(task.info.consistencyRequirement).toBe("");

@@ -88,6 +88,16 @@ export type ApiProtocol = "openai" | "private";
 export type ConsoleMode = "generate" | "edit";
 export type GeneratorModeTab = ConsoleMode | "workflow";
 export type GenerationMethod = "gpt-image-2" | "image_generation" | "completions" | "edit";
+export interface OpenAIProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+}
+export const DEFAULT_OPENAI_PROVIDERS: OpenAIProvider[] = [
+  { id: "lingsu", name: "灵速", baseUrl: "https://lingsu.xyz/v1", apiKey: "" },
+  { id: "geek", name: "Geek", baseUrl: "https://hk3.geek2api.com/v1", apiKey: "" },
+];
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
 export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
 export type RequestStatus = KnownRequestStatus | (string & {});
@@ -98,6 +108,8 @@ export interface AppSettings {
   protocol: ApiProtocol;
   baseUrl: string;
   apiKey: string;
+  openaiProviders: OpenAIProvider[];
+  activeOpenAIProviderId: string;
   privateBaseUrl: string;
   privateApiKey: string;
   privateModel: string;
@@ -123,6 +135,8 @@ export type SharedSettings = Pick<
   | "protocol"
   | "baseUrl"
   | "apiKey"
+  | "openaiProviders"
+  | "activeOpenAIProviderId"
   | "privateBaseUrl"
   | "privateApiKey"
   | "privateModel"
@@ -257,6 +271,8 @@ export const DEFAULTS: AppSettings = {
   protocol: "openai",
   baseUrl: DEFAULT_BASE_URL,
   apiKey: "",
+  openaiProviders: DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider })),
+  activeOpenAIProviderId: "",
   privateBaseUrl: "https://video.codepup.cn",
   privateApiKey: "",
   privateModel: "gpt-image-2",
@@ -285,6 +301,8 @@ export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
   protocol: DEFAULTS.protocol,
   baseUrl: DEFAULTS.baseUrl,
   apiKey: DEFAULTS.apiKey,
+  openaiProviders: DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider })),
+  activeOpenAIProviderId: "",
   privateBaseUrl: DEFAULTS.privateBaseUrl,
   privateApiKey: DEFAULTS.privateApiKey,
   privateModel: DEFAULTS.privateModel,
@@ -369,11 +387,28 @@ export function normalizeStrictPromptText(value: unknown) {
 
 export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
   const source = isSettingsRecord(values) ? values : {};
+  const hasProviders = Object.prototype.hasOwnProperty.call(source, "openaiProviders");
+  const currentBaseUrl = String(source.baseUrl || DEFAULTS.baseUrl).trim() || DEFAULTS.baseUrl;
+  const openaiProviders = normalizeOpenAIProviders(source.openaiProviders);
+  if (!hasProviders && !openaiProviders.some((provider) => provider.baseUrl === currentBaseUrl)) {
+    openaiProviders.push({
+      id: "legacy-custom",
+      name: "自定义供应商",
+      baseUrl: currentBaseUrl,
+      apiKey: String(source.apiKey || "").trim(),
+    });
+  }
+  const requestedActiveId = String(source.activeOpenAIProviderId || "").trim();
+  const matchedProvider = openaiProviders.find((provider) => provider.baseUrl === currentBaseUrl);
   return {
     ...DEFAULT_SHARED_SETTINGS,
     protocol: source.protocol === "private" ? "private" : "openai",
-    baseUrl: String(source.baseUrl || DEFAULTS.baseUrl).trim() || DEFAULTS.baseUrl,
+    baseUrl: currentBaseUrl,
     apiKey: String(source.apiKey || "").trim(),
+    openaiProviders,
+    activeOpenAIProviderId: requestedActiveId && openaiProviders.some((provider) => provider.id === requestedActiveId)
+      ? requestedActiveId
+      : matchedProvider?.id || "",
     privateBaseUrl: String(source.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl,
     privateApiKey: String(source.privateApiKey || "").trim(),
     privateModel: String(source.privateModel || DEFAULTS.privateModel).trim() || DEFAULTS.privateModel,
@@ -564,6 +599,25 @@ export function buildPayload(
     output_format: values.outputFormat || DEFAULTS.outputFormat,
     moderation: "low",
   };
+}
+
+function normalizeOpenAIProviders(value: unknown): OpenAIProvider[] {
+  if (!Array.isArray(value)) return DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider }));
+
+  const seen = new Set<string>();
+  return value.reduce<OpenAIProvider[]>((providers, item, index) => {
+    if (!isSettingsRecord(item)) return providers;
+    const rawId = String(item.id || `provider-${index + 1}`).trim();
+    const id = rawId && !seen.has(rawId) ? rawId : `provider-${index + 1}-${providers.length + 1}`;
+    seen.add(id);
+    providers.push({
+      id,
+      name: String(item.name || "未命名供应商").trim() || "未命名供应商",
+      baseUrl: String(item.baseUrl || "").trim(),
+      apiKey: String(item.apiKey || "").trim(),
+    });
+    return providers;
+  }, []);
 }
 
 function privateImageDimensions(size: ImageSize | string | undefined) {

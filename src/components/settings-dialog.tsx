@@ -1,4 +1,4 @@
-import { CheckCircle2Icon, Loader2Icon, RotateCcwIcon, Trash2Icon } from "lucide-react";
+import { ArrowLeftIcon, CheckCircle2Icon, Loader2Icon, PlusIcon, RotateCcwIcon, Settings2Icon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -11,6 +11,7 @@ import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segment
 import { Tabs } from "@/components/ui/tabs";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
 import { DEFAULTS, DEVELOPMENT_FIXTURES_ENABLED, type AppSettings } from "@/lib/image-console";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
 
 export interface SettingsDialogProps {
@@ -40,7 +41,34 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const { copy } = useI18n();
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
+  const [providerDeleteConfirmOpen, setProviderDeleteConfirmOpen] = useState(false);
+  const [providerConfigId, setProviderConfigId] = useState<string | null>(null);
   const protocolView = settings.protocol;
+  const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId) || null;
+  const providerConfig = settings.openaiProviders.find((provider) => provider.id === providerConfigId) || null;
+  const providerListView = protocolView === "openai" && !providerConfig;
+
+  function updateProviderName(name: string) {
+    if (!activeProvider) return;
+    updateSettings("openaiProviders", settings.openaiProviders.map((provider) =>
+      provider.id === activeProvider.id ? { ...provider, name } : provider,
+    ));
+  }
+
+  function addProvider() {
+    const id = `provider-${Date.now()}`;
+    const providers = [...settings.openaiProviders, { id, name: copy.settings.provider, baseUrl: "", apiKey: "" }];
+    updateSettings("openaiProviders", providers);
+    updateSettings("activeOpenAIProviderId", id);
+    setProviderConfigId(id);
+  }
+
+  function deleteProvider() {
+    if (!activeProvider) return;
+    updateSettings("openaiProviders", settings.openaiProviders.filter((provider) => provider.id !== activeProvider.id));
+    setProviderConfigId(null);
+    setProviderDeleteConfirmOpen(false);
+  }
 
   function handleSettingsOpenChange(open: boolean) {
     setSettingsOpen(open);
@@ -49,20 +77,70 @@ export function SettingsDialog({
   return (
     <>
       <Dialog open={settingsOpen} onOpenChange={handleSettingsOpenChange}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-xl">
+        <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{copy.settings.title}</DialogTitle>
-            <DialogDescription>{copy.settings.description}</DialogDescription>
+            <div className="flex items-start gap-2">
+              {providerConfig ? (
+                <Button type="button" variant="ghost" size="icon" className="-ml-2 shrink-0" aria-label={copy.settings.backToProviders} title={copy.settings.backToProviders} onClick={() => setProviderConfigId(null)}>
+                  <ArrowLeftIcon />
+                </Button>
+              ) : null}
+              <div className="min-w-0">
+                <DialogTitle>{providerConfig ? `${copy.settings.providerConfiguration}: ${providerConfig.name}` : copy.settings.title}</DialogTitle>
+                <DialogDescription>{providerConfig ? copy.settings.providerConfigurationDescription : copy.settings.description}</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
-          <Tabs value={protocolView} onValueChange={(value) => updateSettings("protocol", value as AppSettings["protocol"])}>
+          <Tabs value={protocolView} onValueChange={(value) => { setProviderConfigId(null); updateSettings("protocol", value as AppSettings["protocol"]); }}>
             <SegmentedTabsList className="grid w-full grid-cols-2">
               <SegmentedTabsTrigger value="openai">{copy.settings.openAiProtocol}</SegmentedTabsTrigger>
               <SegmentedTabsTrigger value="private">{copy.settings.privateProtocol}</SegmentedTabsTrigger>
             </SegmentedTabsList>
           </Tabs>
 
-          {protocolView === "openai" ? <FieldGroup>
+          {protocolView === "openai" && !providerConfig ? <FieldGroup>
+            <FieldSet className="gap-3 rounded-md border p-3">
+              <FieldTitle>{copy.settings.provider}</FieldTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={settings.activeOpenAIProviderId || undefined}
+                  disabled={!settings.openaiProviders.length}
+                  onValueChange={(value) => {
+                    updateSettings("activeOpenAIProviderId", value);
+                  }}
+                >
+                  <SelectTrigger className="min-w-0 flex-1" aria-label={copy.settings.providerPlaceholder}>
+                    <SelectValue placeholder={copy.settings.providerPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {settings.openaiProviders.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>{provider.name || provider.baseUrl || copy.settings.provider}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" size="sm" onClick={addProvider}>
+                  <PlusIcon data-icon="inline-start" />
+                  {copy.settings.addProvider}
+                </Button>
+                <Button type="button" variant="ghost" size="icon" aria-label={copy.settings.providerConfiguration} title={copy.settings.providerConfiguration} disabled={!activeProvider} onClick={() => setProviderConfigId(activeProvider?.id || null)}>
+                  <Settings2Icon />
+                </Button>
+              </div>
+              {!settings.openaiProviders.length ? <p className="text-xs text-muted-foreground">{copy.settings.noProviders}</p> : null}
+            </FieldSet>
+          </FieldGroup> : protocolView === "openai" && providerConfig ? <FieldGroup>
+            <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="min-w-0 text-sm font-medium">{providerConfig.name || copy.settings.provider}</div>
+              <Button type="button" variant="destructive" size="sm" onClick={() => setProviderDeleteConfirmOpen(true)}>
+                <Trash2Icon data-icon="inline-start" />
+                {copy.settings.deleteProvider}
+              </Button>
+            </div>
+            <Field>
+              <FieldLabel htmlFor="providerName">{copy.settings.providerName}</FieldLabel>
+              <Input id="providerName" value={providerConfig.name} onChange={(event) => updateProviderName(event.target.value)} />
+            </Field>
             <Field>
               <FieldLabel htmlFor="baseUrl">{copy.settings.apiUrl}</FieldLabel>
               <Input
@@ -230,16 +308,18 @@ export function SettingsDialog({
           )}
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" onClick={resetSettings}>
-                <RotateCcwIcon data-icon="inline-start" />
-                {copy.settings.reset}
-              </Button>
-              <Button type="button" variant="destructive" onClick={() => setClearAllConfirmOpen(true)}>
-                <Trash2Icon data-icon="inline-start" />
-                {copy.settings.clearAllData}
-              </Button>
-            </div>
+            {!providerConfig ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" onClick={resetSettings}>
+                  <RotateCcwIcon data-icon="inline-start" />
+                  {copy.settings.reset}
+                </Button>
+                <Button type="button" variant="destructive" onClick={() => setClearAllConfirmOpen(true)}>
+                  <Trash2Icon data-icon="inline-start" />
+                  {copy.settings.clearAllData}
+                </Button>
+              </div>
+            ) : <span />}
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
@@ -268,6 +348,23 @@ export function SettingsDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={providerDeleteConfirmOpen} onOpenChange={setProviderDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{copy.settings.deleteProviderTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{copy.settings.deleteProviderDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{copy.clearDialog.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20"
+              onClick={deleteProvider}
+            >
+              {copy.settings.confirmDeleteProvider}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={clearAllConfirmOpen} onOpenChange={setClearAllConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

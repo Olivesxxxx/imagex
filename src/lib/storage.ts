@@ -227,12 +227,18 @@ export function saveSettings(values: StoredConsoleSettings) {
     ...normalized.shared,
     apiKey: normalized.shared.rememberKey ? normalized.shared.apiKey : "",
     privateApiKey: normalized.shared.rememberKey ? normalized.shared.privateApiKey : "",
+    openaiProviders: normalized.shared.openaiProviders.map((provider) => ({
+      ...provider,
+      apiKey: normalized.shared.rememberKey ? provider.apiKey : "",
+    })),
   };
   const persisted: Record<string, unknown> = {
     shared: persistedShared,
     modeSettingsByMode: normalized.modeSettingsByMode,
     protocol: normalized.shared.protocol,
     baseUrl: normalized.shared.baseUrl,
+    openaiProviders: persistedShared.openaiProviders,
+    activeOpenAIProviderId: normalized.shared.activeOpenAIProviderId,
     privateBaseUrl: normalized.shared.privateBaseUrl,
     privateModel: normalized.shared.privateModel,
     generationsModel: normalized.shared.generationsModel,

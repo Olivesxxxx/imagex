@@ -1,4 +1,5 @@
 import { Toaster } from "sonner";
+import { useEffect } from "react";
 
 import App from "@/App";
 import { SeoContent } from "@/components/seo-content";
@@ -14,10 +15,37 @@ function SkipToContent() {
   );
 }
 
+function AutoHideScrollbars() {
+  useEffect(() => {
+    const timers = new WeakMap<HTMLElement, number>();
+
+    function handleScroll(event: Event) {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const container = target.closest<HTMLElement>(".standard-scrollbar");
+      if (!container) return;
+
+      container.classList.add("is-scrolling");
+      const previousTimer = timers.get(container);
+      if (previousTimer !== undefined) window.clearTimeout(previousTimer);
+      timers.set(container, window.setTimeout(() => {
+        container.classList.remove("is-scrolling");
+        timers.delete(container);
+      }, 700));
+    }
+
+    document.addEventListener("scroll", handleScroll, true);
+    return () => document.removeEventListener("scroll", handleScroll, true);
+  }, []);
+
+  return null;
+}
+
 export function AppRoot({ initialLanguage }: { initialLanguage?: Language } = {}) {
   return (
     <TooltipProvider>
       <LanguageProvider initialLanguage={initialLanguage}>
+        <AutoHideScrollbars />
         <SkipToContent />
         <SeoContent />
         <App />

@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segmented-tabs";
 import { Tabs } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -72,6 +71,7 @@ function RequestRow({
   onDeleteRequest,
   onSelect,
   onExportRequest,
+  onPreviewRequest,
   imageSelectionMode,
   selectedImageKeys,
   onToggleImageSelection,
@@ -85,6 +85,7 @@ function RequestRow({
   onDeleteRequest?: (id: string) => void;
   onSelect: () => void;
   onExportRequest: (id: string) => void;
+  onPreviewRequest: (id: string) => void;
   imageSelectionMode: boolean;
   selectedImageKeys: ReadonlySet<string>;
   onToggleImageSelection: (key: string) => void;
@@ -92,6 +93,9 @@ function RequestRow({
   const { copy, language } = useI18n();
   const { pendingKey: pendingDeleteRequestId, requestConfirmation } = useTimedConfirmation(DELETE_CONFIRMATION_TIMEOUT_MS);
   const requestSummary = `${generationMethodDisplayName(request.method)} · ${payloadSizeText}`;
+  const productSuiteAssociation = request.productSuiteSlotKey && request.productSuiteVersion
+    ? `${copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
+    : "";
   const requestDetail =
     request.error || (request.status === "done" ? formatCompletionTime(request.completedAt, language === "en" ? "en" : "zh") : "");
   const thumbnail = request.thumbnail || null;
@@ -116,19 +120,21 @@ function RequestRow({
   return (
     <div
       className={cn(
-        "relative grid min-h-22 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow]",
+        "relative grid min-h-22 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow]",
         "hover:border-foreground/15 hover:bg-muted/40",
         selected && "border-foreground/20 bg-[oklch(0.985_0.006_255)]",
       )}
     >
-      <button
-        type="button"
-        className="grid min-w-0 cursor-pointer grid-cols-[6rem_minmax(0,1fr)] items-start gap-3 text-left focus:outline-none"
-        ref={buttonRef}
-        onClick={onSelect}
-        aria-label={language === "en" ? `View ${request.title} result` : `查看 ${request.title} 的生成结果`}
-      >
-        <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30">
+      <div className="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3">
+        <button
+          type="button"
+          className="image-checkerboard flex size-24 shrink-0 cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (request.status === "done" && !request.detailsMissing && thumbnail) onPreviewRequest(request.id);
+          }}
+          aria-label={`${copy.requestCardStatus.previewImage} ${request.title}`}
+        >
           {thumbnail ? (
             <img
               src={thumbnail.src}
@@ -141,8 +147,14 @@ function RequestRow({
           ) : (
             <ImageIcon aria-hidden="true" className="size-6 text-muted-foreground" />
           )}
-        </span>
-        <span className="flex min-w-0 flex-col gap-1 overflow-hidden py-0.5">
+        </button>
+        <button
+          type="button"
+          className="flex min-w-0 flex-col gap-1 overflow-hidden py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          ref={buttonRef}
+          onClick={onSelect}
+          aria-label={language === "en" ? `View ${request.title} result` : `查看 ${request.title} 的生成结果`}
+        >
           <span className="flex min-w-0 items-center gap-2">
             <Badge variant={statusVariant(request.status)} className={statusBadgeClassName(request.status)}>
               {requestStatusDisplayLabel(copy.requestStatusLabels, request.status)}
@@ -150,6 +162,7 @@ function RequestRow({
             <strong className="min-w-0 truncate text-sm font-semibold">{request.title}</strong>
           </span>
           <span className="block min-w-0 truncate text-xs font-medium text-muted-foreground">{timing}</span>
+          {productSuiteAssociation ? <span className="block min-w-0 truncate text-xs font-semibold text-foreground/70">{productSuiteAssociation}</span> : null}
           <span className="block min-w-0 truncate text-xs text-muted-foreground" title={requestSummary}>
             {requestSummary}
           </span>
@@ -158,9 +171,57 @@ function RequestRow({
               {requestDetail}
             </span>
           ) : null}
+        </button>
+        <span className="flex h-full shrink-0 flex-col items-end justify-between gap-2 pt-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className={cn(
+                  "shrink-0 text-muted-foreground hover:text-foreground",
+                  isConfirmingDelete && "text-destructive hover:text-destructive",
+                )}
+                aria-label={actionAriaLabel}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (isActive) {
+                    onCancelRequest?.(request.id);
+                    return;
+                  }
+                  if (!requestConfirmation(request.id)) return;
+                  onDeleteRequest?.(request.id);
+                }}
+              >
+                <ActionIcon data-icon="inline-start" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{actionLabel}</TooltipContent>
+          </Tooltip>
+          {request.status === "done" && !request.detailsMissing && thumbnail ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label={copy.requestCardStatus.exportImage}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onExportRequest(request.id);
+                  }}
+                >
+                  <DownloadIcon data-icon="inline-start" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{copy.requestCardStatus.exportImage}</TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
-      </button>
-      {imageSelectionMode && request.status === "done" && !request.detailsMissing && thumbnail ? (
+      </div>
+      {imageSelectionMode && ((request.status === "done" && !request.detailsMissing && thumbnail) || request.status === "error" || request.status === "canceled") ? (
         <label
           className="absolute top-3 left-3 z-20 flex cursor-pointer items-center"
           onClick={(event) => event.stopPropagation()}
@@ -173,54 +234,6 @@ function RequestRow({
           />
         </label>
       ) : null}
-      <span className="flex h-full shrink-0 flex-col items-end justify-between gap-2 pt-0.5">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className={cn(
-                "shrink-0 text-muted-foreground hover:text-foreground",
-                isConfirmingDelete && "text-destructive hover:text-destructive",
-              )}
-              aria-label={actionAriaLabel}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (isActive) {
-                  onCancelRequest?.(request.id);
-                  return;
-                }
-                if (!requestConfirmation(request.id)) return;
-                onDeleteRequest?.(request.id);
-              }}
-            >
-              <ActionIcon data-icon="inline-start" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{actionLabel}</TooltipContent>
-        </Tooltip>
-        {request.status === "done" && !request.detailsMissing && thumbnail ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="shrink-0 text-muted-foreground hover:text-foreground"
-                aria-label={copy.requestCardStatus.exportImage}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onExportRequest(request.id);
-                }}
-              >
-                <DownloadIcon data-icon="inline-start" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copy.requestCardStatus.exportImage}</TooltipContent>
-          </Tooltip>
-        ) : null}
-      </span>
     </div>
   );
 }
@@ -239,7 +252,9 @@ export function RequestListPanel({
   onCancelRequest,
   onDeleteRequest,
   onExportRequest,
+  onPreviewRequest,
   onFilterChange,
+  onOpenClearFailed,
   onOpenExportZip,
   imageSelectionMode,
   selectedImageCount,
@@ -260,7 +275,9 @@ export function RequestListPanel({
   onCancelRequest: (id: string) => void;
   onDeleteRequest: (id: string) => void;
   onExportRequest: (id: string) => void;
+  onPreviewRequest: (id: string) => void;
   onFilterChange: (filter: RequestFilter) => void;
+  onOpenClearFailed: () => void;
   onOpenExportZip: () => void;
   imageSelectionMode: boolean;
   selectedImageCount: number;
@@ -270,7 +287,6 @@ export function RequestListPanel({
 }) {
   const { copy, language } = useI18n();
   const hasRequests = requestCounts.all > 0;
-  const hasDoneRequests = requestCounts.done > 0;
   const requestButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const [deleteSelectionDialogOpen, setDeleteSelectionDialogOpen] = useState(false);
   const selectedRequestIds = Array.from(
@@ -320,26 +336,44 @@ export function RequestListPanel({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <strong className="shrink-0 text-sm leading-none">{copy.requestList}</strong>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={imageSelectionMode ? "secondary" : "outline"}
-              size="sm"
-              className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-              disabled={!hasDoneRequests}
-              onClick={onToggleImageSelectionMode}
-            >
-              <ListChecksIcon data-icon="inline-start" />
-              {imageSelectionMode
-                ? selectedImageCount > 0
-                  ? copy.imageSelection.selected(selectedImageCount)
-                  : copy.imageSelection.exit
-                : copy.imageSelection.enter}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{imageSelectionMode ? copy.imageSelection.exit : copy.imageSelection.enter}</TooltipContent>
-        </Tooltip>
+        <div className="flex shrink-0 items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                disabled={requestCounts.failed === 0}
+                onClick={onOpenClearFailed}
+              >
+                <Trash2Icon data-icon="inline-start" />
+                {copy.clearFailed}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{copy.requestListTooltips.clearFailed}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={imageSelectionMode ? "secondary" : "outline"}
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                disabled={!hasRequests}
+                onClick={onToggleImageSelectionMode}
+              >
+                <ListChecksIcon data-icon="inline-start" />
+                {imageSelectionMode
+                  ? selectedImageCount > 0
+                    ? copy.imageSelection.selected(selectedImageCount)
+                    : copy.imageSelection.exit
+                  : copy.imageSelection.enter}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{imageSelectionMode ? copy.imageSelection.exit : copy.imageSelection.enter}</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <div className="px-3 py-2">
@@ -355,8 +389,9 @@ export function RequestListPanel({
         </Tabs>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className={cn("grid gap-2 p-3", imageSelectionMode && selectedImageCount > 0 && "pb-24")}>
+      <div className="min-h-0 flex-1 py-3">
+        <div className="standard-scrollbar request-list-scroll h-full overflow-y-auto overscroll-contain">
+          <div className={cn("grid gap-2 pl-3 pr-0", imageSelectionMode && selectedImageCount > 0 && "pb-24")}>
           {!hasRequests ? (
             <Empty className="min-h-40 border">
               <EmptyHeader>
@@ -387,6 +422,7 @@ export function RequestListPanel({
                   onSelectRequest(request.id);
                 }}
                 onExportRequest={onExportRequest}
+                onPreviewRequest={onPreviewRequest}
                 imageSelectionMode={imageSelectionMode}
                 selectedImageKeys={selectedImageKeys}
                 onToggleImageSelection={onToggleImageSelection}
@@ -402,8 +438,9 @@ export function RequestListPanel({
               </EmptyHeader>
             </Empty>
           )}
+          </div>
         </div>
-      </ScrollArea>
+      </div>
 
       {imageSelectionMode && selectedImageCount > 0 ? (
         <div className="absolute right-3 bottom-3 left-3 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur">

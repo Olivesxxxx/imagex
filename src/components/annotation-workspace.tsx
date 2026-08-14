@@ -664,7 +664,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label={copy.annotation.deleteSelected} disabled={!selectedId} onClick={deleteSelected}><Trash2Icon /></Button></TooltipTrigger><TooltipContent side="right">{copy.annotation.deleteSelected}</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label={copy.annotation.clear} disabled={!annotations.length} onClick={clearAnnotations}><EraserIcon /></Button></TooltipTrigger><TooltipContent side="right">{copy.annotation.clear}</TooltipContent></Tooltip>
           </div>
-          <div ref={canvasStageRef} className="image-checkerboard relative flex min-h-0 min-w-0 items-center justify-center overflow-auto rounded-md border p-2">
+          <div ref={canvasStageRef} className="standard-scrollbar image-checkerboard relative flex min-h-0 min-w-0 items-center justify-center overflow-auto rounded-md border p-2">
             {imageReady ? (
               <div className="relative flex max-h-full max-w-full items-center justify-center">
                 <canvas ref={canvasRef} tabIndex={0} aria-label={copy.annotation.canvasLabel} className="block h-auto max-h-[58vh] max-w-full touch-none object-contain focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} />
@@ -693,7 +693,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
               />
             ) : null}
           </div>
-          <div className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto rounded-md border bg-card p-3">
+          <div className="standard-scrollbar flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto rounded-md border bg-card p-3">
             <div className="grid gap-1">
               <label htmlFor="annotation-size" className="text-xs font-medium text-muted-foreground">{copy.annotation.strokeSize}</label>
               <Input id="annotation-size" type="number" min={2} max={48} value={strokeSize} onChange={(event) => setStrokeSize(Math.min(48, Math.max(2, Number(event.target.value) || 2)))} />
@@ -711,7 +711,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
             </div>
             <div className="grid gap-1">
               <span className="text-xs font-medium text-muted-foreground">{copy.annotation.originalPrompt}</span>
-              <p className="max-h-28 overflow-auto rounded-md border bg-muted/20 p-2 text-xs leading-relaxed text-muted-foreground">{originalPrompt || copy.annotation.noPrompt}</p>
+              <p className="standard-scrollbar max-h-28 overflow-auto rounded-md border bg-muted/20 p-2 text-xs leading-relaxed text-muted-foreground">{originalPrompt || copy.annotation.noPrompt}</p>
             </div>
             {exportError ? <p role="alert" className="text-xs font-medium text-destructive">{exportError}</p> : null}
           </div>

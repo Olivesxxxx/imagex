@@ -405,11 +405,18 @@ type Copy = {
     failedSlotsResubmitted: (count: number) => string;
     versionHistory: string;
     viewingVersion: (version: number) => string;
-    finalVersionBadge: (version: number) => string;
-    selectFinalVersion: string;
-    finalVersion: string;
-    finalVersionSelected: (version: number) => string;
-    exportSuite: string;
+     finalVersionBadge: (version: number) => string;
+     finalVersionUnselected: string;
+     selectFinalVersion: string;
+     finalVersion: string;
+     finalVersionSelected: (version: number) => string;
+     clearVersionHistory: string;
+     clearAllVersionHistory: string;
+     clearVersionsTitle: string;
+     clearVersionsDescription: string;
+     clearVersionsConfirm: string;
+     versionsCleared: string;
+     exportSuite: string;
     exportingSuite: string;
     exportSuiteSuccess: (count: number) => string;
     exportSuiteFailed: string;
@@ -450,6 +457,18 @@ type Copy = {
     description: string;
     apiUrl: string;
     apiKey: string;
+    provider: string;
+    providerPlaceholder: string;
+    addProvider: string;
+    deleteProvider: string;
+    deleteProviderTitle: string;
+    deleteProviderDescription: string;
+    confirmDeleteProvider: string;
+    providerConfiguration: string;
+    providerConfigurationDescription: string;
+    backToProviders: string;
+    noProviders: string;
+    providerName: string;
     rememberKey: string;
     developmentMode: string;
     developmentModeDescription: string;
@@ -773,9 +792,16 @@ const COPY: Record<Language, Copy> = {
       versionHistory: "版本记录",
       viewingVersion: (version) => `当前查看 v${version}，可打开大图、导出或选为最终版本。`,
       finalVersionBadge: (version) => `最终 v${version}`,
+      finalVersionUnselected: "尚未选定最终版本",
       selectFinalVersion: "选为最终版本",
       finalVersion: "最终版本",
       finalVersionSelected: (version) => `已将 v${version} 设为最终版本。`,
+      clearVersionHistory: "清空版本记录",
+      clearAllVersionHistory: "清空所有槽位版本记录",
+      clearVersionsTitle: "清空版本记录？",
+      clearVersionsDescription: "将删除当前选择范围内的版本记录，同时从右侧生成结果列表移除对应任务和本地图片详情；工作流任务本身会保留。此操作不可撤销。",
+      clearVersionsConfirm: "确认清空",
+      versionsCleared: "版本记录已清空。",
       exportSuite: "导出整套",
       exportingSuite: "正在导出",
       exportSuiteSuccess: (count) => `已导出 ${count} 张套图和参数清单。`,
@@ -817,6 +843,18 @@ const COPY: Record<Language, Copy> = {
       description: "配置图片服务协议、接口地址和访问密钥。",
       apiUrl: "API URL",
       apiKey: "API Key",
+      provider: "供应商",
+      providerPlaceholder: "选择或管理供应商",
+      addProvider: "新增供应商",
+      deleteProvider: "删除供应商",
+      deleteProviderTitle: "删除供应商？",
+      deleteProviderDescription: "删除后不会影响已有任务，只会移除这条本地供应商配置。",
+      confirmDeleteProvider: "确认删除",
+      providerConfiguration: "供应商配置",
+      providerConfigurationDescription: "配置这个供应商的地址、密钥、模型和请求参数。",
+      backToProviders: "返回供应商列表",
+      noProviders: "还没有供应商，请先新增一个。",
+      providerName: "供应商名称",
       rememberKey: "在本浏览器记住 API Key",
       developmentMode: "开发模式",
       developmentModeDescription: "显示本地占位任务和图片，用于测试图片选择、删除与导出流程。",
@@ -1165,9 +1203,16 @@ const COPY: Record<Language, Copy> = {
       versionHistory: "Version history",
       viewingVersion: (version) => `Viewing v${version}. Open, export, or choose it as the final version.`,
       finalVersionBadge: (version) => `Final v${version}`,
+      finalVersionUnselected: "No final version selected",
       selectFinalVersion: "Choose as final",
       finalVersion: "Final version",
       finalVersionSelected: (version) => `Selected v${version} as the final version.`,
+      clearVersionHistory: "Clear version history",
+      clearAllVersionHistory: "Clear all slot version history",
+      clearVersionsTitle: "Clear version history?",
+      clearVersionsDescription: "This deletes the selected version records, their matching tasks in the right-side result list, and local image details. The workflow task itself stays. This cannot be undone.",
+      clearVersionsConfirm: "Confirm clear",
+      versionsCleared: "Version history cleared.",
       exportSuite: "Export suite",
       exportingSuite: "Exporting",
       exportSuiteSuccess: (count) => `Exported ${count} suite image${count === 1 ? "" : "s"} and the manifest.`,
@@ -1209,6 +1254,18 @@ const COPY: Record<Language, Copy> = {
       description: "Configure the image service protocol, endpoint, and access key.",
       apiUrl: "API URL",
       apiKey: "API key",
+      provider: "Provider",
+      providerPlaceholder: "Select or manage a provider",
+      addProvider: "Add provider",
+      deleteProvider: "Delete provider",
+      deleteProviderTitle: "Delete provider?",
+      deleteProviderDescription: "Existing tasks are not affected. Only this local provider configuration will be removed.",
+      confirmDeleteProvider: "Delete provider",
+      providerConfiguration: "Provider settings",
+      providerConfigurationDescription: "Configure this provider's URL, key, models, and request parameters.",
+      backToProviders: "Back to providers",
+      noProviders: "No providers yet. Add one to get started.",
+      providerName: "Provider name",
       rememberKey: "Remember API key in this browser",
       developmentMode: "Development mode",
       developmentModeDescription: "Show local placeholder requests and images for testing selection, deletion, and export workflows.",

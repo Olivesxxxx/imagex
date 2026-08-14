@@ -190,11 +190,13 @@ function Gallery({
   loading,
   onEditImage,
   onAnnotateImage,
+  previewTarget,
 }: {
   request: ImageRequestRecord | null;
   loading: boolean;
   onEditImage: (value: string) => void;
   onAnnotateImage: (value: string) => void;
+  previewTarget: { requestId: string; imageIndex: number; signal: number } | null;
 }) {
   const { copy, language } = useI18n();
   const images = request?.status === "done" && !request.detailsMissing ? request.images : [];
@@ -214,6 +216,11 @@ function Gallery({
     setRotationByImageKey({});
     setPreviewImageIndex(null);
   }, [requestId]);
+
+  useEffect(() => {
+    if (!previewTarget || previewTarget.requestId !== requestId || !displayImageCount) return;
+    setPreviewImageIndex(Math.min(Math.max(previewTarget.imageIndex, 0), displayImageCount - 1));
+  }, [displayImageCount, previewTarget, requestId]);
 
   useEffect(() => {
     if (previewImageIndex === null || displayImageCount < 2) return;
@@ -381,6 +388,7 @@ export function ResultPanel({
   reusePrompt,
   onEditImage,
   onAnnotateImage,
+  previewTarget,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
@@ -390,6 +398,7 @@ export function ResultPanel({
   reusePrompt: (request: ImageRequestRecord) => void;
   onEditImage: (value: string) => void;
   onAnnotateImage: (value: string) => void;
+  previewTarget: { requestId: string; imageIndex: number; signal: number } | null;
 }) {
   const { copy, language } = useI18n();
   const canDownload = selectedRequest?.status === "done";
@@ -402,6 +411,9 @@ export function ResultPanel({
   const selectedRequestStatusText = selectedRequest
     ? `${requestStatusDisplayLabel(copy.requestStatusLabels, selectedRequest.status)}${selectedRequestResolution ? ` · ${selectedRequestResolution}` : ""}${selectedRequestSize ? ` · ${selectedRequestSize}` : ""}`
     : copy.requestCardStatus.unselectedSubtitle;
+  const selectedProductSuiteAssociation = selectedRequest?.productSuiteSlotKey && selectedRequest.productSuiteVersion
+    ? `${copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
+    : "";
   const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
   const apiUrl = (settings.protocol === "private" ? settings.privateBaseUrl : settings.baseUrl).trim();
@@ -464,6 +476,7 @@ export function ResultPanel({
             <strong className="block min-w-0 truncate text-sm font-semibold">
               {selectedRequest?.title || copy.requestCardStatus.unselectedTitle}
             </strong>
+            {selectedProductSuiteAssociation ? <span className="block min-w-0 truncate text-xs font-semibold text-foreground/70">{selectedProductSuiteAssociation}</span> : null}
             <span className="truncate text-xs font-medium text-muted-foreground">{selectedRequestStatusText}</span>
           </div>
           <div className="flex min-w-0 flex-col items-end gap-2 self-start">
@@ -495,6 +508,7 @@ export function ResultPanel({
             loading={selectedRequestDetailLoading}
             onEditImage={onEditImage}
             onAnnotateImage={onAnnotateImage}
+            previewTarget={previewTarget}
           />
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-3">
