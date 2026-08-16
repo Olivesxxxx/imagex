@@ -255,6 +255,8 @@ export interface ImageRequestRecord {
   apiKey?: string;
   editImages?: EditInputImage[];
   productSuiteTaskId?: string;
+  productSuiteBatchId?: string;
+  productSuiteBatchNumber?: number;
   productSuiteSlotKey?: string;
   productSuiteVersion?: number;
 }
@@ -595,9 +597,10 @@ export function buildPayload(
     n: imageCount,
     size: values.size || DEFAULTS.size,
     quality: values.quality || DEFAULTS.quality,
-    background: values.background || DEFAULTS.background,
+    ...((values.background || DEFAULTS.background) !== "auto"
+      ? { background: values.background || DEFAULTS.background }
+      : {}),
     output_format: values.outputFormat || DEFAULTS.outputFormat,
-    moderation: "low",
   };
 }
 
@@ -774,9 +777,10 @@ export function buildEditImagePayload(
     n: requestedCount,
     size: values.size || DEFAULTS.size,
     quality: values.quality || DEFAULTS.quality,
-    background: values.background || DEFAULTS.background,
+    ...((values.background || DEFAULTS.background) !== "auto"
+      ? { background: values.background || DEFAULTS.background }
+      : {}),
     output_format: values.outputFormat || DEFAULTS.outputFormat,
-    moderation: "low",
   };
 }
 
@@ -933,6 +937,8 @@ export function prepareRequestForCache(request: ImageRequestRecord, language: Me
     completedAt: request.completedAt ?? null,
     error,
     productSuiteTaskId: request.productSuiteTaskId,
+    productSuiteBatchId: request.productSuiteBatchId,
+    productSuiteBatchNumber: request.productSuiteBatchNumber,
     productSuiteSlotKey: request.productSuiteSlotKey,
     productSuiteVersion: request.productSuiteVersion,
   };
@@ -978,6 +984,8 @@ export function restoreCachedRequest(
     cancelRequested: false,
     editImages: [],
     productSuiteTaskId: String(request.productSuiteTaskId || "").trim() || undefined,
+    productSuiteBatchId: String(request.productSuiteBatchId || "").trim() || undefined,
+    productSuiteBatchNumber: Number.isFinite(Number(request.productSuiteBatchNumber)) ? Number(request.productSuiteBatchNumber) : undefined,
     productSuiteSlotKey: String(request.productSuiteSlotKey || "").trim() || undefined,
     productSuiteVersion: Number.isFinite(Number(request.productSuiteVersion)) ? Number(request.productSuiteVersion) : undefined,
   };

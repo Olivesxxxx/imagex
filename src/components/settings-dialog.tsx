@@ -85,7 +85,7 @@ export function SettingsDialog({
                   <ArrowLeftIcon />
                 </Button>
               ) : null}
-              <div className="min-w-0">
+              <div className="flex min-w-0 flex-col gap-2">
                 <DialogTitle>{providerConfig ? `${copy.settings.providerConfiguration}: ${providerConfig.name}` : copy.settings.title}</DialogTitle>
                 <DialogDescription>{providerConfig ? copy.settings.providerConfigurationDescription : copy.settings.description}</DialogDescription>
               </div>
@@ -102,29 +102,31 @@ export function SettingsDialog({
           {protocolView === "openai" && !providerConfig ? <FieldGroup>
             <FieldSet className="gap-3 rounded-md border p-3">
               <FieldTitle>{copy.settings.provider}</FieldTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={settings.activeOpenAIProviderId || undefined}
-                  disabled={!settings.openaiProviders.length}
-                  onValueChange={(value) => {
-                    updateSettings("activeOpenAIProviderId", value);
-                  }}
-                >
-                  <SelectTrigger className="min-w-0 flex-1" aria-label={copy.settings.providerPlaceholder}>
-                    <SelectValue placeholder={copy.settings.providerPlaceholder} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {settings.openaiProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id}>{provider.name || provider.baseUrl || copy.settings.provider}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button type="button" variant="outline" size="sm" onClick={addProvider}>
+              <div className="grid min-w-0 gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Select
+                    value={settings.activeOpenAIProviderId || undefined}
+                    disabled={!settings.openaiProviders.length}
+                    onValueChange={(value) => {
+                      updateSettings("activeOpenAIProviderId", value);
+                    }}
+                  >
+                    <SelectTrigger className="min-w-0 flex-1" aria-label={copy.settings.providerPlaceholder}>
+                      <SelectValue placeholder={copy.settings.providerPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {settings.openaiProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>{provider.name || provider.baseUrl || copy.settings.provider}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="icon" aria-label={copy.settings.providerConfiguration} title={copy.settings.providerConfiguration} disabled={!activeProvider} onClick={() => setProviderConfigId(activeProvider?.id || null)}>
+                    <Settings2Icon />
+                  </Button>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="w-full justify-center" onClick={addProvider}>
                   <PlusIcon data-icon="inline-start" />
                   {copy.settings.addProvider}
-                </Button>
-                <Button type="button" variant="ghost" size="icon" aria-label={copy.settings.providerConfiguration} title={copy.settings.providerConfiguration} disabled={!activeProvider} onClick={() => setProviderConfigId(activeProvider?.id || null)}>
-                  <Settings2Icon />
                 </Button>
               </div>
               {!settings.openaiProviders.length ? <p className="text-xs text-muted-foreground">{copy.settings.noProviders}</p> : null}

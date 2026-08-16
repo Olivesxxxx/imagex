@@ -92,10 +92,14 @@ function RequestRow({
 }) {
   const { copy, language } = useI18n();
   const { pendingKey: pendingDeleteRequestId, requestConfirmation } = useTimedConfirmation(DELETE_CONFIRMATION_TIMEOUT_MS);
-  const requestSummary = `${generationMethodDisplayName(request.method)} · ${payloadSizeText}`;
   const productSuiteAssociation = request.productSuiteSlotKey && request.productSuiteVersion
-    ? `${copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
+    ? `${request.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(request.productSuiteBatchNumber)} · ` : ""}${copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
     : "";
+  const requestSummary = productSuiteAssociation
+    ? generationMethodDisplayName(request.method)
+    : `${generationMethodDisplayName(request.method)} · ${payloadSizeText}`;
+  const requestStatusText = `${requestStatusDisplayLabel(copy.requestStatusLabels, request.status)}${request.imageResolution ? ` · ${request.imageResolution}` : ""}`;
+  const productSuiteStatusText = productSuiteAssociation ? `${productSuiteAssociation} · ${requestStatusText}` : "";
   const requestDetail =
     request.error || (request.status === "done" ? formatCompletionTime(request.completedAt, language === "en" ? "en" : "zh") : "");
   const thumbnail = request.thumbnail || null;
@@ -120,12 +124,12 @@ function RequestRow({
   return (
     <div
       className={cn(
-        "relative grid min-h-22 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow]",
+        "relative grid min-h-22 w-full grid-cols-1 items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow]",
         "hover:border-foreground/15 hover:bg-muted/40",
         selected && "border-foreground/20 bg-[oklch(0.985_0.006_255)]",
       )}
     >
-      <div className="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3">
+      <div className="grid w-full min-w-0 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3">
         <button
           type="button"
           className="image-checkerboard flex size-24 shrink-0 cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -162,17 +166,19 @@ function RequestRow({
             <strong className="min-w-0 truncate text-sm font-semibold">{request.title}</strong>
           </span>
           <span className="block min-w-0 truncate text-xs font-medium text-muted-foreground">{timing}</span>
-          {productSuiteAssociation ? <span className="block min-w-0 truncate text-xs font-semibold text-foreground/70">{productSuiteAssociation}</span> : null}
-          <span className="block min-w-0 truncate text-xs text-muted-foreground" title={requestSummary}>
-            {requestSummary}
-          </span>
+          {productSuiteStatusText ? <span className="block min-w-0 truncate text-xs font-medium text-muted-foreground" title={productSuiteStatusText}>{productSuiteStatusText}</span> : null}
+          {!productSuiteAssociation ? (
+            <span className="block min-w-0 truncate text-xs text-muted-foreground" title={requestSummary}>
+              {requestSummary}
+            </span>
+          ) : null}
           {requestDetail ? (
             <span className="block min-w-0 truncate text-xs text-muted-foreground" title={requestDetail}>
               {requestDetail}
             </span>
           ) : null}
         </button>
-        <span className="flex h-full shrink-0 flex-col items-end justify-between gap-2 pt-0.5">
+        <span className="flex h-full shrink-0 flex-col items-end justify-between gap-2 pt-0.5 justify-self-end">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

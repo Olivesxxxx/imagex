@@ -121,8 +121,14 @@ describe("App", () => {
     expect(screen.getByPlaceholderText("一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "文生图" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "图生图" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "快速上手" }));
-    expect(screen.getByRole("dialog", { name: "快速上手" })).toHaveTextContent("第一次使用时");
+    await user.click(screen.getByRole("button", { name: "说明" }));
+    const helpDialog = screen.getByRole("dialog", { name: "说明" });
+    expect(helpDialog).toHaveTextContent("这里用大白话介绍 ImageX");
+    expect(within(helpDialog).getByRole("tab", { name: "快速上手" })).toHaveAttribute("aria-selected", "true");
+    await user.click(within(helpDialog).getByRole("tab", { name: "常见报错" }));
+    expect(within(helpDialog).getByText("Failed to fetch / 请求失败")).toBeInTheDocument();
+    await user.click(within(helpDialog).getByRole("tab", { name: "更新日志" }));
+    expect(within(helpDialog).getByText(/Base64/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "编辑原始提示词文案" })).toBeInTheDocument();
 
@@ -269,7 +275,7 @@ describe("App", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const forms = fetchMock.mock.calls.map((call) => call[1]?.body as FormData);
-    expect(forms.map((form) => form.getAll("image[]").length)).toEqual([2, 1]);
+    expect(forms.map((form) => form.getAll("image").length)).toEqual([2, 1]);
     expect(forms[0].get("prompt")).toContain("电商主图");
     expect(forms[1].get("prompt")).toContain("白底图");
     expect(forms.every((form) => form.get("n") === "1")).toBe(true);
@@ -415,6 +421,31 @@ describe("App", () => {
     expect(within(heroSlot).getByText("最终 v1")).toBeInTheDocument();
   });
 
+  test("starts a new product batch when the reference image changes and keeps the old results", async () => {
+    const user = userEvent.setup();
+    storeSettings({ developmentMode: true });
+    renderApp();
+
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const workflow = await screen.findByRole("region", { name: "产品套图任务" });
+    expect(await within(workflow).findByText("当前产品批次：批次 1")).toBeInTheDocument();
+
+    const fileInputs = workflow.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    await user.upload(fileInputs[0], new File(["another-product"], "another-product.png", { type: "image/png" }));
+
+    const confirmation = await screen.findByRole("alertdialog", { name: "检测到产品实拍图已更换" });
+    expect(within(confirmation).getByRole("button", { name: "继续当前批次" })).toBeInTheDocument();
+    await user.click(within(confirmation).getByRole("button", { name: "开始新产品批次" }));
+
+    expect(await within(workflow).findByText("当前产品批次：批次 2")).toBeInTheDocument();
+    const heroSlot = within(workflow).getByRole("article", { name: "主图" });
+    expect(within(heroSlot).queryByRole("button", { name: /v\d+ ·/ })).not.toBeInTheDocument();
+
+    const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
+    expect(within(requestList).getByText("DEV-SUITE-hero-v1")).toBeInTheDocument();
+    expect(within(requestList).getAllByText(/批次 1 · 主图 · v1/).length).toBeGreaterThan(0);
+  });
+
   test("separates workflow result navigation from large-image preview and shows slot version mapping", async () => {
     const user = userEvent.setup();
     storeSettings({ developmentMode: true });
@@ -428,7 +459,7 @@ describe("App", () => {
     await user.keyboard("{Escape}");
 
     const requestList = screen.getByRole("complementary", { name: "生成结果列表" });
-    expect(within(requestList).getAllByText("主图 · v1").length).toBeGreaterThan(0);
+    expect(within(requestList).getAllByText(/批次 1 · 主图 · v1/).length).toBeGreaterThan(0);
     await user.click(within(requestList).getAllByRole("button", { name: /查看大图 .+/ })[0]);
     expect(screen.getByRole("dialog", { name: "查看大图" })).toBeInTheDocument();
   });
@@ -849,7 +880,7 @@ describe("App", () => {
       expect.objectContaining({ method: "POST" }),
     );
     const body = fetchMock.mock.calls[0][1].body as FormData;
-    expect(Array.from(body.entries()).filter(([key]) => key === "image[]")).toHaveLength(1);
+    expect(Array.from(body.entries()).filter(([key]) => key === "image")).toHaveLength(1);
     expect(String(body.get("prompt"))).toContain("glass jellyfish");
     expect(body.get("model")).toBe("gpt-image-2");
   });
@@ -1604,8 +1635,9 @@ describe("App", () => {
 
     expect(fetchMock).toHaveBeenCalled();
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.background).toBe("auto");
+    expect(body.background).toBeUndefined();
     expect(body.output_format).toBe("png");
+    expect(body.response_format).toBe("b64_json");
   });
 
   test("submits image generation requests and renders extracted images", async () => {
@@ -1658,8 +1690,9 @@ describe("App", () => {
     );
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(expect.objectContaining({
       model: "gpt-image-custom",
-      moderation: "low",
+      response_format: "b64_json",
     }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).moderation).toBeUndefined();
   });
 
   test("exports multi-image generation responses as a ZIP", async () => {

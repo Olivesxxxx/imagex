@@ -229,9 +229,15 @@ describe("storage", () => {
 
   test("persists product suite tasks in browser storage", async () => {
     const task = createProductSuiteTask(1000);
+    expect(task.productBatchId).toBe("batch-1");
+    expect(task.productBatchNumber).toBe(1);
+    expect(task.productImageHash).toBe("");
     expect(task.info.consistencyRequirement).toBe("");
     expect(renderProductSuitePrompt(task, "hero")).not.toContain("固定一致性要求");
     task.name = "Magnetic charger";
+    task.productBatchId = "batch-2";
+    task.productBatchNumber = 2;
+    task.productImageHash = "product-hash";
     task.info.sellingPoints = "Fast charging, compact body";
     task.info.consistencyRequirement = "Keep the product shape unchanged.";
     task.slots[0].selectedVersion = 2;
@@ -248,6 +254,9 @@ describe("storage", () => {
     expect(loaded[0]).toMatchObject({
       id: saved.id,
       name: "Magnetic charger",
+      productBatchId: "batch-2",
+      productBatchNumber: 2,
+      productImageHash: "product-hash",
       info: expect.objectContaining({ sellingPoints: "Fast charging, compact body" }),
       productImage: expect.objectContaining({ name: "product.png", mimeType: "image/png" }),
     });

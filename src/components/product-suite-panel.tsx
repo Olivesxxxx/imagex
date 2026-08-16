@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { BriefcaseBusinessIcon, CheckIcon, DownloadIcon, EyeIcon, ImageIcon, PencilRulerIcon, PlayIcon, PlusIcon, QuoteIcon, RefreshCwIcon, SaveIcon, Trash2Icon, UploadIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,12 +12,52 @@ import { Tabs } from "@/components/ui/tabs";
 import { WorkflowHeaderControls } from "@/components/generator-panel";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
 import { useI18n } from "@/lib/i18n";
-import { createDefaultProductSuiteSlots, createDevelopmentProductSuiteTask, createProductSuiteTask, deleteProductSuiteTask, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, loadProductSuiteTasks, renderProductSuitePrompt, saveProductSuiteTask, type ProductSuiteAsset, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
+import { createDefaultProductSuiteSlots, createDevelopmentProductSuiteTask, createProductSuiteBatchId, createProductSuiteTask, deleteProductSuiteTask, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, hashProductSuiteImage, loadProductSuiteTasks, renderProductSuitePrompt, saveProductSuiteTask, type ProductSuiteAsset, type ProductSuiteSlot, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
 import type { AppSettings, ConsoleMode, ImageRequestRecord } from "@/lib/image-console";
 import { cn } from "@/lib/utils";
 
 function assetFromFile(file: File): ProductSuiteAsset {
   return { blob: file, name: file.name, mimeType: file.type || "image/png" };
+}
+
+const PROMPT_REFERENCE_KEYS = ["商品名", "材质颜色", "核心卖点", "尺寸", "品牌语气", "目标平台"] as const;
+type PromptReferenceKey = (typeof PROMPT_REFERENCE_KEYS)[number];
+
+function promptReferenceValues(task: ProductSuiteTask, language: "zh" | "en"): Record<PromptReferenceKey, string> {
+  return {
+    商品名: task.name || (language === "en" ? "the product" : "该商品"),
+    材质颜色: task.info.materialAndColor || (language === "en" ? "not specified" : "未填写"),
+    核心卖点: task.info.sellingPoints || (language === "en" ? "not specified" : "未填写"),
+    尺寸: task.info.dimensions || (language === "en" ? "not specified" : "未填写"),
+    品牌语气: task.info.brandTone || (language === "en" ? "clean ecommerce product photography" : "干净的电商产品摄影"),
+    目标平台: task.info.targetPlatform || (language === "en" ? "ecommerce" : "电商平台"),
+  };
+}
+
+function renderPromptWithReferences(task: ProductSuiteTask, slot: ProductSuiteSlot, language: "zh" | "en"): ReactNode {
+  const template = slot.promptTemplate;
+  const values = promptReferenceValues(task, language);
+  const sourceValues: Record<PromptReferenceKey, string> = {
+    商品名: task.name,
+    材质颜色: task.info.materialAndColor,
+    核心卖点: task.info.sellingPoints,
+    尺寸: task.info.dimensions,
+    品牌语气: task.info.brandTone,
+    目标平台: task.info.targetPlatform,
+  };
+  const tokenPattern = /(\{\{(?:商品名|材质颜色|核心卖点|尺寸|品牌语气|目标平台)\}\})/g;
+  const body = template.split(tokenPattern).map((part, index) => {
+    const key = part.startsWith("{{") ? part.slice(2, -2) as PromptReferenceKey : null;
+    if (!key) return <span key={`text-${index}`}>{part}</span>;
+    const value = values[key];
+    const isUserValue = Boolean(sourceValues[key]?.trim());
+    return isUserValue ? (
+      <mark key={`reference-${index}`} className="rounded bg-sky-100 px-1 font-semibold text-sky-800 dark:bg-sky-900/60 dark:text-sky-100" title="引用用户填写的信息">{value}</mark>
+    ) : <span key={`fallback-${index}`}>{value}</span>;
+  });
+  const forbidden = task.info.forbiddenElements.trim();
+  const consistency = task.info.consistencyRequirement.trim();
+  return <>{body}{forbidden ? <>{"\n"}{language === "en" ? "Avoid" : "不要出现"}: {forbidden}</> : null}{consistency ? <>{"\n\n"}{consistency}</> : null}</>;
 }
 
 const SLOT_ACCENT_CLASSES: Record<ProductSuiteSlotKey, { border: string; background: string }> = {
@@ -145,7 +185,7 @@ export function ProductSuitePanel({
   onPreviewRequest: (requestId: string) => void;
   onExportRequest: (requestId: string) => void;
   onExportSuite: (task: ProductSuiteTask) => Promise<{ count: number; filename: string }>;
-  onClearVersions: (taskId: string, slotKey?: ProductSuiteSlotKey) => void;
+  onClearVersions: (taskId: string, slotKey?: ProductSuiteSlotKey, batchId?: string) => void;
   onUseAsReference: (requestId: string) => void;
   onAnnotateResult: (requestId: string) => void;
   requestRecords: ImageRequestRecord[];
@@ -164,6 +204,7 @@ export function ProductSuitePanel({
   const [retryingFailed, setRetryingFailed] = useState(false);
   const [exportingSuite, setExportingSuite] = useState(false);
   const [clearVersionsTarget, setClearVersionsTarget] = useState<ProductSuiteSlotKey | "all" | null>(null);
+  const [pendingProductImageChange, setPendingProductImageChange] = useState<{ file: File; hash: string } | null>(null);
   const [viewedVersionBySlot, setViewedVersionBySlot] = useState<Partial<Record<ProductSuiteSlotKey, number>>>({});
   const loadedOnceRef = useRef(false);
 
@@ -187,15 +228,16 @@ export function ProductSuitePanel({
     setLoading(true);
     void loadProductSuiteTasks().then(async (loaded) => {
       if (cancelled) return;
-      let nextTasks = import.meta.env.DEV && settings.developmentMode
-        ? loaded
-        : loaded.filter((task) => task.id !== DEVELOPMENT_PRODUCT_SUITE_TASK_ID);
-      if (nextTasks.length !== loaded.length) {
-        void deleteProductSuiteTask(DEVELOPMENT_PRODUCT_SUITE_TASK_ID);
-      }
-      if (import.meta.env.DEV && settings.developmentMode && !loaded.some((task) => task.id === DEVELOPMENT_PRODUCT_SUITE_TASK_ID)) {
+      const fixturesEnabled = import.meta.env.DEV && settings.developmentMode;
+      const userTasks = loaded.filter((task) => task.id !== DEVELOPMENT_PRODUCT_SUITE_TASK_ID);
+      let nextTasks = userTasks;
+      if (fixturesEnabled) {
+        // Rebuild the synthetic task so newly added slots and example fields are
+        // visible even when an older fixture exists in IndexedDB.
         const fixture = await saveProductSuiteTask(await createDevelopmentProductSuiteTask(language === "en" ? "en" : "zh"));
-        nextTasks = [fixture, ...loaded];
+        nextTasks = [fixture, ...userTasks];
+      } else if (loaded.length !== userTasks.length) {
+        void deleteProductSuiteTask(DEVELOPMENT_PRODUCT_SUITE_TASK_ID);
       }
       if (cancelled) return;
       setTasks(nextTasks);
@@ -225,7 +267,7 @@ export function ProductSuitePanel({
 
   useEffect(() => {
     setViewedVersionBySlot({});
-  }, [draft?.id]);
+  }, [draft?.id, draft?.productBatchId]);
 
   const activeTaskName = useMemo(() => draft?.name || suiteCopy.untitled, [draft?.name, suiteCopy.untitled]);
   const slotRequestHistory = useMemo(() => {
@@ -233,6 +275,9 @@ export function ProductSuitePanel({
     if (!draft) return history;
     for (const request of requestRecords) {
       if (request.productSuiteTaskId !== draft.id || !request.productSuiteSlotKey) continue;
+      const belongsToCurrentBatch = request.productSuiteBatchId === draft.productBatchId
+        || (!request.productSuiteBatchId && draft.productBatchId === "batch-1");
+      if (!belongsToCurrentBatch) continue;
       const slotHistory = history.get(request.productSuiteSlotKey) || [];
       slotHistory.push(request);
       history.set(request.productSuiteSlotKey, slotHistory);
@@ -302,8 +347,43 @@ export function ProductSuitePanel({
     setDraft(next ? structuredClone(next) : null);
   }
 
-  function setAssetFile(file: File, field: "productImage" | "brandAsset") {
-    updateDraft((current) => ({ ...current, [field]: assetFromFile(file) }));
+  function applyProductImageChange(file: File, hash: string, createNewBatch: boolean) {
+    updateDraft((current) => ({
+      ...current,
+      productImage: assetFromFile(file),
+      productImageHash: hash,
+      ...(createNewBatch
+        ? {
+            productBatchId: createProductSuiteBatchId(),
+            productBatchNumber: current.productBatchNumber + 1,
+            slots: current.slots.map((slot) => ({ ...slot, selectedVersion: null })),
+          }
+        : {}),
+    }));
+    setPendingProductImageChange(null);
+  }
+
+  async function setAssetFile(file: File, field: "productImage" | "brandAsset") {
+    if (field === "brandAsset" || !draft) {
+      updateDraft((current) => ({ ...current, [field]: assetFromFile(file) }));
+      return;
+    }
+
+    const hasTaskRequests = requestRecords.some((request) => request.productSuiteTaskId === draft.id);
+    if (!hasTaskRequests) {
+      updateDraft((current) => ({ ...current, productImage: assetFromFile(file), productImageHash: "" }));
+      const hash = await hashProductSuiteImage(file);
+      updateDraft((current) => current.productImage?.blob === file ? { ...current, productImageHash: hash } : current);
+      return;
+    }
+
+    const hash = await hashProductSuiteImage(file);
+    const currentImageHash = draft.productImageHash || (draft.productImage ? await hashProductSuiteImage(draft.productImage.blob) : "");
+    if (hash === currentImageHash) {
+      applyProductImageChange(file, hash, false);
+      return;
+    }
+    setPendingProductImageChange({ file, hash });
   }
 
   function selectTask(task: ProductSuiteTask) {
@@ -378,7 +458,7 @@ export function ProductSuitePanel({
       setDraft(saved);
       setActiveId(saved.id);
       const version = requestRecords
-        .filter((request) => request.productSuiteTaskId === saved.id && request.productSuiteSlotKey === slotKey)
+        .filter((request) => request.productSuiteTaskId === saved.id && request.productSuiteSlotKey === slotKey && (request.productSuiteBatchId === saved.productBatchId || (!request.productSuiteBatchId && saved.productBatchId === "batch-1")))
         .reduce((max, request) => Math.max(max, request.productSuiteVersion || 1), 0) + 1;
       const submittedCount = onSubmitSlot(saved, slotKey, version);
       if (submittedCount > 0) toast.success(suiteCopy.slotResubmitted);
@@ -398,7 +478,7 @@ export function ProductSuitePanel({
       let submittedCount = 0;
       for (const slotKey of failedSlotKeys) {
         const version = requestRecords
-          .filter((request) => request.productSuiteTaskId === saved.id && request.productSuiteSlotKey === slotKey)
+          .filter((request) => request.productSuiteTaskId === saved.id && request.productSuiteSlotKey === slotKey && (request.productSuiteBatchId === saved.productBatchId || (!request.productSuiteBatchId && saved.productBatchId === "batch-1")))
           .reduce((max, request) => Math.max(max, request.productSuiteVersion || 1), 0) + 1;
         submittedCount += onSubmitSlot(saved, slotKey, version);
       }
@@ -433,7 +513,7 @@ export function ProductSuitePanel({
     setTasks((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
     setDraft(saved);
     setActiveId(saved.id);
-    onClearVersions(saved.id, target === "all" ? undefined : target);
+    onClearVersions(saved.id, target === "all" ? undefined : target, saved.productBatchId);
     setClearVersionsTarget(null);
     toast.success(suiteCopy.versionsCleared);
   }
@@ -461,7 +541,7 @@ export function ProductSuitePanel({
     <>
       <section aria-label={suiteCopy.title} className={`flex w-full min-w-0 max-w-full flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none ${draft ? "" : "min-h-full"}`}>
         <header className="shrink-0">
-          <div className="grid w-full min-w-0 max-w-full gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
+          <div className="flex w-full min-w-0 max-w-full flex-wrap items-end gap-2">
             <div className="flex min-w-0 flex-col gap-1">
               <span className="flex h-4 min-h-4 items-center text-xs font-medium leading-none text-muted-foreground">{copy.generator.mode}</span>
               <Tabs
@@ -492,19 +572,22 @@ export function ProductSuitePanel({
 
         <div className={cn("flex min-w-0", draft ? "flex-none" : "min-h-0 flex-1")}>
           <div className={cn("grid w-full min-w-0 max-w-full gap-x-3 gap-y-1 lg:grid-cols-[240px_minmax(0,1fr)]", draft ? "flex-none" : "flex-1 lg:grid-rows-[auto_minmax(0,1fr)]")}>
-          <div className="flex h-4 min-h-4 items-center text-xs font-medium leading-none text-muted-foreground lg:col-span-2">{suiteCopy.title}</div>
-          <aside className="flex h-full min-w-0 flex-col gap-2 rounded-lg border bg-muted/20 p-2">
-            <Button type="button" variant="outline" className="w-full justify-start" onClick={createTask}><PlusIcon data-icon="inline-start" />{suiteCopy.newTask}</Button>
-            <div className="standard-scrollbar grid min-h-12 gap-1 overflow-auto">
-              {tasks.map((task) => (
-                <button key={task.id} type="button" className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-sm ${activeId === task.id ? "bg-foreground text-background" : "hover:bg-muted"}`} onClick={() => selectTask(task)}>
-                  <ImageIcon className="size-4 shrink-0" />
-                  <span className="min-w-0 truncate">{task.name || suiteCopy.untitled}</span>
-                </button>
-              ))}
-              {!tasks.length && !loading ? <p className="px-2 py-3 text-xs text-muted-foreground">{suiteCopy.empty}</p> : null}
+            <div className="flex h-4 min-h-4 items-center gap-3 text-xs font-medium leading-none text-muted-foreground lg:col-span-2">
+              <span>{suiteCopy.title}</span>
+              {draft ? <span className="font-normal text-muted-foreground/80">{suiteCopy.batchLabel(draft.productBatchNumber)}</span> : null}
             </div>
-          </aside>
+            <aside className="flex h-full min-w-0 flex-col gap-2 rounded-lg border bg-muted/20 p-2">
+              <Button type="button" variant="outline" className="w-full justify-start" onClick={createTask}><PlusIcon data-icon="inline-start" />{suiteCopy.newTask}</Button>
+              <div className="standard-scrollbar product-suite-task-scroll grid min-h-12 gap-1 overflow-auto">
+                {tasks.map((task) => (
+                  <button key={task.id} type="button" className={`flex h-9 min-h-9 w-full min-w-0 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${activeId === task.id ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-muted"}`} onClick={() => selectTask(task)}>
+                    <ImageIcon className="size-4 shrink-0" />
+                    <span className="min-w-0 truncate">{task.name || suiteCopy.untitled}</span>
+                  </button>
+                ))}
+                {!tasks.length && !loading ? <p className="px-2 py-3 text-xs text-muted-foreground">{suiteCopy.empty}</p> : null}
+              </div>
+            </aside>
 
           {draft ? (
             <section className="grid min-w-0 gap-3">
@@ -564,6 +647,7 @@ export function ProductSuitePanel({
                     const resultVersion = resultRequest?.productSuiteVersion || 1;
                     const hasSelectedFinalVersion = Boolean(selectedFinalRequest && slot.selectedVersion);
                     const isFinalVersion = Boolean(resultRequest && slot.selectedVersion === resultVersion);
+                    const slotNeedsRetry = Boolean(slotRequest && ["error", "canceled"].includes(slotRequest.status));
                     const slotAccent = SLOT_ACCENT_CLASSES[slot.key];
                     return (
                       <article key={slot.key} aria-labelledby={slotHeadingId} className={cn("grid min-w-0 content-start gap-2 self-start rounded-lg border p-3", slot.enabled ? `${slotAccent.border} ${slotAccent.background}` : "border-border bg-muted/30 opacity-70")}>
@@ -588,17 +672,21 @@ export function ProductSuitePanel({
                             </Button>
                           </div>
                         </div>
-                        <label htmlFor={slotId} className="text-xs font-medium text-muted-foreground">{suiteCopy.slotPrompt}</label>
-                        <Textarea id={slotId} value={slot.promptTemplate} onChange={(event) => updateSlot(slot.key, event.target.value)} rows={3} disabled={!slot.enabled} className="standard-scrollbar" />
-                        <div className="grid gap-1">
-                          <span className="text-xs font-medium text-muted-foreground">{suiteCopy.renderedPrompt}</span>
-                          <p className="standard-scrollbar max-h-28 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 px-3 py-2 text-xs leading-relaxed">{renderProductSuitePrompt(draft, slot.key, language === "en" ? "en" : "zh")}</p>
+                        <div className="grid min-w-0 gap-3 lg:grid-cols-2 lg:items-stretch">
+                          <div className="grid min-w-0 grid-rows-[1rem_auto] gap-1.5">
+                            <label htmlFor={slotId} className="flex h-4 min-h-4 items-center text-xs font-medium leading-4 text-muted-foreground">{suiteCopy.slotPrompt}</label>
+                            <Textarea id={slotId} value={slot.promptTemplate} onChange={(event) => updateSlot(slot.key, event.target.value)} rows={5} disabled={!slot.enabled} className="standard-scrollbar min-h-32 resize-y self-stretch" />
+                          </div>
+                          <div className="grid min-w-0 grid-rows-[1rem_auto] gap-1.5">
+                            <span className="flex h-4 min-h-4 items-center text-xs font-medium leading-4 text-muted-foreground">{suiteCopy.renderedPrompt}</span>
+                            <p className="standard-scrollbar min-h-32 h-full overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 px-3 py-2 text-xs leading-relaxed">{renderPromptWithReferences(draft, slot, language === "en" ? "en" : "zh")}</p>
+                          </div>
                         </div>
-                         {resultRequest ? (
-                           <div className="grid gap-3 border-t pt-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-stretch">
-                             <button
-                               type="button"
-                               className="image-checkerboard aspect-video min-w-0 cursor-zoom-in overflow-hidden rounded-md border text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:aspect-auto sm:h-full sm:min-h-24"
+                        {resultRequest ? (
+                          <div className="grid gap-3 border-t pt-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-stretch">
+                            <button
+                              type="button"
+                              className="image-checkerboard aspect-video min-w-0 cursor-zoom-in overflow-hidden rounded-md border text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:aspect-auto sm:h-full sm:min-h-24"
                               aria-label={`${slotLabel} ${copy.requestCardStatus.previewImage}`}
                               onClick={() => onPreviewRequest(resultRequest.id)}
                             >
@@ -611,7 +699,7 @@ export function ProductSuitePanel({
                                 />
                               ) : <span className="flex h-full items-center justify-center text-xs text-muted-foreground">{suiteCopy.resultUnavailable}</span>}
                             </button>
-                              <div className="flex min-w-0 flex-col justify-between gap-2 sm:h-full sm:self-stretch">
+                            <div className="flex min-w-0 flex-col justify-between gap-2 sm:h-full sm:self-stretch">
                                 {requestHistory.length ? (
                                   <div className="grid min-w-0 gap-1.5">
                                     <span className="text-xs font-medium text-muted-foreground">{suiteCopy.versionHistory}</span>
@@ -634,9 +722,9 @@ export function ProductSuitePanel({
                                           </Button>
                                         );
                                       })}
-                                    </div>
-                                  </div>
-                                ) : null}
+                            </div>
+                          </div>
+                        ) : null}
                                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                                  <Button type="button" variant="outline" size="sm" onClick={() => onSelectRequest(resultRequest.id)}>
                                    <EyeIcon data-icon="inline-start" />{suiteCopy.viewResult}
@@ -658,23 +746,22 @@ export function ProductSuitePanel({
                                      <RefreshCwIcon data-icon="inline-start" />{suiteCopy.regenerateSlot}
                                    </Button>
                                  ) : null}
+                                 {slotNeedsRetry ? (
+                                   <Button type="button" variant="default" size="sm" disabled={submittingSlotKey !== null} onClick={() => void submitSlot(slot.key)}>
+                                     <RefreshCwIcon data-icon="inline-start" />{suiteCopy.retrySlot}
+                                   </Button>
+                                 ) : null}
                                </div>
                              </div>
                            </div>
                          ) : null}
-                         {slotRequest && ["error", "canceled"].includes(slotRequest.status) ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="w-fit"
-                            disabled={submittingSlotKey !== null}
-                            onClick={() => void submitSlot(slot.key)}
-                          >
-                            <RefreshCwIcon data-icon="inline-start" />
-                             {suiteCopy.retrySlot}
-                          </Button>
-                        ) : null}
+                         {!resultRequest && slotNeedsRetry ? (
+                           <div className="flex min-w-0 flex-wrap items-center gap-2">
+                             <Button type="button" variant="default" size="sm" className="w-fit" disabled={submittingSlotKey !== null} onClick={() => void submitSlot(slot.key)}>
+                               <RefreshCwIcon data-icon="inline-start" />{suiteCopy.retrySlot}
+                             </Button>
+                           </div>
+                         ) : null}
                       </article>
                     );
                   })}
@@ -738,6 +825,36 @@ export function ProductSuitePanel({
             <AlertDialogCancel disabled={submitting}>{copy.clearDialog.cancel}</AlertDialogCancel>
             <AlertDialogAction disabled={submitting} onClick={(event) => { event.preventDefault(); void submitBatch(); }}>
               {submitting ? suiteCopy.submitting : suiteCopy.confirmSubmit}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={pendingProductImageChange !== null} onOpenChange={(open) => { if (!open) setPendingProductImageChange(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{suiteCopy.productImageChangedTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{suiteCopy.productImageChangedDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-wrap sm:justify-end">
+            <AlertDialogCancel>{suiteCopy.cancelImageChange}</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!pendingProductImageChange}
+              onClick={() => {
+                if (pendingProductImageChange) applyProductImageChange(pendingProductImageChange.file, pendingProductImageChange.hash, false);
+              }}
+            >
+              {suiteCopy.continueCurrentBatch}
+            </Button>
+            <AlertDialogAction
+              disabled={!pendingProductImageChange}
+              onClick={(event) => {
+                event.preventDefault();
+                if (pendingProductImageChange) applyProductImageChange(pendingProductImageChange.file, pendingProductImageChange.hash, true);
+              }}
+            >
+              {suiteCopy.startNewBatch}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

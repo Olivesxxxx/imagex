@@ -412,8 +412,11 @@ export function ResultPanel({
     ? `${requestStatusDisplayLabel(copy.requestStatusLabels, selectedRequest.status)}${selectedRequestResolution ? ` · ${selectedRequestResolution}` : ""}${selectedRequestSize ? ` · ${selectedRequestSize}` : ""}`
     : copy.requestCardStatus.unselectedSubtitle;
   const selectedProductSuiteAssociation = selectedRequest?.productSuiteSlotKey && selectedRequest.productSuiteVersion
-    ? `${copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
+    ? `${selectedRequest.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(selectedRequest.productSuiteBatchNumber)} · ` : ""}${copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
     : "";
+  const selectedRequestMetaText = selectedProductSuiteAssociation
+    ? `${selectedProductSuiteAssociation} · ${selectedRequestStatusText}`
+    : selectedRequestStatusText;
   const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
   const apiUrl = (settings.protocol === "private" ? settings.privateBaseUrl : settings.baseUrl).trim();
@@ -472,12 +475,11 @@ export function ResultPanel({
       <h2 className="sr-only">{copy.resultSectionLabel}</h2>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-16 flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-1">
-          <div className="min-w-0 flex-1">
-            <strong className="block min-w-0 truncate text-sm font-semibold">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 self-start">
+            <strong className="block min-w-0 truncate text-sm font-semibold leading-normal">
               {selectedRequest?.title || copy.requestCardStatus.unselectedTitle}
             </strong>
-            {selectedProductSuiteAssociation ? <span className="block min-w-0 truncate text-xs font-semibold text-foreground/70">{selectedProductSuiteAssociation}</span> : null}
-            <span className="truncate text-xs font-medium text-muted-foreground">{selectedRequestStatusText}</span>
+            <span className="block min-w-0 truncate text-xs font-medium leading-normal text-muted-foreground" title={selectedRequestMetaText}>{selectedRequestMetaText}</span>
           </div>
           <div className="flex min-w-0 flex-col items-end gap-2 self-start">
             <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 text-sm font-semibold leading-normal">

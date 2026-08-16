@@ -164,6 +164,12 @@
     scrollbar-gutter: stable;
   }
 
+  /* The task list should size its items to the panel edge; the scrollbar is
+     transient and must not permanently reduce their available width. */
+  .product-suite-task-scroll {
+    scrollbar-gutter: auto;
+  }
+
   .image-checkerboard {
     background:
       linear-gradient(45deg, color-mix(in oklch, var(--muted) 75%, white) 25%, transparent 25%),

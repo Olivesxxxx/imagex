@@ -210,9 +210,14 @@ function revokeObjectUrls(urls: Iterable<string>) {
   }
 }
 
-function revokeRemovedObjectUrls(previousRecords: ImageRequestRecord[], nextRecords: ImageRequestRecord[]) {
+function revokeRemovedObjectUrls(
+  previousRecords: ImageRequestRecord[],
+  nextRecords: ImageRequestRecord[],
+  protectedUrls: Iterable<string> = [],
+) {
   const nextUrls = collectObjectUrls(nextRecords);
-  const removedUrls = [...collectObjectUrls(previousRecords)].filter((url) => !nextUrls.has(url));
+  const protectedSet = new Set(protectedUrls);
+  const removedUrls = [...collectObjectUrls(previousRecords)].filter((url) => !nextUrls.has(url) && !protectedSet.has(url));
   revokeObjectUrls(removedUrls);
 }
 
@@ -373,6 +378,8 @@ function createDevelopmentSuiteRequest(
   status: "done" | "error",
   imageIndex: number,
   offset = 120000,
+  batchId = "development-batch-1",
+  batchNumber = 1,
 ): ImageRequestRecord {
   const createdAt = Date.now() - offset;
   const image = status === "done" ? developmentSuiteImage(imageIndex) : null;
@@ -408,6 +415,8 @@ function createDevelopmentSuiteRequest(
     cancelRequested: false,
     editImages: [],
     productSuiteTaskId: DEVELOPMENT_PRODUCT_SUITE_TASK_ID,
+    productSuiteBatchId: batchId,
+    productSuiteBatchNumber: batchNumber,
     productSuiteSlotKey: slotKey,
     productSuiteVersion: version,
   };
@@ -492,6 +501,7 @@ function developmentPlaceholderRequests(): ImageRequestRecord[] {
     createDevelopmentSuiteRequest("size", 1, "done", 4, 145000),
     createDevelopmentSuiteRequest("closeUp", 1, "error", 2, 140000),
     createDevelopmentSuiteRequest("closeUp", 2, "done", 3, 120000),
+    createDevelopmentSuiteRequest("scene", 1, "done", 2, 105000),
   ];
 }
 
@@ -701,7 +711,8 @@ export function useImageConsole() {
     const removedUrls = [...previousUrls].filter((url) => !nextUrls.has(url));
 
     if (removedUrls.length) {
-      revokeObjectUrls(removedUrls);
+      const requestUrls = collectObjectUrls(requestRecordsRef.current);
+      revokeObjectUrls(removedUrls.filter((url) => !requestUrls.has(url)));
     }
 
     editImagesRef.current = editImages;
@@ -722,7 +733,11 @@ export function useImageConsole() {
   const commitRecords = useCallback((updater: (records: ImageRequestRecord[]) => ImageRequestRecord[]) => {
     const previous = requestRecordsRef.current;
     const next = updater(previous);
-    revokeRemovedObjectUrls(previous, next);
+    revokeRemovedObjectUrls(
+      previous,
+      next,
+      editImagesRef.current.map((image) => image.src).filter((src) => src.startsWith("blob:")),
+    );
     requestRecordsRef.current = next;
     void saveCachedRequests(next.filter((request) => !isDevelopmentRequest(request)), language);
     setRequestRecords(next);
@@ -1630,7 +1645,7 @@ export function useImageConsole() {
     editImages?: EditInputImage[];
     count?: number;
     silent?: boolean;
-    productSuite?: { taskId: string; slotKey: string; version?: number };
+    productSuite?: { taskId: string; batchId?: string; batchNumber?: number; slotKey: string; version?: number };
   }) => {
     const effectivePrompt = overrides?.prompt ?? prompt;
     const effectiveEditImages = overrides?.editImages ?? editImages;
@@ -1659,6 +1674,8 @@ export function useImageConsole() {
         "done",
         (version % 4) + 1,
         30000,
+        overrides.productSuite.batchId || "development-batch-1",
+        overrides.productSuite.batchNumber || 1,
       );
       const simulatedRequest: ImageRequestRecord = {
         ...fixture,
@@ -1726,6 +1743,8 @@ export function useImageConsole() {
       apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.apiKey,
       editImages: runtimeImages,
       productSuiteTaskId: overrides?.productSuite?.taskId,
+      productSuiteBatchId: overrides?.productSuite?.batchId,
+      productSuiteBatchNumber: overrides?.productSuite?.batchNumber,
       productSuiteSlotKey: overrides?.productSuite?.slotKey,
       productSuiteVersion: overrides?.productSuite?.version,
     }));
@@ -1871,9 +1890,10 @@ export function useImageConsole() {
     void deleteRequestDetails(removedIds);
   }, [commitRecords, copy]);
 
-  const clearProductSuiteVersions = useCallback((taskId: string, slotKey?: ProductSuiteSlotKey) => {
+  const clearProductSuiteVersions = useCallback((taskId: string, slotKey?: ProductSuiteSlotKey, batchId?: string) => {
     const removedRequests = requestRecordsRef.current.filter((request) =>
       request.productSuiteTaskId === taskId &&
+      (!batchId || request.productSuiteBatchId === batchId || (!request.productSuiteBatchId && batchId === "batch-1")) &&
       (!slotKey || request.productSuiteSlotKey === slotKey),
     );
     if (!removedRequests.length) return;
@@ -1991,7 +2011,11 @@ export function useImageConsole() {
 
       for (const slot of task.slots) {
         const slotRequests = sortedRequestRecordsForFilter(requestRecordsRef.current, "done")
-          .filter((request) => request.productSuiteTaskId === task.id && request.productSuiteSlotKey === slot.key)
+          .filter((request) =>
+            request.productSuiteTaskId === task.id &&
+            (request.productSuiteBatchId === task.productBatchId || (!request.productSuiteBatchId && task.productBatchId === "batch-1")) &&
+            request.productSuiteSlotKey === slot.key,
+          )
           .sort((left, right) =>
             (right.productSuiteVersion || 1) - (left.productSuiteVersion || 1) || right.createdAt - left.createdAt,
           );
@@ -2042,6 +2066,8 @@ export function useImageConsole() {
           info: task.info,
           hasProductImage: Boolean(task.productImage),
           hasBrandAsset: Boolean(task.brandAsset),
+          productBatchId: task.productBatchId,
+          productBatchNumber: task.productBatchNumber,
           slots: exportedSlots,
         },
         privacy: exportLanguage === "en"

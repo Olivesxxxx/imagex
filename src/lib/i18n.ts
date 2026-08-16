@@ -337,7 +337,17 @@ type Copy = {
       buttonLabel: string;
       title: string;
       description: string;
+      tabs: {
+        gettingStarted: string;
+        errors: string;
+        changelog: string;
+      };
       steps: string[];
+      errors: Array<{
+        title: string;
+        description: string;
+      }>;
+      changelog: string[];
     };
     pasteImageHint: string;
     previewInputImage: string;
@@ -418,9 +428,16 @@ type Copy = {
      versionsCleared: string;
      exportSuite: string;
     exportingSuite: string;
-    exportSuiteSuccess: (count: number) => string;
-    exportSuiteFailed: string;
-  };
+     exportSuiteSuccess: (count: number) => string;
+     exportSuiteFailed: string;
+     batchLabel: (number: number) => string;
+     batchShortLabel: (number: number) => string;
+     productImageChangedTitle: string;
+     productImageChangedDescription: string;
+     continueCurrentBatch: string;
+     startNewBatch: string;
+     cancelImageChange: string;
+   };
   annotation: {
     title: string;
     description: string;
@@ -714,15 +731,34 @@ const COPY: Record<Language, Copy> = {
       completions: "对话补全",
       edits: "图片编辑",
       quickStart: {
-        buttonLabel: "快速上手",
-        title: "快速上手",
-        description: "第一次使用时，按下面几步就能开始生图。所有内容都保存在当前浏览器里。",
+        buttonLabel: "说明",
+        title: "说明",
+        description: "这里用大白话介绍 ImageX 的基本用法、常见报错和最近更新。所有内容都保存在当前浏览器里。",
+        tabs: {
+          gettingStarted: "快速上手",
+          errors: "常见报错",
+          changelog: "更新日志",
+        },
         steps: [
           "先点右侧的配置，填写 API 地址、API Key 和模型；不知道填什么，就使用服务商提供的兼容 OpenAI 的地址。",
           "选择文生图，输入提示词，再选择尺寸、质量和生图数量，点击图片生成。",
           "想修改一张已有图片时，切换到图生图，把图片拖入图片区域，再输入修改要求，点击图片编辑。",
           "生成结果会出现在上方主面板和右侧列表；图片可以查看大图、下载、作为参考图或进入标注重生。",
           "要批量制作一款商品的六张电商图，切换到工作流，新建任务后填写商品信息并上传产品实拍图。",
+        ],
+        errors: [
+          { title: "Failed to fetch / 请求失败", description: "浏览器没有拿到接口的回复。通常是 API 地址写错、网络不通，或者服务商没有允许网页跨域访问。先检查地址，再让服务商确认支持浏览器直连。" },
+          { title: "401 / API Key 无效", description: "服务商不认这个密钥。请重新复制 API Key，注意不要多复制空格，也要确认密钥还没有过期。" },
+          { title: "403 / 没有权限", description: "密钥能识别，但没有使用这个模型或接口的权限。换一个有权限的模型，或联系服务商开通权限。" },
+          { title: "404 / 找不到接口", description: "API URL 的路径不对。一般只填写服务商给的兼容 OpenAI 的根地址，不要重复加 /v1 或 /images/generations。" },
+          { title: "400 / 参数不对", description: "请求送到了服务商，但里面有一项不符合要求。常见原因是模型名称、尺寸、图片格式或提示词不被支持。看报错里的字段名，按服务商文档修改。" },
+          { title: "429 / 请求太频繁", description: "服务商让你慢一点，可能是额度用完或同时请求太多。降低生图数量、增加间隔，或等一会儿再试。" },
+          { title: "5xx / 服务商出故障", description: "对方服务器暂时没有正常工作，不一定是你的设置有问题。稍后重试，或打开服务商的状态页看看。" },
+        ],
+        changelog: [
+          "统一 OpenAI 图片接口的 Base64 返回兼容策略，服务商不支持时会自动降级。",
+          "图生图参考图片统一使用 image 字段，兼容更多 OpenAI 风格接口。",
+          "继续保持纯浏览器本地优先：密钥、任务记录和图片不会上传到 ImageX 自己的服务器。",
         ],
       },
       pasteImageHint: "将图片拖入或粘贴到此区域，可直接添加图片",
@@ -785,7 +821,7 @@ const COPY: Record<Language, Copy> = {
       useAsReference: "作为参考图",
       annotateResult: "做标记来重新生图",
       regenerateSlot: "重新生成此槽位",
-      retrySlot: "重试此槽位",
+      retrySlot: "重试此失败槽位",
       slotResubmitted: "槽位已重新加入生成队列。",
       retryFailedSlots: (count) => `仅重试失败槽位${count ? ` (${count})` : ""}`,
       failedSlotsResubmitted: (count) => `已重新提交 ${count} 个失败槽位。`,
@@ -804,8 +840,15 @@ const COPY: Record<Language, Copy> = {
       versionsCleared: "版本记录已清空。",
       exportSuite: "导出整套",
       exportingSuite: "正在导出",
-      exportSuiteSuccess: (count) => `已导出 ${count} 张套图和参数清单。`,
-      exportSuiteFailed: "产品套图导出失败。",
+       exportSuiteSuccess: (count) => `已导出 ${count} 张套图和参数清单。`,
+       exportSuiteFailed: "产品套图导出失败。",
+       batchLabel: (number) => `当前产品批次：批次 ${number}`,
+       batchShortLabel: (number) => `批次 ${number}`,
+       productImageChangedTitle: "检测到产品实拍图已更换",
+       productImageChangedDescription: "这张图片与当前产品批次不同。你可以继续当前批次，或为新产品建立新的批次。",
+       continueCurrentBatch: "继续当前批次",
+       startNewBatch: "开始新产品批次",
+       cancelImageChange: "取消更换",
     },
     annotation: {
       title: "做标记来重新生图",
@@ -1125,15 +1168,34 @@ const COPY: Record<Language, Copy> = {
       completions: "completions",
       edits: "Image edit",
       quickStart: {
-        buttonLabel: "Quick start",
-        title: "Quick start",
-        description: "Follow these steps to make your first image. Everything stays in this browser.",
+        buttonLabel: "Help",
+        title: "Help",
+        description: "Plain-language help for using ImageX, understanding common errors, and seeing recent updates. Everything stays in this browser.",
+        tabs: {
+          gettingStarted: "Quick start",
+          errors: "Common errors",
+          changelog: "Changelog",
+        },
         steps: [
           "Open Settings and enter the API URL, API key, and model. If you are unsure, use the OpenAI-compatible details from your provider.",
           "Choose Generate, enter a prompt, choose size, quality, and image count, then click Image generation.",
           "To change an existing image, choose Edit, drop an image into the image area, describe the change, and click Image edit.",
           "Results appear in the main panel and the request list. You can preview, download, reuse, or annotate them.",
           "To make six ecommerce images for one product, choose Workflow, create a task, fill in the product details, and upload the product photo.",
+        ],
+        errors: [
+          { title: "Failed to fetch / Request failed", description: "The browser did not receive a reply from the API. The URL may be wrong, the network may be unavailable, or the provider may block browser cross-origin requests. Check the URL and ask the provider whether direct browser access is allowed." },
+          { title: "401 / Invalid API key", description: "The provider does not accept this key. Copy it again without extra spaces and check that it has not expired." },
+          { title: "403 / Permission denied", description: "The key is recognized, but it cannot use this model or endpoint. Choose an allowed model or ask the provider to enable access." },
+          { title: "404 / Endpoint not found", description: "The API path is wrong. Usually enter the provider's OpenAI-compatible base URL only; do not add /v1 or /images/generations twice." },
+          { title: "400 / Invalid parameter", description: "The request reached the provider, but one option is not accepted. Common causes are the model name, image size, image format, or prompt. Read the field named in the error and follow the provider's docs." },
+          { title: "429 / Too many requests", description: "The provider is asking you to slow down, often because your quota is used up or too many requests are running. Lower the image count, increase the interval, or wait and retry." },
+          { title: "5xx / Provider outage", description: "The provider's server is temporarily unhealthy. It may not be your configuration. Retry later or check the provider's status page." },
+        ],
+        changelog: [
+          "Unified Base64 response compatibility for OpenAI image endpoints, with automatic fallback when unsupported.",
+          "Image edit uploads now use the image field consistently for broader OpenAI-style compatibility.",
+          "ImageX remains browser-only and local-first: keys, task history, and images are not uploaded to an ImageX server.",
         ],
       },
       pasteImageHint: "Drop or paste images here to add them directly",
@@ -1196,7 +1258,7 @@ const COPY: Record<Language, Copy> = {
       useAsReference: "Use as reference",
       annotateResult: "Mark up and regenerate",
       regenerateSlot: "Regenerate slot",
-      retrySlot: "Retry slot",
+      retrySlot: "Retry failed slot",
       slotResubmitted: "The slot was added to the generation queue again.",
       retryFailedSlots: (count) => `Retry failed slots${count ? ` (${count})` : ""}`,
       failedSlotsResubmitted: (count) => `Resubmitted ${count} failed slot${count === 1 ? "" : "s"}.`,
@@ -1215,8 +1277,15 @@ const COPY: Record<Language, Copy> = {
       versionsCleared: "Version history cleared.",
       exportSuite: "Export suite",
       exportingSuite: "Exporting",
-      exportSuiteSuccess: (count) => `Exported ${count} suite image${count === 1 ? "" : "s"} and the manifest.`,
-      exportSuiteFailed: "Could not export the product suite.",
+       exportSuiteSuccess: (count) => `Exported ${count} suite image${count === 1 ? "" : "s"} and the manifest.`,
+       exportSuiteFailed: "Could not export the product suite.",
+       batchLabel: (number) => `Current product batch: Batch ${number}`,
+       batchShortLabel: (number) => `Batch ${number}`,
+       productImageChangedTitle: "A new product reference image was detected",
+       productImageChangedDescription: "This image differs from the current product batch. Continue the current batch, or start a new batch for the new product.",
+       continueCurrentBatch: "Continue current batch",
+       startNewBatch: "Start new product batch",
+       cancelImageChange: "Cancel change",
     },
     annotation: {
       title: "Mark up and regenerate",

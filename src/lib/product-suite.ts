@@ -41,6 +41,9 @@ export interface ProductSuiteSlot {
 export interface ProductSuiteTask {
   id: string;
   name: string;
+  productBatchId: string;
+  productBatchNumber: number;
+  productImageHash: string;
   productImage: ProductSuiteAsset | null;
   brandAsset: ProductSuiteAsset | null;
   info: ProductSuiteInfo;
@@ -105,6 +108,16 @@ function normalizeProductSuiteSlots(value: unknown): ProductSuiteSlot[] {
   });
 }
 
+function normalizeProductBatchId(value: unknown) {
+  const id = String(value || "").trim();
+  return id || "batch-1";
+}
+
+function normalizeProductBatchNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : 1;
+}
+
 export function normalizeProductSuiteTask(value: unknown): ProductSuiteTask | null {
   if (!isRecord(value)) return null;
   const id = String(value.id || "").trim();
@@ -115,6 +128,9 @@ export function normalizeProductSuiteTask(value: unknown): ProductSuiteTask | nu
   return {
     id,
     name: String(value.name || "").trim(),
+    productBatchId: normalizeProductBatchId(value.productBatchId),
+    productBatchNumber: normalizeProductBatchNumber(value.productBatchNumber),
+    productImageHash: String(value.productImageHash || "").trim(),
     productImage: normalizeAsset(value.productImage),
     brandAsset: normalizeAsset(value.brandAsset),
     info: {
@@ -140,6 +156,9 @@ export function createProductSuiteTask(now = Date.now(), language: ProductSuiteT
   return {
     id,
     name: "",
+    productBatchId: "batch-1",
+    productBatchNumber: 1,
+    productImageHash: "",
     productImage: null,
     brandAsset: null,
     info: emptyProductSuiteInfo(),
@@ -147,6 +166,25 @@ export function createProductSuiteTask(now = Date.now(), language: ProductSuiteT
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export async function hashProductSuiteImage(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Older browsers may not expose SubtleCrypto. This fallback is only used to
+  // distinguish local uploads and is not intended as a security hash.
+  let hash = 2166136261;
+  for (const byte of bytes) hash = Math.imul(hash ^ byte, 16777619);
+  return `fallback-${(hash >>> 0).toString(16)}-${bytes.length}`;
+}
+
+export function createProductSuiteBatchId(now = Date.now()) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `product-batch-${now}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function developmentAsset(path: string, name: string): Promise<ProductSuiteAsset> {
@@ -172,6 +210,9 @@ export async function createDevelopmentProductSuiteTask(language: ProductSuiteTe
   const task: ProductSuiteTask = {
     id: DEVELOPMENT_PRODUCT_SUITE_TASK_ID,
     name: language === "en" ? "Development product suite example" : "开发示例：磁吸无线充电宝套图",
+    productBatchId: "development-batch-1",
+    productBatchNumber: 1,
+    productImageHash: "development-product-reference",
     productImage: await developmentAsset("/placeholders/dev-placeholder-1.png", "development-product-reference.png"),
     brandAsset: await developmentAsset("/placeholders/dev-placeholder-2.png", "development-brand-asset.png"),
     info: {

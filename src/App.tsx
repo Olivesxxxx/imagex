@@ -416,6 +416,9 @@ export default function App() {
     for (const slot of enabledSlots) {
       const prompt = renderProductSuitePrompt(task, slot.key, language === "en" ? "en" : "zh");
       const slotImages = slot.key === "hero" && brandAsset ? [productImage, brandAsset] : [productImage];
+      const version = consoleState.requestRecords
+        .filter((request) => request.productSuiteTaskId === task.id && request.productSuiteSlotKey === slot.key && (request.productSuiteBatchId === task.productBatchId || (!request.productSuiteBatchId && task.productBatchId === "batch-1")))
+        .reduce((max, request) => Math.max(max, request.productSuiteVersion || 1), 0) + 1;
       const submitted = consoleState.enqueueEditGeneration({
         prompt,
         editImages: slotImages,
@@ -423,8 +426,10 @@ export default function App() {
         silent: true,
         productSuite: {
           taskId: task.id,
+          batchId: task.productBatchId,
+          batchNumber: task.productBatchNumber,
           slotKey: slot.key,
-          version: 1,
+          version,
         },
       });
       if (!submitted) break;
@@ -462,6 +467,8 @@ export default function App() {
       silent: true,
       productSuite: {
         taskId: task.id,
+        batchId: task.productBatchId,
+        batchNumber: task.productBatchNumber,
         slotKey,
         version,
       },
@@ -483,13 +490,9 @@ export default function App() {
 
   return (
     <>
-      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
-        <div className={productSuiteOpen && !productSuiteHasDraft
-          ? "standard-scrollbar grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto"
-          : productSuiteOpen
-            ? "standard-scrollbar flex min-h-0 w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto"
-          : "standard-scrollbar grid min-h-0 w-full max-w-full min-w-0 grid-rows-[minmax(280px,1.15fr)_minmax(340px,0.85fr)] gap-3 overflow-x-hidden overflow-y-auto"}>
-          <div id="result-panel" className={workflowUsesTaskLayout ? "h-[clamp(280px,52dvh,620px)] shrink-0" : "min-h-0"}>
+      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-y-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-x-0 lg:overflow-hidden">
+        <div className="standard-scrollbar flex min-h-0 w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto">
+          <div id="result-panel" className="h-[clamp(300px,54dvh,620px)] shrink-0">
             <ResultPanel
               selectedRequest={consoleState.selectedRequest}
               selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}

@@ -39,7 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segmented-tabs";
-import { Tabs } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
@@ -191,48 +191,52 @@ export function WorkflowHeaderControls({
   const { copy, toggleLanguage } = useI18n();
 
   return (
-    <div className="flex min-w-0 flex-wrap items-end gap-2">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={toggleLanguage} aria-label={copy.switchLanguageTooltip}>
-            <LanguagesIcon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={onOpenQuickStart} aria-label={copy.generator.quickStart.buttonLabel}>
-            <CircleHelpIcon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{copy.generator.quickStart.buttonLabel}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
-            size="icon-sm"
-            className={panelIconButtonClassName}
-            onClick={() => setSettingsOpen(true)}
-            aria-label={copy.generator.settingsTooltip}
-            title={copy.generator.settingsTooltip}
-          >
-            {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{copy.generator.settingsTooltip}</TooltipContent>
-      </Tooltip>
-      <SizeSelect className="w-28 flex-none" value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
-      <OptionSelect
-        className="w-24 flex-none"
-        label={copy.generator.quality}
-        value={String(settings.quality)}
-        options={QUALITY_OPTIONS}
-        optionLabels={copy.generator.qualityOptions}
-        onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
-      />
+    <div className="flex min-w-0 flex-wrap items-end gap-3">
+      <div className="flex shrink-0 items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={toggleLanguage} aria-label={copy.switchLanguageTooltip}>
+              <LanguagesIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={onOpenQuickStart} aria-label={copy.generator.quickStart.buttonLabel}>
+              <CircleHelpIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copy.generator.quickStart.buttonLabel}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
+              size="icon-sm"
+              className={panelIconButtonClassName}
+              onClick={() => setSettingsOpen(true)}
+              aria-label={copy.generator.settingsTooltip}
+              title={copy.generator.settingsTooltip}
+            >
+              {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copy.generator.settingsTooltip}</TooltipContent>
+        </Tooltip>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-end gap-2">
+        <SizeSelect className="w-28 flex-none" value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
+        <OptionSelect
+          className="w-24 flex-none"
+          label={copy.generator.quality}
+          value={String(settings.quality)}
+          options={QUALITY_OPTIONS}
+          optionLabels={copy.generator.qualityOptions}
+          onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
+        />
+      </div>
     </div>
   );
 }
@@ -339,17 +343,40 @@ export function PromptHistoryPanel({
 export function QuickStartDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { copy } = useI18n();
   const quickStart = copy.generator.quickStart;
+  const [activeTab, setActiveTab] = useState("getting-started");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
+      <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{quickStart.title}</DialogTitle>
           <DialogDescription>{quickStart.description}</DialogDescription>
         </DialogHeader>
-        <ol className="grid list-decimal gap-3 pl-5 text-sm leading-relaxed">
-          {quickStart.steps.map((step) => <li key={step} className="pl-1 text-muted-foreground">{step}</li>)}
-        </ol>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
+          <SegmentedTabsList className="grid w-full grid-cols-3">
+            <SegmentedTabsTrigger value="getting-started">{quickStart.tabs.gettingStarted}</SegmentedTabsTrigger>
+            <SegmentedTabsTrigger value="errors">{quickStart.tabs.errors}</SegmentedTabsTrigger>
+            <SegmentedTabsTrigger value="changelog">{quickStart.tabs.changelog}</SegmentedTabsTrigger>
+          </SegmentedTabsList>
+          <TabsContent value="getting-started" className="mt-1">
+            <ol className="grid list-decimal gap-3 pl-5 text-sm leading-relaxed">
+              {quickStart.steps.map((step) => <li key={step} className="pl-1 text-muted-foreground">{step}</li>)}
+            </ol>
+          </TabsContent>
+          <TabsContent value="errors" className="mt-1 grid gap-2">
+            {quickStart.errors.map((error) => (
+              <section key={error.title} className="rounded-md border bg-muted/20 px-3 py-2.5">
+                <h3 className="text-sm font-medium text-foreground">{error.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{error.description}</p>
+              </section>
+            ))}
+          </TabsContent>
+          <TabsContent value="changelog" className="mt-1">
+            <ul className="grid list-disc gap-3 pl-5 text-sm leading-relaxed text-muted-foreground">
+              {quickStart.changelog.map((entry) => <li key={entry} className="pl-1">{entry}</li>)}
+            </ul>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

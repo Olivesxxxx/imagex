@@ -128,7 +128,6 @@ describe("image console logic", () => {
       quality: "high",
       background: "opaque",
       output_format: "webp",
-      moderation: "low",
     });
   });
 
@@ -193,7 +192,7 @@ describe("image console logic", () => {
     expect(payload.images).toBeUndefined();
     expect(payload.n).toBe(2);
     expect(payload.output_format).toBe("webp");
-    expect(payload.moderation).toBe("low");
+    expect(payload.moderation).toBeUndefined();
   });
 
   test("rejects edit payloads with more than five input images", () => {
@@ -416,7 +415,8 @@ describe("image console logic", () => {
     expect(requests).toHaveLength(3);
     expect(requests[0].model).toBe("gpt-image-2");
     expect(requests[0].n).toBe(1);
-    expect(requests[0].moderation).toBe("low");
+    expect(requests[0].moderation).toBeUndefined();
+    expect(requests[0].background).toBeUndefined();
     expect(requests[0]).not.toBe(requests[1]);
   });
 
@@ -677,6 +677,8 @@ describe("image console logic", () => {
   test("caches and restores product suite request associations", () => {
     const record = requestRecordFixture({
       productSuiteTaskId: "suite-1",
+      productSuiteBatchId: "batch-2",
+      productSuiteBatchNumber: 2,
       productSuiteSlotKey: "hero",
       productSuiteVersion: 2,
     });
@@ -686,11 +688,15 @@ describe("image console logic", () => {
 
     expect(cached).toMatchObject({
       productSuiteTaskId: "suite-1",
+      productSuiteBatchId: "batch-2",
+      productSuiteBatchNumber: 2,
       productSuiteSlotKey: "hero",
       productSuiteVersion: 2,
     });
     expect(restored).toMatchObject({
       productSuiteTaskId: "suite-1",
+      productSuiteBatchId: "batch-2",
+      productSuiteBatchNumber: 2,
       productSuiteSlotKey: "hero",
       productSuiteVersion: 2,
     });
