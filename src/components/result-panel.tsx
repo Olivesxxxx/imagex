@@ -540,9 +540,15 @@ export function ResultPanel({
       : testConnectionStatus.tone !== "ok"
         ? { label: copy.requestCardStatus.availabilityUntested, className: "border-border bg-muted text-muted-foreground" }
       : latencyState === "ready" && latency !== null
-        ? latency <= 500
-          ? { label: copy.requestCardStatus.availabilityAvailable, className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300" }
-          : { label: copy.requestCardStatus.availabilitySlow, className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300" }
+        ? latency <= 150
+          ? { label: copy.requestCardStatus.availabilityVeryFast, className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300" }
+          : latency <= 300
+            ? { label: copy.requestCardStatus.availabilityFast, className: "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-300" }
+            : latency <= 500
+              ? { label: copy.requestCardStatus.availabilityNormal, className: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300" }
+              : latency <= 1000
+                ? { label: copy.requestCardStatus.availabilitySlow, className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300" }
+                : { label: copy.requestCardStatus.availabilityVerySlow, className: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300" }
         : { label: copy.requestCardStatus.availabilityChecking, className: "border-border bg-muted text-muted-foreground" };
 
   return (

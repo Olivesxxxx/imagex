@@ -266,8 +266,12 @@ type Copy = {
     availabilityUnconfigured: string;
     availabilityUntested: string;
     availabilityChecking: string;
+    availabilityVeryFast: string;
+    availabilityFast: string;
+    availabilityNormal: string;
     availabilityAvailable: string;
     availabilitySlow: string;
+    availabilityVerySlow: string;
     previewImage: string;
     previewPreviousImage: string;
     previewNextImage: string;
@@ -694,8 +698,12 @@ const COPY: Record<Language, Copy> = {
       availabilityUnconfigured: "未配置",
       availabilityUntested: "未测试",
       availabilityChecking: "待检测",
+      availabilityVeryFast: "极快",
+      availabilityFast: "较快",
+      availabilityNormal: "正常",
       availabilityAvailable: "可用",
       availabilitySlow: "较慢",
+      availabilityVerySlow: "很慢",
       previewImage: "查看大图",
       previewPreviousImage: "上一张大图",
       previewNextImage: "下一张大图",
@@ -1163,8 +1171,12 @@ const COPY: Record<Language, Copy> = {
       availabilityUnconfigured: "Not configured",
       availabilityUntested: "Not tested",
       availabilityChecking: "Not checked",
+      availabilityVeryFast: "Very fast",
+      availabilityFast: "Fast",
+      availabilityNormal: "Normal",
       availabilityAvailable: "Available",
       availabilitySlow: "Slow",
+      availabilityVerySlow: "Very slow",
       previewImage: "View full image",
       previewPreviousImage: "Previous full image",
       previewNextImage: "Next full image",
