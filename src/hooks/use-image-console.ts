@@ -1612,13 +1612,29 @@ export function useImageConsole() {
 
   const testConnection = useCallback(async () => {
     const currentSettings = settingsRef.current;
-    const endpoint = normalizeModelsEndpoint(currentSettings.baseUrl);
+    const activeProvider = currentSettings.openaiProviders.find((provider) => provider.id === currentSettings.activeOpenAIProviderId);
+    const testUrl = currentSettings.protocol === "private"
+      ? currentSettings.privateBaseUrl.trim()
+      : currentSettings.protocol === "gemini"
+        ? currentSettings.geminiBaseUrl.trim()
+        : currentSettings.baseUrl.trim();
+    const testKey = currentSettings.protocol === "private"
+      ? currentSettings.privateApiKey.trim()
+      : currentSettings.protocol === "gemini"
+        ? currentSettings.geminiApiKey.trim()
+        : currentSettings.apiKey.trim();
+    if ((currentSettings.protocol === "openai" && !activeProvider) || !testUrl || !testKey) {
+      setTestConnectionStatus({ label: copy.tests.connectionNotConfigured, tone: "error" });
+      toast.error(copy.tests.connectionNotConfigured);
+      return;
+    }
+    const endpoint = normalizeModelsEndpoint(testUrl);
     setTestConnectionStatus({ label: copy.tests.connectionTesting, tone: "busy" });
 
     try {
       await fetchModels(
-        currentSettings.baseUrl,
-        currentSettings.apiKey,
+        testUrl,
+        testKey,
         language,
       );
       toast.success(copy.tests.connectionNormal);

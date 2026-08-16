@@ -511,6 +511,7 @@ export default function App() {
               selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
               settings={consoleState.settings}
               connectionStatus={consoleState.connectionStatus}
+              testConnectionStatus={consoleState.testConnectionStatus}
               selectedRequestJson={consoleState.selectedRequestJson}
               setJsonDialogOpen={consoleState.setJsonDialogOpen}
               reusePrompt={consoleState.reusePrompt}

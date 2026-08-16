@@ -259,8 +259,11 @@ type Copy = {
     latency: string;
     interval: string;
     refreshLatency: string;
+    latencyCooldown: (seconds: number) => string;
     latencyMeasuring: string;
     latencyUnavailable: string;
+    availabilityUnconfigured: string;
+    availabilityUntested: string;
     availabilityChecking: string;
     availabilityAvailable: string;
     availabilitySlow: string;
@@ -572,6 +575,7 @@ type Copy = {
     connectionNormal: string;
     connectionNormalDetail: string;
     connectionFailed: string;
+    connectionNotConfigured: string;
     connectionSaved: string;
     connectionReset: string;
     connectionResetDetail: string;
@@ -682,8 +686,11 @@ const COPY: Record<Language, Copy> = {
       latency: "延迟",
       interval: "间隔",
       refreshLatency: "刷新 API 延迟",
+      latencyCooldown: (seconds) => `请等待 ${seconds}s 后再检测`,
       latencyMeasuring: "检测中...",
       latencyUnavailable: "不可用",
+      availabilityUnconfigured: "未配置",
+      availabilityUntested: "未测试",
       availabilityChecking: "待检测",
       availabilityAvailable: "可用",
       availabilitySlow: "较慢",
@@ -1027,6 +1034,7 @@ const COPY: Record<Language, Copy> = {
       connectionNormal: "连接正常",
       connectionNormalDetail: "模型列表接口已返回。",
       connectionFailed: "连接失败",
+      connectionNotConfigured: "请先填写 URL 和 API Key",
       connectionSaved: "已保存",
       connectionReset: "配置",
       connectionResetDetail: "默认 URL 已恢复。",
@@ -1146,8 +1154,11 @@ const COPY: Record<Language, Copy> = {
       latency: "Latency",
       interval: "Interval",
       refreshLatency: "Refresh API latency",
+      latencyCooldown: (seconds) => `Check again in ${seconds}s`,
       latencyMeasuring: "Checking...",
       latencyUnavailable: "Unavailable",
+      availabilityUnconfigured: "Not configured",
+      availabilityUntested: "Not tested",
       availabilityChecking: "Not checked",
       availabilityAvailable: "Available",
       availabilitySlow: "Slow",
@@ -1491,6 +1502,7 @@ const COPY: Record<Language, Copy> = {
       connectionNormal: "Connected",
       connectionNormalDetail: "The models endpoint returned successfully.",
       connectionFailed: "Connection failed",
+      connectionNotConfigured: "Enter the URL and API key first",
       connectionSaved: "Saved",
       connectionReset: "Settings",
       connectionResetDetail: "Default URL restored.",

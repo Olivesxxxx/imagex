@@ -94,6 +94,8 @@ function latencyToneClass(state: "idle" | "measuring" | "ready" | "unavailable",
   return "text-rose-600 dark:text-rose-400";
 }
 
+const LATENCY_CHECK_INTERVAL_MS = 60_000;
+
 async function downloadRequestImages(request: Pick<ImageRequestRecord, "images" | "payload" | "title" | "method">) {
   const images = request.images || [];
 
@@ -391,11 +393,13 @@ export function ResultPanel({
   onAnnotateImage,
   previewTarget,
   connectionStatus,
+  testConnectionStatus,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
   settings: Pick<AppSettings, "protocol" | "baseUrl" | "privateBaseUrl" | "geminiBaseUrl" | "openaiProviders" | "activeOpenAIProviderId" | "requestConcurrency" | "requestIntervalSeconds">;
   connectionStatus: ConnectionStatus;
+  testConnectionStatus: ConnectionStatus;
   selectedRequestJson: string;
   setJsonDialogOpen: (open: boolean) => void;
   reusePrompt: (request: ImageRequestRecord) => void;
@@ -425,20 +429,36 @@ export function ResultPanel({
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId);
   const providerName = activeProvider?.name || (language === "en" ? "Provider" : "供应商");
   const protocolLabel = settings.protocol === "private" ? (language === "en" ? "Private" : "私有协议") : settings.protocol === "gemini" ? "Gemini" : "OpenAI";
-  const apiUrl = (settings.protocol === "private" ? settings.privateBaseUrl : settings.protocol === "gemini" ? settings.geminiBaseUrl : settings.baseUrl).trim();
+  const appSettings = settings as AppSettings;
+  const apiUrl = (settings.protocol === "private" ? appSettings.privateBaseUrl : settings.protocol === "gemini" ? appSettings.geminiBaseUrl : settings.baseUrl).trim();
+  const apiKey = (settings.protocol === "private" ? appSettings.privateApiKey : settings.protocol === "gemini" ? appSettings.geminiApiKey : appSettings.apiKey).trim();
+  const configurationIssue = settings.protocol === "openai" && !activeProvider
+    ? (language === "en" ? "Provider" : "供应商")
+    : !apiUrl
+      ? copy.settings.apiUrl
+      : !apiKey
+        ? (settings.protocol === "private" ? copy.settings.privateApiKey : settings.protocol === "gemini" ? copy.settings.geminiApiKey : copy.settings.apiKey)
+        : null;
   const [latency, setLatency] = useState<number | null>(null);
   const [latencyState, setLatencyState] = useState<"idle" | "measuring" | "ready" | "unavailable">("idle");
+  const [latencyCooldownUntil, setLatencyCooldownUntil] = useState(0);
+  const [latencyCooldownSeconds, setLatencyCooldownSeconds] = useState(0);
   const latencyAbortRef = useRef<AbortController | null>(null);
   const latencyRequestRef = useRef(0);
+  const latencyLastCheckAtRef = useRef(0);
 
   const refreshLatency = useCallback(async () => {
+    const now = Date.now();
+    if (now - latencyLastCheckAtRef.current < LATENCY_CHECK_INTERVAL_MS) return false;
     const requestId = ++latencyRequestRef.current;
     latencyAbortRef.current?.abort();
     if (!apiUrl) {
       setLatency(null);
       setLatencyState("unavailable");
-      return;
+      return false;
     }
+    latencyLastCheckAtRef.current = now;
+    setLatencyCooldownUntil(now + LATENCY_CHECK_INTERVAL_MS);
     const controller = new AbortController();
     latencyAbortRef.current = controller;
     const timeoutId = window.setTimeout(() => controller.abort(), 8000);
@@ -448,12 +468,14 @@ export function ResultPanel({
     try {
       const target = new URL(apiUrl, window.location.href).toString();
       await fetch(target, { method: "HEAD", mode: "no-cors", cache: "no-store", signal: controller.signal });
-      if (requestId !== latencyRequestRef.current) return;
+      if (requestId !== latencyRequestRef.current) return false;
       setLatency(Math.max(1, Math.round(performance.now() - startedAt)));
       setLatencyState("ready");
+      return true;
     } catch {
-      if (requestId !== latencyRequestRef.current) return;
+      if (requestId !== latencyRequestRef.current) return false;
       setLatencyState("unavailable");
+      return false;
     } finally {
       window.clearTimeout(timeoutId);
     }
@@ -467,9 +489,38 @@ export function ResultPanel({
   useEffect(() => {
     latencyRequestRef.current += 1;
     latencyAbortRef.current?.abort();
+    latencyLastCheckAtRef.current = 0;
+    setLatencyCooldownUntil(0);
     setLatency(null);
     setLatencyState("idle");
   }, [apiUrl]);
+
+  useEffect(() => {
+    if (testConnectionStatus.tone === "ok") void refreshLatency();
+  }, [refreshLatency, testConnectionStatus.tone]);
+
+  useEffect(() => {
+    const updateCooldown = () => {
+      setLatencyCooldownSeconds(Math.max(0, Math.ceil((latencyCooldownUntil - Date.now()) / 1000)));
+    };
+    updateCooldown();
+    if (!latencyCooldownUntil) return;
+    const timer = window.setInterval(updateCooldown, 1000);
+    return () => window.clearInterval(timer);
+  }, [latencyCooldownUntil]);
+
+  useEffect(() => {
+    if (configurationIssue) return;
+    const runAutomaticCheck = () => {
+      if (document.visibilityState === "visible") void refreshLatency();
+    };
+    const timer = window.setInterval(runAutomaticCheck, LATENCY_CHECK_INTERVAL_MS);
+    document.addEventListener("visibilitychange", runAutomaticCheck);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", runAutomaticCheck);
+    };
+  }, [configurationIssue, refreshLatency]);
 
   const latencyLabel = latencyState === "idle"
     ? "-"
@@ -478,10 +529,14 @@ export function ResultPanel({
     : latencyState === "ready" && latency !== null
       ? `${latency} ms`
       : copy.requestCardStatus.latencyUnavailable;
-  const availability = connectionStatus.tone === "error" || latencyState === "unavailable"
+  const availability = configurationIssue
+    ? { label: `${copy.requestCardStatus.availabilityUnconfigured} · ${configurationIssue}`, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
+    : testConnectionStatus.tone === "error" || latencyState === "unavailable"
     ? { label: copy.requestCardStatus.latencyUnavailable, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
-    : latencyState === "measuring" || connectionStatus.tone === "busy"
+    : latencyState === "measuring" || testConnectionStatus.tone === "busy"
       ? { label: copy.requestCardStatus.latencyMeasuring, className: "border-border bg-muted text-muted-foreground" }
+      : testConnectionStatus.tone !== "ok"
+        ? { label: copy.requestCardStatus.availabilityUntested, className: "border-border bg-muted text-muted-foreground" }
       : latencyState === "ready" && latency !== null
         ? latency <= 500
           ? { label: copy.requestCardStatus.availabilityAvailable, className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300" }
@@ -516,11 +571,11 @@ export function ResultPanel({
               </span>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" onClick={() => void refreshLatency()} aria-label={copy.requestCardStatus.refreshLatency}>
+                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" disabled={Boolean(configurationIssue) || latencyState === "measuring" || latencyCooldownSeconds > 0} onClick={() => void refreshLatency()} aria-label={latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.refreshLatency}>
                     <RefreshCwIcon className={latencyState === "measuring" ? "animate-spin" : undefined} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{copy.requestCardStatus.refreshLatency}</TooltipContent>
+                <TooltipContent>{latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.refreshLatency}</TooltipContent>
               </Tooltip>
             </div>
           </div>
