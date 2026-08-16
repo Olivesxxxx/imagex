@@ -259,6 +259,7 @@ type Copy = {
     latency: string;
     interval: string;
     refreshLatency: string;
+    testConnection: string;
     latencyCooldown: (seconds: number) => string;
     latencyMeasuring: string;
     latencyUnavailable: string;
@@ -686,6 +687,7 @@ const COPY: Record<Language, Copy> = {
       latency: "延迟",
       interval: "间隔",
       refreshLatency: "刷新 API 延迟",
+      testConnection: "测试供应商连接",
       latencyCooldown: (seconds) => `请等待 ${seconds}s 后再检测`,
       latencyMeasuring: "检测中...",
       latencyUnavailable: "不可用",
@@ -1154,6 +1156,7 @@ const COPY: Record<Language, Copy> = {
       latency: "Latency",
       interval: "Interval",
       refreshLatency: "Refresh API latency",
+      testConnection: "Test provider connection",
       latencyCooldown: (seconds) => `Check again in ${seconds}s`,
       latencyMeasuring: "Checking...",
       latencyUnavailable: "Unavailable",

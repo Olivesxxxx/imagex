@@ -512,6 +512,7 @@ export default function App() {
               settings={consoleState.settings}
               connectionStatus={consoleState.connectionStatus}
               testConnectionStatus={consoleState.testConnectionStatus}
+              onTestConnection={consoleState.testConnection}
               selectedRequestJson={consoleState.selectedRequestJson}
               setJsonDialogOpen={consoleState.setJsonDialogOpen}
               reusePrompt={consoleState.reusePrompt}

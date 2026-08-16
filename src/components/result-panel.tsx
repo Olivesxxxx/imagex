@@ -394,12 +394,14 @@ export function ResultPanel({
   previewTarget,
   connectionStatus,
   testConnectionStatus,
+  onTestConnection,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
   settings: Pick<AppSettings, "protocol" | "baseUrl" | "privateBaseUrl" | "geminiBaseUrl" | "openaiProviders" | "activeOpenAIProviderId" | "requestConcurrency" | "requestIntervalSeconds">;
   connectionStatus: ConnectionStatus;
   testConnectionStatus: ConnectionStatus;
+  onTestConnection: () => void | Promise<void>;
   selectedRequestJson: string;
   setJsonDialogOpen: (open: boolean) => void;
   reusePrompt: (request: ImageRequestRecord) => void;
@@ -571,11 +573,11 @@ export function ResultPanel({
               </span>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" disabled={Boolean(configurationIssue) || latencyState === "measuring" || latencyCooldownSeconds > 0} onClick={() => void refreshLatency()} aria-label={latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.refreshLatency}>
+                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" disabled={Boolean(configurationIssue) || latencyState === "measuring" || testConnectionStatus.tone === "busy" || latencyCooldownSeconds > 0} onClick={() => void onTestConnection()} aria-label={latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.testConnection}>
                     <RefreshCwIcon className={latencyState === "measuring" ? "animate-spin" : undefined} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.refreshLatency}</TooltipContent>
+                <TooltipContent>{latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.testConnection}</TooltipContent>
               </Tooltip>
             </div>
           </div>
