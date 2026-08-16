@@ -34,6 +34,18 @@ function productSuiteAssetToEditImage(asset: ProductSuiteAsset, sourceKey: strin
   };
 }
 
+function productSuiteProductAssets(task: ProductSuiteTask): ProductSuiteAsset[] {
+  return task.productImages?.length ? task.productImages : (task.productImage ? [task.productImage] : []);
+}
+
+function productSuiteBrandAssets(task: ProductSuiteTask): ProductSuiteAsset[] {
+  return task.brandAssets?.length ? task.brandAssets : (task.brandAsset ? [task.brandAsset] : []);
+}
+
+function productSuiteAssetsToEditImages(assets: ProductSuiteAsset[], sourcePrefix: string): EditInputImage[] {
+  return assets.map((asset, index) => productSuiteAssetToEditImage(asset, `${sourcePrefix}:${index + 1}`));
+}
+
 function StrictPromptEditorDialog({
   open,
   value,
@@ -385,7 +397,9 @@ export default function App() {
   function handleAnnotationSubmit(file: File, instruction: string) {
     if (!annotationTarget) return;
     const originalPrompt = annotationTarget.originalPrompt.trim();
-    const addition = instruction.trim() || (language === "en" ? "Apply the changes indicated by the marks in the reference image." : "请按照参考图中的标记进行修改。");
+    const addition = instruction.trim() || (language === "en"
+      ? "Use the arrows and notes outside the original image to apply the requested changes to the circled areas."
+      : "请根据原图外的箭头和文字说明，对圈出的区域进行对应修改。");
     handleModeChange("edit");
     consoleState.setEditImages([
       {
@@ -402,20 +416,20 @@ export default function App() {
   }
 
   function handleProductSuiteSubmit(task: ProductSuiteTask) {
-    if (!task.productImage) return 0;
-    const productImage = productSuiteAssetToEditImage(task.productImage, "product-suite:" + task.id + ":product");
-    const brandAsset = task.brandAsset
-      ? productSuiteAssetToEditImage(task.brandAsset, "product-suite:" + task.id + ":brand")
-      : null;
+    const productAssets = productSuiteProductAssets(task);
+    if (!productAssets.length) return 0;
+    const productImages = productSuiteAssetsToEditImages(productAssets, "product-suite:" + task.id + ":product");
+    const brandAssets = productSuiteBrandAssets(task);
+    const brandImages = productSuiteAssetsToEditImages(brandAssets, "product-suite:" + task.id + ":brand");
     const enabledSlots = task.slots.filter((slot) => slot.enabled);
     let submittedCount = 0;
     let lastPrompt = "";
-    let lastImages: EditInputImage[] = [productImage];
-    let brandAssetUsed = false;
+    let lastImages: EditInputImage[] = productImages;
+    let brandAssetsUsed = false;
 
     for (const slot of enabledSlots) {
       const prompt = renderProductSuitePrompt(task, slot.key, language === "en" ? "en" : "zh");
-      const slotImages = slot.key === "hero" && brandAsset ? [productImage, brandAsset] : [productImage];
+      const slotImages = slot.key === "hero" && brandImages.length ? [...productImages, ...brandImages] : productImages;
       const version = consoleState.requestRecords
         .filter((request) => request.productSuiteTaskId === task.id && request.productSuiteSlotKey === slot.key && (request.productSuiteBatchId === task.productBatchId || (!request.productSuiteBatchId && task.productBatchId === "batch-1")))
         .reduce((max, request) => Math.max(max, request.productSuiteVersion || 1), 0) + 1;
@@ -434,7 +448,7 @@ export default function App() {
       });
       if (!submitted) break;
       submittedCount += 1;
-      if (slot.key === "hero" && brandAsset) brandAssetUsed = true;
+      if (slot.key === "hero" && brandImages.length) brandAssetsUsed = true;
       lastPrompt = prompt;
       lastImages = slotImages;
     }
@@ -443,22 +457,21 @@ export default function App() {
       handleModeChange("edit");
       consoleState.setEditImages(lastImages);
       consoleState.setPrompt(lastPrompt);
-      if (brandAsset && !brandAssetUsed) URL.revokeObjectURL(brandAsset.src);
+      if (!brandAssetsUsed) brandImages.forEach((image) => URL.revokeObjectURL(image.src));
     } else {
-      URL.revokeObjectURL(productImage.src);
-      if (brandAsset) URL.revokeObjectURL(brandAsset.src);
+      productImages.forEach((image) => URL.revokeObjectURL(image.src));
+      brandImages.forEach((image) => URL.revokeObjectURL(image.src));
     }
 
     return submittedCount;
   }
 
   function handleProductSuiteSlotSubmit(task: ProductSuiteTask, slotKey: ProductSuiteSlotKey, version: number) {
-    if (!task.productImage) return 0;
-    const productImage = productSuiteAssetToEditImage(task.productImage, `product-suite:${task.id}:product`);
-    const brandAsset = slotKey === "hero" && task.brandAsset
-      ? productSuiteAssetToEditImage(task.brandAsset, `product-suite:${task.id}:brand`)
-      : null;
-    const editImages = brandAsset ? [productImage, brandAsset] : [productImage];
+    const productAssets = productSuiteProductAssets(task);
+    if (!productAssets.length) return 0;
+    const productImages = productSuiteAssetsToEditImages(productAssets, `product-suite:${task.id}:product`);
+    const brandImages = slotKey === "hero" ? productSuiteAssetsToEditImages(productSuiteBrandAssets(task), `product-suite:${task.id}:brand`) : [];
+    const editImages = brandImages.length ? [...productImages, ...brandImages] : productImages;
     const prompt = renderProductSuitePrompt(task, slotKey, language === "en" ? "en" : "zh");
     const submitted = consoleState.enqueueEditGeneration({
       prompt,
@@ -475,8 +488,8 @@ export default function App() {
     });
 
     if (!submitted) {
-      URL.revokeObjectURL(productImage.src);
-      if (brandAsset) URL.revokeObjectURL(brandAsset.src);
+      productImages.forEach((image) => URL.revokeObjectURL(image.src));
+      brandImages.forEach((image) => URL.revokeObjectURL(image.src));
       return 0;
     }
 
@@ -497,6 +510,7 @@ export default function App() {
               selectedRequest={consoleState.selectedRequest}
               selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
               settings={consoleState.settings}
+              connectionStatus={consoleState.connectionStatus}
               selectedRequestJson={consoleState.selectedRequestJson}
               setJsonDialogOpen={consoleState.setJsonDialogOpen}
               reusePrompt={consoleState.reusePrompt}
@@ -611,7 +625,6 @@ export default function App() {
         setSettingsOpen={consoleState.setSettingsOpen}
         updateSettings={consoleState.updateSettings}
         saveCurrentSettings={consoleState.saveCurrentSettings}
-        resetSettings={consoleState.resetSettings}
         clearAllData={() => {
           resetImageSelection();
           consoleState.clearAllData();

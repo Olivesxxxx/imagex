@@ -54,6 +54,14 @@ interface AnnotationWorkspaceProps {
 }
 
 const MARK_COLOR = "#ef4444";
+const ANNOTATION_MARGIN = 240;
+
+function imageInset(canvas: HTMLCanvasElement, image: HTMLImageElement) {
+  return {
+    x: Math.max(0, (canvas.width - image.naturalWidth) / 2),
+    y: Math.max(0, (canvas.height - image.naturalHeight) / 2),
+  };
+}
 
 function distanceToSegment(point: Point, start: Point, end: Point) {
   const dx = end.x - start.x;
@@ -169,6 +177,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
   const [tool, setTool] = useState<AnnotationTool>("select");
   const [strokeSize, setStrokeSize] = useState(2);
   const [strokeColor, setStrokeColor] = useState(MARK_COLOR);
+  const [textFontSize, setTextFontSize] = useState(32);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Annotation | null>(null);
   const [textAnchor, setTextAnchor] = useState<Point | null>(null);
@@ -215,6 +224,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     setTextValue("");
     cancelTextEntryRef.current = false;
     setInstruction("");
+    setTextFontSize(32);
     setExportError("");
     setImageReady(false);
     setLoadError(false);
@@ -234,8 +244,8 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
       imageRef.current = element;
       const canvas = canvasRef.current;
       if (canvas) {
-        canvas.width = element.naturalWidth;
-        canvas.height = element.naturalHeight;
+        canvas.width = element.naturalWidth + ANNOTATION_MARGIN * 2;
+        canvas.height = element.naturalHeight + ANNOTATION_MARGIN * 2;
       }
       setImageReady(true);
     };
@@ -256,7 +266,16 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     const context = canvas.getContext("2d");
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(element, 0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#ffffff";
+    context.fillRect?.(0, 0, canvas.width, canvas.height);
+    const inset = imageInset(canvas, element);
+    context.drawImage(element, inset.x, inset.y, element.naturalWidth, element.naturalHeight);
+    context.save();
+    context.strokeStyle = "#d4d4d8";
+    context.lineWidth = 2;
+    context.setLineDash([10, 8]);
+    context.strokeRect(inset.x, inset.y, element.naturalWidth, element.naturalHeight);
+    context.restore();
     const all = draft ? [...annotations, draft] : annotations;
     for (const annotation of all) {
       context.save();
@@ -348,9 +367,9 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     const canvas = canvasRef.current;
     const element = imageRef.current;
     if (!canvas || !element) return;
-    if (canvas.width !== element.naturalWidth || canvas.height !== element.naturalHeight) {
-      canvas.width = element.naturalWidth;
-      canvas.height = element.naturalHeight;
+    if (canvas.width !== element.naturalWidth + ANNOTATION_MARGIN * 2 || canvas.height !== element.naturalHeight + ANNOTATION_MARGIN * 2) {
+      canvas.width = element.naturalWidth + ANNOTATION_MARGIN * 2;
+      canvas.height = element.naturalHeight + ANNOTATION_MARGIN * 2;
     }
     draw();
   }, [draw, imageReady]);
@@ -364,7 +383,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     const rawLeft = canvasRect.left - stageRect.left + (textAnchor.x / canvas.width) * canvasRect.width;
     const rawTop = canvasRect.top - stageRect.top + (textAnchor.y / canvas.height) * canvasRect.height;
     const context = canvas.getContext("2d");
-    const fontSize = Math.max(28, strokeSize * 3);
+    const fontSize = Math.max(12, textFontSize);
     let measuredWidth = Math.max(72, textValue.length * 14);
     if (context && typeof context.measureText === "function" && textValue) {
       context.save();
@@ -377,7 +396,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     const left = Math.max(8, Math.min(rawLeft, stageRect.width - width - 8));
     const top = Math.max(20, Math.min(rawTop, stageRect.height - 20));
     setTextEditorStyle({ left, top, width });
-  }, [strokeSize, textAnchor, textValue]);
+  }, [textAnchor, textFontSize, textValue]);
 
   useEffect(() => {
     if (!textAnchor) return;
@@ -418,6 +437,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     setSelectedId(annotation.id);
     setTextAnchor(annotation.start);
     setTextValue(annotation.text || "");
+    setTextFontSize(annotation.fontSize || 32);
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -520,7 +540,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     const editingId = selectedId && annotationsRef.current.find((item) => item.id === selectedId && item.type === "text")?.id;
     if (!cancelTextEntryRef.current && textAnchor && textValue.trim()) {
       const text = textValue.trim();
-      const fontSize = Math.max(28, strokeSize * 3);
+       const fontSize = Math.max(12, textFontSize);
       const context = canvasRef.current?.getContext("2d");
       let textWidth = Math.max(fontSize, text.length * fontSize * 0.62);
       let textHeight = fontSize;
@@ -542,6 +562,25 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
     setTextAnchor(null);
     setTextValue("");
     setTool("select");
+  }
+
+  function commitSelectedTextFontSize() {
+    if (!selectedId) return;
+    const selected = annotationsRef.current.find((item) => item.id === selectedId && item.type === "text");
+    if (!selected || !selected.text) return;
+    const context = canvasRef.current?.getContext("2d");
+    let textWidth = Math.max(textFontSize, selected.text.length * textFontSize * 0.62);
+    let textHeight = textFontSize;
+    if (context && typeof context.measureText === "function") {
+      context.save();
+      context.font = `${textFontSize}px sans-serif`;
+      const metrics = context.measureText(selected.text);
+      context.restore();
+      textWidth = Math.max(textFontSize, metrics.width);
+      textHeight = Math.max(textFontSize, (metrics.actualBoundingBoxAscent || 0) + (metrics.actualBoundingBoxDescent || 0));
+    }
+    if (selected.fontSize === textFontSize && selected.textWidth === textWidth) return;
+    commit(annotationsRef.current.map((item) => item.id === selected.id ? { ...item, fontSize: textFontSize, textWidth, textHeight } : item));
   }
 
   function undo() {
@@ -641,12 +680,12 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-4 sm:max-w-6xl">
+      <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-4 sm:max-w-7xl">
         <DialogHeader className="min-w-0">
           <DialogTitle>{copy.annotation.title}</DialogTitle>
           <DialogDescription>{copy.annotation.description}</DialogDescription>
         </DialogHeader>
-        <div className="grid min-h-0 min-w-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)_minmax(220px,0.32fr)]">
+        <div className="grid min-h-0 min-w-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)_minmax(240px,0.28fr)]">
           <div className="flex min-w-0 flex-wrap items-start gap-1 rounded-md border bg-muted/30 p-1 lg:flex-col">
             {toolItems.map(([value, Icon, label]) => (
               <Tooltip key={value}>
@@ -667,7 +706,7 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
           <div ref={canvasStageRef} className="standard-scrollbar image-checkerboard relative flex min-h-0 min-w-0 items-center justify-center overflow-auto rounded-md border p-2">
             {imageReady ? (
               <div className="relative flex max-h-full max-w-full items-center justify-center">
-                <canvas ref={canvasRef} tabIndex={0} aria-label={copy.annotation.canvasLabel} className="block h-auto max-h-[58vh] max-w-full touch-none object-contain focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} />
+                 <canvas ref={canvasRef} tabIndex={0} aria-label={copy.annotation.canvasLabel} className="block h-auto max-h-[70vh] max-w-full touch-none object-contain focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} />
               </div>
             ) : <span role={loadError ? "alert" : undefined} className={cn("max-w-md px-4 text-center text-sm text-muted-foreground", loadError && "text-destructive")}>{loadError ? copy.annotation.loadFailed : copy.annotation.loading}</span>}
             {textAnchor ? (
@@ -704,6 +743,10 @@ export function AnnotationWorkspace({ open, image, originalPrompt, onOpenChange,
                 <Input id="annotation-color" type="color" value={strokeColor} aria-label={copy.annotation.strokeColor} onChange={(event) => setStrokeColor(event.target.value)} className="h-7 w-10 shrink-0 cursor-pointer p-1" />
                 <span className="truncate font-mono text-xs text-muted-foreground">{strokeColor.toUpperCase()}</span>
               </div>
+            </div>
+            <div className="grid gap-1">
+              <label htmlFor="annotation-font-size" className="text-xs font-medium text-muted-foreground">{copy.annotation.fontSize}</label>
+              <Input id="annotation-font-size" type="number" min={12} max={160} value={textFontSize} onChange={(event) => setTextFontSize(Math.min(160, Math.max(12, Number(event.target.value) || 12)))} onBlur={commitSelectedTextFontSize} />
             </div>
             <div className="grid min-h-0 gap-1">
               <label htmlFor="annotation-instruction" className="text-xs font-medium text-muted-foreground">{copy.annotation.instructionLabel}</label>

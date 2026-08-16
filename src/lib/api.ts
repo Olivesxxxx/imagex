@@ -1,5 +1,6 @@
 import { normalizeModelsEndpoint } from "@/lib/endpoints";
 import { responseBodyHasError, responseErrorMessage } from "@/lib/image-console";
+import type { OpenAIImageRequestOptions } from "@/lib/image-console";
 
 export function authHeaders(apiKey: string, contentType: string | null = "application/json") {
   const headers: Record<string, string> = {};
@@ -58,10 +59,10 @@ function withoutResponseFormat(payload: unknown): unknown {
   return rest;
 }
 
-function withBase64ResponseFormat(payload: unknown): unknown {
+function withResponseFormat(payload: unknown, responseFormat: "b64_json" | "url"): unknown {
   const normalized = withoutResponseFormat(payload);
   if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) return normalized;
-  return { ...normalized, response_format: "b64_json" };
+  return { ...normalized, response_format: responseFormat };
 }
 
 function responseFormatErrorDetails(body: unknown) {
@@ -77,7 +78,7 @@ function responseFormatErrorDetails(body: unknown) {
 }
 
 function responseFormatIsUnsupported(response: Response, body: unknown) {
-  if (response.status !== 400) return false;
+  if (response.status !== 400 && response.status !== 422) return false;
   const { param, message } = responseFormatErrorDetails(body);
   if (param === "response_format") return true;
   if (!message.includes("response_format")) return false;
@@ -97,12 +98,21 @@ function responseFormatIsUnsupported(response: Response, body: unknown) {
   ].some((keyword) => message.includes(keyword));
 }
 
+function imageFieldIsUnsupported(response: Response, body: unknown) {
+  if (response.status !== 400 && response.status !== 422) return false;
+  const { param, message } = responseFormatErrorDetails(body);
+  if (message.includes("image[]") || message.includes("image array")) return true;
+  if (param !== "image" && param !== "images") return false;
+  return ["array", "multiple", "field", "parameter", "expected", "invalid", "unsupported"].some((keyword) => message.includes(keyword));
+}
+
 async function postJsonWithResponseFormatFallback(
   endpoint: string,
   apiKey: string,
   payload: unknown,
   signal: AbortSignal,
   language: "zh" | "en",
+  options: OpenAIImageRequestOptions = { imageResponseMode: "auto", multiImageField: "auto" },
 ) {
   const request = (body: unknown) => fetch(endpoint, {
     method: "POST",
@@ -111,9 +121,10 @@ async function postJsonWithResponseFormatFallback(
     signal,
   });
 
-  const response = await request(withBase64ResponseFormat(payload));
+  const responseFormat = options.imageResponseMode === "url" ? "url" : "b64_json";
+  const response = await request(withResponseFormat(payload, responseFormat));
   const body = await parseResponseBody(response);
-  if (!responseFormatIsUnsupported(response, body)) {
+  if (options.imageResponseMode !== "auto" || !responseFormatIsUnsupported(response, body)) {
     return validateParsedResponseBody(response, body, language);
   }
 
@@ -130,9 +141,10 @@ export async function postImageGeneration(
   payload: unknown,
   signal: AbortSignal,
   language: "zh" | "en" = "zh",
+  options: OpenAIImageRequestOptions = { imageResponseMode: "auto", multiImageField: "auto" },
 ) {
   if (isImagesGenerationEndpoint(endpoint)) {
-    return postJsonWithResponseFormatFallback(endpoint, apiKey, payload, signal, language);
+    return postJsonWithResponseFormatFallback(endpoint, apiKey, payload, signal, language, options);
   }
 
   const response = await fetch(endpoint, {
@@ -148,7 +160,8 @@ function buildImageEditFormData(
   payload: Record<string, unknown>,
   images: Array<{ file?: File; blob?: Blob; name: string; mimeType?: string }>,
   language: "zh" | "en",
-  includeResponseFormat: boolean,
+  imageField: "image" | "image[]",
+  responseFormat: "b64_json" | "url" | null,
 ) {
   const formData = new FormData();
   const normalizedPayload = withoutResponseFormat(payload) as Record<string, unknown>;
@@ -178,10 +191,10 @@ function buildImageEditFormData(
       throw new Error(language === "en" ? "Edit request is missing an uploadable image." : "编辑请求缺少可上传的图片。");
     }
 
-    formData.append("image", file, image.name);
+    formData.append(imageField, file, image.name);
   }
 
-  if (includeResponseFormat) formData.append("response_format", "b64_json");
+  if (responseFormat) formData.append("response_format", responseFormat);
   return formData;
 }
 
@@ -192,21 +205,41 @@ export async function postImageEdit(
   images: Array<{ file?: File; blob?: Blob; name: string; mimeType?: string }>,
   signal: AbortSignal,
   language: "zh" | "en" = "zh",
+  options: OpenAIImageRequestOptions = { imageResponseMode: "auto", multiImageField: "auto" },
 ) {
-  const request = (includeResponseFormat: boolean) => fetch(endpoint, {
+  const requestedResponseFormat: "b64_json" | "url" = options.imageResponseMode === "url" ? "url" : "b64_json";
+  const initialImageField: "image" | "image[]" = images.length > 1 && options.multiImageField !== "image" ? "image[]" : "image";
+  const alternateImageField: "image" | "image[]" = initialImageField === "image[]" ? "image" : "image[]";
+  const request = (imageField: "image" | "image[]", responseFormat: "b64_json" | "url" | null) => fetch(endpoint, {
     method: "POST",
     headers: authHeaders(apiKey, null),
-    body: buildImageEditFormData(payload, images, language, includeResponseFormat),
+    body: buildImageEditFormData(payload, images, language, imageField, responseFormat),
     signal,
   });
 
-  const response = await request(true);
-  const body = await parseResponseBody(response);
-  if (!responseFormatIsUnsupported(response, body)) {
+  let imageField = initialImageField;
+  let responseFormat: "b64_json" | "url" | null = requestedResponseFormat;
+  let responseFormatRetried = false;
+  let imageFieldRetried = false;
+
+  for (;;) {
+    const response = await request(imageField, responseFormat);
+    const body = await parseResponseBody(response);
+
+    if (options.imageResponseMode === "auto" && !responseFormatRetried && responseFormat && responseFormatIsUnsupported(response, body)) {
+      responseFormat = null;
+      responseFormatRetried = true;
+      continue;
+    }
+
+    if (images.length > 1 && options.multiImageField === "auto" && !imageFieldRetried && imageFieldIsUnsupported(response, body)) {
+      imageField = alternateImageField;
+      imageFieldRetried = true;
+      continue;
+    }
+
     return validateParsedResponseBody(response, body, language);
   }
-
-  return validatedResponseBody(await request(false), language);
 }
 
 export async function postPrivateImageGeneration(
@@ -247,6 +280,27 @@ export async function postPrivateImageEdit(
     method: "POST",
     headers: privateAuthHeaders(apiKey, null),
     body: formData,
+    signal,
+  });
+  return validatedResponseBody(response, language);
+}
+
+export async function postGeminiImageGeneration(
+  endpoint: string,
+  apiKey: string,
+  prompt: string,
+  signal: AbortSignal,
+  language: "zh" | "en" = "zh",
+) {
+  const url = new URL(endpoint);
+  if (apiKey) url.searchParams.set("key", apiKey);
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    }),
     signal,
   });
   return validatedResponseBody(response, language);

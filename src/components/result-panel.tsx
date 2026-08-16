@@ -31,6 +31,7 @@ import {
 import { getCopy, useI18n, type Language } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { createZipBlob, type ZipFileEntry } from "@/lib/zip";
+import type { ConnectionStatus } from "@/hooks/use-image-console";
 
 const REQUEST_ERROR_PREVIEW_LIMIT = 240;
 
@@ -389,10 +390,12 @@ export function ResultPanel({
   onEditImage,
   onAnnotateImage,
   previewTarget,
+  connectionStatus,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
-  settings: Pick<AppSettings, "protocol" | "baseUrl" | "privateBaseUrl" | "generationsModel" | "editsModel" | "requestConcurrency" | "requestIntervalSeconds">;
+  settings: Pick<AppSettings, "protocol" | "baseUrl" | "privateBaseUrl" | "geminiBaseUrl" | "openaiProviders" | "activeOpenAIProviderId" | "requestConcurrency" | "requestIntervalSeconds">;
+  connectionStatus: ConnectionStatus;
   selectedRequestJson: string;
   setJsonDialogOpen: (open: boolean) => void;
   reusePrompt: (request: ImageRequestRecord) => void;
@@ -419,7 +422,10 @@ export function ResultPanel({
     : selectedRequestStatusText;
   const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
-  const apiUrl = (settings.protocol === "private" ? settings.privateBaseUrl : settings.baseUrl).trim();
+  const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId);
+  const providerName = activeProvider?.name || (language === "en" ? "Provider" : "供应商");
+  const protocolLabel = settings.protocol === "private" ? (language === "en" ? "Private" : "私有协议") : settings.protocol === "gemini" ? "Gemini" : "OpenAI";
+  const apiUrl = (settings.protocol === "private" ? settings.privateBaseUrl : settings.protocol === "gemini" ? settings.geminiBaseUrl : settings.baseUrl).trim();
   const [latency, setLatency] = useState<number | null>(null);
   const [latencyState, setLatencyState] = useState<"idle" | "measuring" | "ready" | "unavailable">("idle");
   const latencyAbortRef = useRef<AbortController | null>(null);
@@ -458,6 +464,13 @@ export function ResultPanel({
     latencyAbortRef.current?.abort();
   }, []);
 
+  useEffect(() => {
+    latencyRequestRef.current += 1;
+    latencyAbortRef.current?.abort();
+    setLatency(null);
+    setLatencyState("idle");
+  }, [apiUrl]);
+
   const latencyLabel = latencyState === "idle"
     ? "-"
     : latencyState === "measuring"
@@ -465,6 +478,15 @@ export function ResultPanel({
     : latencyState === "ready" && latency !== null
       ? `${latency} ms`
       : copy.requestCardStatus.latencyUnavailable;
+  const availability = connectionStatus.tone === "error" || latencyState === "unavailable"
+    ? { label: copy.requestCardStatus.latencyUnavailable, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
+    : latencyState === "measuring" || connectionStatus.tone === "busy"
+      ? { label: copy.requestCardStatus.latencyMeasuring, className: "border-border bg-muted text-muted-foreground" }
+      : latencyState === "ready" && latency !== null
+        ? latency <= 500
+          ? { label: copy.requestCardStatus.availabilityAvailable, className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300" }
+          : { label: copy.requestCardStatus.availabilitySlow, className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300" }
+        : { label: copy.requestCardStatus.availabilityChecking, className: "border-border bg-muted text-muted-foreground" };
 
   return (
     <section
@@ -483,8 +505,8 @@ export function ResultPanel({
           </div>
           <div className="flex min-w-0 flex-col items-end gap-2 self-start">
             <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 text-sm font-semibold leading-normal">
-              <span className="max-w-full break-all" title={settings.generationsModel}>generations: {settings.generationsModel}</span>
-              <span className="max-w-full break-all" title={settings.editsModel}>edits: {settings.editsModel}</span>
+              <span className="max-w-full truncate" title={`${providerName} · ${protocolLabel}`}>{providerName} · {protocolLabel}</span>
+              <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${availability.className}`}>{availability.label}</span>
             </div>
             <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-medium leading-normal text-muted-foreground tabular-nums">
               <span>{copy.settings.concurrency} {settings.requestConcurrency}</span>

@@ -261,6 +261,9 @@ type Copy = {
     refreshLatency: string;
     latencyMeasuring: string;
     latencyUnavailable: string;
+    availabilityChecking: string;
+    availabilityAvailable: string;
+    availabilitySlow: string;
     previewImage: string;
     previewPreviousImage: string;
     previewNextImage: string;
@@ -340,14 +343,12 @@ type Copy = {
       tabs: {
         gettingStarted: string;
         errors: string;
-        changelog: string;
       };
       steps: string[];
       errors: Array<{
         title: string;
         description: string;
       }>;
-      changelog: string[];
     };
     pasteImageHint: string;
     previewInputImage: string;
@@ -363,6 +364,8 @@ type Copy = {
     productName: string;
     productNamePlaceholder: string;
     productReference: string;
+    taskConfiguration: string;
+    developmentTaskPlaceholder: (index: number) => string;
     chooseImage: string;
     dropImageHint: string;
     removeImage: string;
@@ -389,6 +392,7 @@ type Copy = {
     resetTemplate: string;
     generateSuite: string;
     missingProductImage: string;
+    referenceLimit: (count: number) => string;
     noEnabledSlots: string;
     confirmTitle: string;
     confirmDescription: (name: string, count: number) => string;
@@ -446,6 +450,7 @@ type Copy = {
     canvasLabel: string;
     strokeSize: string;
     strokeColor: string;
+    fontSize: string;
     instructionLabel: string;
     instructionPlaceholder: string;
     originalPrompt: string;
@@ -475,17 +480,27 @@ type Copy = {
     apiUrl: string;
     apiKey: string;
     provider: string;
-    providerPlaceholder: string;
+    providerSwitched: (name: string) => string;
+    providerDefaultsRestored: string;
+    restoreProviderDefaults: string;
     addProvider: string;
     deleteProvider: string;
     deleteProviderTitle: string;
     deleteProviderDescription: string;
     confirmDeleteProvider: string;
-    providerConfiguration: string;
-    providerConfigurationDescription: string;
-    backToProviders: string;
     noProviders: string;
     providerName: string;
+    providerProtocol: string;
+    imageResponseMode: string;
+    imageResponseModeDescription: string;
+    imageResponseModeAuto: string;
+    imageResponseModeBase64: string;
+    imageResponseModeUrl: string;
+    multiImageField: string;
+    multiImageFieldDescription: string;
+    multiImageFieldAuto: string;
+    multiImageFieldRepeated: string;
+    multiImageFieldArray: string;
     rememberKey: string;
     developmentMode: string;
     developmentModeDescription: string;
@@ -497,6 +512,10 @@ type Copy = {
     privateApiKey: string;
     privateApiKeyPlaceholder: string;
     privateModel: string;
+    geminiProtocol: string;
+    geminiBaseUrl: string;
+    geminiApiKey: string;
+    geminiModel: string;
     concurrency: string;
     interval: string;
     endpointPreview: string;
@@ -543,6 +562,8 @@ type Copy = {
     failedRequestsCleared: string;
     requestFailed: string;
     crossOriginRequestFailed: string;
+    browserRequestFailed: string;
+    remoteImageLimited: string;
     queuedRequestDetail: (method: string, count: number, summary: string, endpoint: string) => string;
   };
   tests: {
@@ -663,6 +684,9 @@ const COPY: Record<Language, Copy> = {
       refreshLatency: "刷新 API 延迟",
       latencyMeasuring: "检测中...",
       latencyUnavailable: "不可用",
+      availabilityChecking: "待检测",
+      availabilityAvailable: "可用",
+      availabilitySlow: "较慢",
       previewImage: "查看大图",
       previewPreviousImage: "上一张大图",
       previewNextImage: "下一张大图",
@@ -733,11 +757,10 @@ const COPY: Record<Language, Copy> = {
       quickStart: {
         buttonLabel: "说明",
         title: "说明",
-        description: "这里用大白话介绍 ImageX 的基本用法、常见报错和最近更新。所有内容都保存在当前浏览器里。",
+      description: "这里用大白话介绍 ImageX 的基本用法和常见报错。所有内容都保存在当前浏览器里。",
         tabs: {
           gettingStarted: "快速上手",
           errors: "常见报错",
-          changelog: "更新日志",
         },
         steps: [
           "先点右侧的配置，填写 API 地址、API Key 和模型；不知道填什么，就使用服务商提供的兼容 OpenAI 的地址。",
@@ -752,13 +775,18 @@ const COPY: Record<Language, Copy> = {
           { title: "403 / 没有权限", description: "密钥能识别，但没有使用这个模型或接口的权限。换一个有权限的模型，或联系服务商开通权限。" },
           { title: "404 / 找不到接口", description: "API URL 的路径不对。一般只填写服务商给的兼容 OpenAI 的根地址，不要重复加 /v1 或 /images/generations。" },
           { title: "400 / 参数不对", description: "请求送到了服务商，但里面有一项不符合要求。常见原因是模型名称、尺寸、图片格式或提示词不被支持。看报错里的字段名，按服务商文档修改。" },
+          { title: "405 / 请求方法不支持", description: "这个地址能访问，但它不接受当前请求方式。通常是把模型列表地址填成了生图地址，或服务商的接口路径与协议不匹配。" },
+          { title: "408 / 请求超时", description: "服务商迟迟没有返回结果。可能是网络慢、图片太大或服务商排队很久；先降低图片尺寸和数量，再重试。" },
+          { title: "413 / 请求或图片太大", description: "上传的参考图或请求内容超过服务商限制。压缩图片、减少参考图数量，或换小一点的图片尺寸。" },
+          { title: "415 / 图片格式不支持", description: "服务商不接受当前图片格式。把图片转换成 PNG 或 JPEG 后再上传，并检查文件扩展名是否和实际格式一致。" },
+          { title: "422 / 参数无法处理", description: "地址和密钥可能没问题，但某个字段的值不符合服务商规则。重点检查模型、尺寸、质量、图片字段名和生图数量。" },
           { title: "429 / 请求太频繁", description: "服务商让你慢一点，可能是额度用完或同时请求太多。降低生图数量、增加间隔，或等一会儿再试。" },
-          { title: "5xx / 服务商出故障", description: "对方服务器暂时没有正常工作，不一定是你的设置有问题。稍后重试，或打开服务商的状态页看看。" },
-        ],
-        changelog: [
-          "统一 OpenAI 图片接口的 Base64 返回兼容策略，服务商不支持时会自动降级。",
-          "图生图参考图片统一使用 image 字段，兼容更多 OpenAI 风格接口。",
-          "继续保持纯浏览器本地优先：密钥、任务记录和图片不会上传到 ImageX 自己的服务器。",
+          { title: "500/502/503/504 / 服务商暂时不可用", description: "对方服务器暂时没有正常工作，或者正在重启、过载。不一定是你的设置有问题，稍后重试或换一个供应商。" },
+          { title: "CORS / 跨域被浏览器拦截", description: "接口可能本身正常，但服务商没有允许网页直接调用。ImageX 不会把请求转发到自己的服务器，只能让服务商开启 CORS，或换支持浏览器直连的地址。" },
+          { title: "SSL / 证书或混合内容错误", description: "网页是 HTTPS 时，不能直接请求 HTTP 接口；证书过期或域名配置错误也会失败。请使用 HTTPS 地址，并检查证书。" },
+          { title: "响应中没有图片", description: "接口返回成功，但内容里没有 ImageX 能识别的图片数据。通常是模型不支持生图、返回格式不同，或供应商需要专用模型。" },
+          { title: "图片能预览但下载失败", description: "供应商返回的是临时图片 URL，浏览器可以显示但不能跨域下载，或链接已经过期。让供应商返回 Base64 或开启图片 CORS。" },
+          { title: "本地存储空间不足", description: "浏览器保存任务和图片的空间不够了。清理旧任务或使用“完全清除”，再重新生成；这不会影响供应商账户里的数据。" },
         ],
       },
       pasteImageHint: "将图片拖入或粘贴到此区域，可直接添加图片",
@@ -768,15 +796,17 @@ const COPY: Record<Language, Copy> = {
     },
     productSuite: {
       title: "产品套图任务",
-      description: "建立本地产品任务，上传一次产品实拍图并配置六个用途槽位；确认后会通过现有图生图队列分别生成。",
+      description: "建立本地产品任务，上传一次产品实拍图，也可继续添加多张角度图，并配置六个用途槽位；确认后会通过现有图生图队列分别生成。",
       newTask: "新建任务",
       empty: "暂无产品套图任务",
       untitled: "未命名产品",
       productName: "商品名称",
       productNamePlaceholder: "例如：磁吸无线充电宝",
       productReference: "产品实拍参考图",
-      chooseImage: "选择图片",
-      dropImageHint: "将图片拖入此框，或点击按钮从本地选择。",
+      taskConfiguration: "当前任务配置",
+      developmentTaskPlaceholder: (index) => `滚动测试任务 ${String(index).padStart(2, "0")}`,
+      chooseImage: "添加图片",
+      dropImageHint: "可拖入、粘贴或批量选择图片；支持添加多张角度图或商业素材。",
       removeImage: "移除图片",
       brandAsset: "可选商业标识/星星素材",
       materialAndColor: "材质/颜色",
@@ -789,7 +819,7 @@ const COPY: Record<Language, Copy> = {
       brandTone: "品牌语气/画面风格",
       targetPlatform: "目标平台",
       targetPlatformPlaceholder: "例如：淘宝、京东、独立站",
-      nextStepHint: "点击“生成整套”后，只提交已启用槽位，每个槽位固定生成 1 张；主图可额外使用商业标识素材。",
+      nextStepHint: "点击“生成整套”后，只提交已启用槽位，每个槽位固定生成 1 张；产品图支持多角度参考，主图可额外使用商业标识素材。",
       deleteTask: "删除任务",
       saveTask: "保存任务",
       slotsTitle: "六图槽位",
@@ -801,10 +831,11 @@ const COPY: Record<Language, Copy> = {
       resetTemplate: "恢复模板",
       generateSuite: "生成整套",
       missingProductImage: "请先上传产品实拍参考图。",
+      referenceLimit: (count) => `一次请求最多支持 ${count} 张参考图，请减少产品实拍图或商业素材后再生成。`,
       noEnabledSlots: "请至少启用一个套图槽位。",
       confirmTitle: "确认生成整套？",
       confirmDescription: (name, count) => "将为“" + name + "”提交 " + count + " 个图生图任务，每个启用槽位生成 1 张图片。",
-      confirmReferenceRule: "六个槽位都会使用产品实拍图；主图在已上传商业标识素材时会额外使用该素材。",
+      confirmReferenceRule: "六个槽位都会使用已上传的产品实拍图；主图会额外使用商业标识素材。单次请求最多传 5 张参考图。",
       confirmSubmit: "确认提交",
       submitting: "正在提交",
       submitted: (count) => "已提交 " + count + " 个套图任务。",
@@ -852,12 +883,13 @@ const COPY: Record<Language, Copy> = {
     },
     annotation: {
       title: "做标记来重新生图",
-      description: "在原图上标出需要修改或补充的区域，标注图会作为新的图生图参考图。",
+       description: "原图周围会留出白色标注区：在原图上圈出位置，用箭头指向图外文字说明，标注图会作为新的图生图参考图。",
       loading: "正在加载原图…",
       loadFailed: "原图读取失败。请确认图片地址允许浏览器跨域访问后重试。",
       canvasLabel: "图片标注画布",
       strokeSize: "笔刷大小",
       strokeColor: "标记颜色",
+      fontSize: "文字大小",
       instructionLabel: "补充说明",
       instructionPlaceholder: "例如：把圈出的区域改成更明亮的窗户，并补充一盏落地灯。",
       originalPrompt: "原始提示词（只读）",
@@ -887,17 +919,27 @@ const COPY: Record<Language, Copy> = {
       apiUrl: "API URL",
       apiKey: "API Key",
       provider: "供应商",
-      providerPlaceholder: "选择或管理供应商",
+      providerSwitched: (name) => `已切换到供应商：${name}`,
+      providerDefaultsRestored: "已恢复当前供应商的默认参数",
+      restoreProviderDefaults: "恢复默认参数",
       addProvider: "新增供应商",
       deleteProvider: "删除供应商",
       deleteProviderTitle: "删除供应商？",
       deleteProviderDescription: "删除后不会影响已有任务，只会移除这条本地供应商配置。",
       confirmDeleteProvider: "确认删除",
-      providerConfiguration: "供应商配置",
-      providerConfigurationDescription: "配置这个供应商的地址、密钥、模型和请求参数。",
-      backToProviders: "返回供应商列表",
       noProviders: "还没有供应商，请先新增一个。",
       providerName: "供应商名称",
+      providerProtocol: "协议类型",
+      imageResponseMode: "图片返回方式",
+      imageResponseModeDescription: "自动优先使用 Base64，遇到不支持的服务商会自动降级。",
+      imageResponseModeAuto: "自动兼容（优先 Base64）",
+      imageResponseModeBase64: "强制 Base64",
+      imageResponseModeUrl: "强制图片 URL",
+      multiImageField: "多图上传字段",
+      multiImageFieldDescription: "只影响一次上传多张参考图时的字段写法。",
+      multiImageFieldAuto: "自动兼容（优先 image[]）",
+      multiImageFieldRepeated: "重复 image",
+      multiImageFieldArray: "image[]",
       rememberKey: "在本浏览器记住 API Key",
       developmentMode: "开发模式",
       developmentModeDescription: "显示本地占位任务和图片，用于测试图片选择、删除与导出流程。",
@@ -909,6 +951,10 @@ const COPY: Record<Language, Copy> = {
       privateApiKey: "x-api-key",
       privateApiKeyPlaceholder: "请输入 x-api-key",
       privateModel: "生图模型",
+      geminiProtocol: "Gemini 协议",
+      geminiBaseUrl: "Gemini API 地址",
+      geminiApiKey: "Gemini API Key",
+      geminiModel: "Gemini 图像模型",
       concurrency: "并发",
       interval: "间隔（秒）",
       endpointPreview: "请求地址",
@@ -971,6 +1017,8 @@ const COPY: Record<Language, Copy> = {
       failedRequestsCleared: "失败和已取消请求已删除。",
       requestFailed: "请求失败",
       crossOriginRequestFailed: "浏览器阻止了跨域请求，请检查 API 服务的 CORS 配置。",
+      browserRequestFailed: "浏览器没有收到接口回复。请检查 API 地址、网络连接，以及供应商是否允许网页跨域访问。",
+      remoteImageLimited: "接口返回了远程图片地址，但浏览器无法读取它；预览可能正常，导出或再次编辑可能受限。",
       queuedRequestDetail: (method, count, summary, endpoint) => `${method} · ${count} 个新请求 · ${summary} · ${endpoint}`,
     },
     tests: {
@@ -1100,6 +1148,9 @@ const COPY: Record<Language, Copy> = {
       refreshLatency: "Refresh API latency",
       latencyMeasuring: "Checking...",
       latencyUnavailable: "Unavailable",
+      availabilityChecking: "Not checked",
+      availabilityAvailable: "Available",
+      availabilitySlow: "Slow",
       previewImage: "View full image",
       previewPreviousImage: "Previous full image",
       previewNextImage: "Next full image",
@@ -1170,11 +1221,10 @@ const COPY: Record<Language, Copy> = {
       quickStart: {
         buttonLabel: "Help",
         title: "Help",
-        description: "Plain-language help for using ImageX, understanding common errors, and seeing recent updates. Everything stays in this browser.",
+        description: "Plain-language help for using ImageX and understanding common errors. Everything stays in this browser.",
         tabs: {
           gettingStarted: "Quick start",
           errors: "Common errors",
-          changelog: "Changelog",
         },
         steps: [
           "Open Settings and enter the API URL, API key, and model. If you are unsure, use the OpenAI-compatible details from your provider.",
@@ -1189,13 +1239,18 @@ const COPY: Record<Language, Copy> = {
           { title: "403 / Permission denied", description: "The key is recognized, but it cannot use this model or endpoint. Choose an allowed model or ask the provider to enable access." },
           { title: "404 / Endpoint not found", description: "The API path is wrong. Usually enter the provider's OpenAI-compatible base URL only; do not add /v1 or /images/generations twice." },
           { title: "400 / Invalid parameter", description: "The request reached the provider, but one option is not accepted. Common causes are the model name, image size, image format, or prompt. Read the field named in the error and follow the provider's docs." },
+          { title: "405 / Method not allowed", description: "The address responds, but it does not accept this request method. You may have entered a model-list URL instead of an image endpoint, or selected the wrong protocol." },
+          { title: "408 / Request timeout", description: "The provider took too long to reply. The network may be slow, the image may be large, or the provider may be busy. Try a smaller size or fewer images." },
+          { title: "413 / Request or image too large", description: "The reference image or request exceeds the provider limit. Compress the image, use fewer references, or choose a smaller output size." },
+          { title: "415 / Unsupported image format", description: "The provider does not accept this image format. Convert it to PNG or JPEG and try again." },
+          { title: "422 / Unprocessable parameters", description: "The URL and key may be valid, but a field value is not accepted. Check the model, size, quality, image field, and image count." },
           { title: "429 / Too many requests", description: "The provider is asking you to slow down, often because your quota is used up or too many requests are running. Lower the image count, increase the interval, or wait and retry." },
-          { title: "5xx / Provider outage", description: "The provider's server is temporarily unhealthy. It may not be your configuration. Retry later or check the provider's status page." },
-        ],
-        changelog: [
-          "Unified Base64 response compatibility for OpenAI image endpoints, with automatic fallback when unsupported.",
-          "Image edit uploads now use the image field consistently for broader OpenAI-style compatibility.",
-          "ImageX remains browser-only and local-first: keys, task history, and images are not uploaded to an ImageX server.",
+          { title: "500/502/503/504 / Provider unavailable", description: "The provider is unhealthy, restarting, overloaded, or timing out. It may not be your configuration. Retry later or switch providers." },
+          { title: "CORS / Browser blocked cross-origin request", description: "The API may work normally, but the provider does not allow direct browser calls. ImageX does not proxy requests through its own server, so the provider must enable CORS or you must use another endpoint." },
+          { title: "SSL / Certificate or mixed-content error", description: "An HTTPS page cannot call an HTTP endpoint. An expired or misconfigured certificate can also fail. Use HTTPS and check the domain certificate." },
+          { title: "Successful response has no image", description: "The API returned success, but no recognizable image data. The model may not support image generation, may return another format, or may require a provider-specific model." },
+          { title: "Preview works but download fails", description: "The provider returned a temporary image URL that the browser cannot download cross-origin, or the URL expired. Ask the provider for Base64 output or image CORS." },
+          { title: "Browser storage is full", description: "This browser no longer has enough space for tasks and cached images. Delete old tasks or use Clear all data, then try again." },
         ],
       },
       pasteImageHint: "Drop or paste images here to add them directly",
@@ -1205,15 +1260,17 @@ const COPY: Record<Language, Copy> = {
     },
     productSuite: {
       title: "Product suite task",
-      description: "Create a local product task, upload the product reference once, and configure six purpose-built slots. Confirm to submit them separately through the existing image-edit queue.",
+      description: "Create a local product task, upload one or more product reference photos, and configure six purpose-built slots. Confirm to submit them separately through the existing image-edit queue.",
       newTask: "New task",
       empty: "No product suite tasks yet",
       untitled: "Untitled product",
       productName: "Product name",
       productNamePlaceholder: "For example: magnetic wireless power bank",
       productReference: "Product reference photo",
-      chooseImage: "Choose image",
-      dropImageHint: "Drop an image into this area, or choose one from your device.",
+      taskConfiguration: "Current task configuration",
+      developmentTaskPlaceholder: (index) => `Scroll test task ${String(index).padStart(2, "0")}`,
+      chooseImage: "Add images",
+      dropImageHint: "Drop, paste, or choose multiple images; add extra angles or commercial assets as needed.",
       removeImage: "Remove image",
       brandAsset: "Optional commercial badge/star asset",
       materialAndColor: "Material/color",
@@ -1226,7 +1283,7 @@ const COPY: Record<Language, Copy> = {
       brandTone: "Brand tone / visual style",
       targetPlatform: "Target platform",
       targetPlatformPlaceholder: "For example: Amazon, Shopify, TikTok Shop",
-      nextStepHint: "Generate suite submits only enabled slots, with exactly one image per slot. The hero may also use the optional commercial badge asset.",
+      nextStepHint: "Generate suite submits only enabled slots, with exactly one image per slot. Add multiple product angles and optional commercial assets when needed.",
       deleteTask: "Delete task",
       saveTask: "Save task",
       slotsTitle: "Six image slots",
@@ -1238,10 +1295,11 @@ const COPY: Record<Language, Copy> = {
       resetTemplate: "Restore template",
       generateSuite: "Generate suite",
       missingProductImage: "Upload a product reference photo first.",
+      referenceLimit: (count) => `A request supports up to ${count} reference images. Remove some product or commercial assets before generating.`,
       noEnabledSlots: "Enable at least one product suite slot.",
       confirmTitle: "Generate this suite?",
       confirmDescription: (name, count) => "This will submit " + count + " image-edit task" + (count === 1 ? "" : "s") + " for “" + name + "”, with one image per enabled slot.",
-      confirmReferenceRule: "Every slot uses the product reference photo. The hero slot also uses the optional commercial badge asset when available.",
+      confirmReferenceRule: "Every slot uses the uploaded product reference photos. The hero slot also uses commercial assets. Each request supports up to 5 reference images.",
       confirmSubmit: "Submit suite",
       submitting: "Submitting",
       submitted: (count) => "Submitted " + count + " product suite task" + (count === 1 ? "" : "s") + ".",
@@ -1289,12 +1347,13 @@ const COPY: Record<Language, Copy> = {
     },
     annotation: {
       title: "Mark up and regenerate",
-      description: "Mark areas to change or add. The annotated image becomes a new image-edit reference.",
+       description: "A white margin surrounds the original image. Circle the target area, draw an arrow to an outside note, and submit the marked image as the new edit reference.",
       loading: "Loading the source image…",
       loadFailed: "Could not read the source image. Check that its URL allows browser cross-origin access.",
       canvasLabel: "Image annotation canvas",
       strokeSize: "Brush size",
       strokeColor: "Mark color",
+      fontSize: "Text size",
       instructionLabel: "Additional instructions",
       instructionPlaceholder: "For example: make the circled window brighter and add a floor lamp.",
       originalPrompt: "Original prompt (read only)",
@@ -1324,17 +1383,27 @@ const COPY: Record<Language, Copy> = {
       apiUrl: "API URL",
       apiKey: "API key",
       provider: "Provider",
-      providerPlaceholder: "Select or manage a provider",
+      providerSwitched: (name) => `Switched to provider: ${name}`,
+      providerDefaultsRestored: "Current provider defaults restored",
+      restoreProviderDefaults: "Restore defaults",
       addProvider: "Add provider",
       deleteProvider: "Delete provider",
       deleteProviderTitle: "Delete provider?",
       deleteProviderDescription: "Existing tasks are not affected. Only this local provider configuration will be removed.",
       confirmDeleteProvider: "Delete provider",
-      providerConfiguration: "Provider settings",
-      providerConfigurationDescription: "Configure this provider's URL, key, models, and request parameters.",
-      backToProviders: "Back to providers",
       noProviders: "No providers yet. Add one to get started.",
       providerName: "Provider name",
+      providerProtocol: "Protocol type",
+      imageResponseMode: "Image response mode",
+      imageResponseModeDescription: "Auto prefers Base64 and falls back when a provider rejects it.",
+      imageResponseModeAuto: "Auto-compatible (prefer Base64)",
+      imageResponseModeBase64: "Force Base64",
+      imageResponseModeUrl: "Force image URL",
+      multiImageField: "Multi-image upload field",
+      multiImageFieldDescription: "Only affects requests that upload multiple reference images.",
+      multiImageFieldAuto: "Auto-compatible (prefer image[])",
+      multiImageFieldRepeated: "Repeated image",
+      multiImageFieldArray: "image[]",
       rememberKey: "Remember API key in this browser",
       developmentMode: "Development mode",
       developmentModeDescription: "Show local placeholder requests and images for testing selection, deletion, and export workflows.",
@@ -1346,6 +1415,10 @@ const COPY: Record<Language, Copy> = {
       privateApiKey: "x-api-key",
       privateApiKeyPlaceholder: "Enter x-api-key",
       privateModel: "Image model",
+      geminiProtocol: "Gemini protocol",
+      geminiBaseUrl: "Gemini API URL",
+      geminiApiKey: "Gemini API key",
+      geminiModel: "Gemini image model",
       concurrency: "Concurrency",
       interval: "Interval (sec)",
       endpointPreview: "Request endpoint",
@@ -1408,6 +1481,8 @@ const COPY: Record<Language, Copy> = {
       failedRequestsCleared: "Failed and canceled requests deleted.",
       requestFailed: "Request failed",
       crossOriginRequestFailed: "The browser blocked a cross-origin request. Check the API service CORS settings.",
+      browserRequestFailed: "The browser did not receive a reply. Check the API URL, network, and whether the provider allows browser cross-origin access.",
+      remoteImageLimited: "The API returned a remote image URL, but the browser could not read it. Preview may work while export or editing is limited.",
       queuedRequestDetail: (method, count, summary, endpoint) => `${method} · ${count} new request${count === 1 ? "" : "s"} · ${summary} · ${endpoint}`,
     },
     tests: {

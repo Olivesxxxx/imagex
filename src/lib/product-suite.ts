@@ -45,7 +45,9 @@ export interface ProductSuiteTask {
   productBatchNumber: number;
   productImageHash: string;
   productImage: ProductSuiteAsset | null;
+  productImages: ProductSuiteAsset[];
   brandAsset: ProductSuiteAsset | null;
+  brandAssets: ProductSuiteAsset[];
   info: ProductSuiteInfo;
   slots: ProductSuiteSlot[];
   createdAt: number;
@@ -93,6 +95,11 @@ function normalizeAsset(value: unknown): ProductSuiteAsset | null {
   return { blob: blob as Blob, name: String(value.name || "image"), mimeType: String(value.mimeType || (blob as Blob).type || "image/png") };
 }
 
+function normalizeAssets(value: unknown): ProductSuiteAsset[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeAsset).filter((asset): asset is ProductSuiteAsset => Boolean(asset));
+}
+
 function normalizeProductSuiteSlots(value: unknown): ProductSuiteSlot[] {
   const source = Array.isArray(value) ? value : [];
   return PRODUCT_SUITE_SLOT_KEYS.map((key) => {
@@ -125,14 +132,22 @@ export function normalizeProductSuiteTask(value: unknown): ProductSuiteTask | nu
   const createdAt = Number(value.createdAt || Date.now());
   const updatedAt = Number(value.updatedAt || createdAt);
   const source = isRecord(value.info) ? value.info : {};
+  const legacyProductImage = normalizeAsset(value.productImage);
+  const legacyBrandAsset = normalizeAsset(value.brandAsset);
+  const productImages = normalizeAssets(value.productImages);
+  const brandAssets = normalizeAssets(value.brandAssets);
+  const normalizedProductImages = productImages.length ? productImages : (legacyProductImage ? [legacyProductImage] : []);
+  const normalizedBrandAssets = brandAssets.length ? brandAssets : (legacyBrandAsset ? [legacyBrandAsset] : []);
   return {
     id,
     name: String(value.name || "").trim(),
     productBatchId: normalizeProductBatchId(value.productBatchId),
     productBatchNumber: normalizeProductBatchNumber(value.productBatchNumber),
     productImageHash: String(value.productImageHash || "").trim(),
-    productImage: normalizeAsset(value.productImage),
-    brandAsset: normalizeAsset(value.brandAsset),
+    productImage: normalizedProductImages[0] || null,
+    productImages: normalizedProductImages,
+    brandAsset: normalizedBrandAssets[0] || null,
+    brandAssets: normalizedBrandAssets,
     info: {
       materialAndColor: String(source.materialAndColor || ""),
       sellingPoints: String(source.sellingPoints || ""),
@@ -160,7 +175,9 @@ export function createProductSuiteTask(now = Date.now(), language: ProductSuiteT
     productBatchNumber: 1,
     productImageHash: "",
     productImage: null,
+    productImages: [],
     brandAsset: null,
+    brandAssets: [],
     info: emptyProductSuiteInfo(),
     slots: createDefaultProductSuiteSlots(language),
     createdAt: now,
@@ -168,10 +185,29 @@ export function createProductSuiteTask(now = Date.now(), language: ProductSuiteT
   };
 }
 
+async function readBlobBytes(blob: Blob): Promise<Uint8Array> {
+  if (typeof blob.arrayBuffer === "function") {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  if (typeof Response !== "undefined") {
+    return new Uint8Array(await new Response(blob).arrayBuffer());
+  }
+  if (typeof FileReader !== "undefined") {
+    const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error || new Error("Could not read image data."));
+      reader.readAsArrayBuffer(blob);
+    });
+    return new Uint8Array(buffer);
+  }
+  throw new Error("This browser cannot read image data.");
+}
+
 export async function hashProductSuiteImage(blob: Blob): Promise<string> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const bytes = await readBlobBytes(blob);
   if (typeof crypto !== "undefined" && crypto.subtle) {
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as BufferSource);
     return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
   }
 
@@ -214,7 +250,9 @@ export async function createDevelopmentProductSuiteTask(language: ProductSuiteTe
     productBatchNumber: 1,
     productImageHash: "development-product-reference",
     productImage: await developmentAsset("/placeholders/dev-placeholder-1.png", "development-product-reference.png"),
+    productImages: [],
     brandAsset: await developmentAsset("/placeholders/dev-placeholder-2.png", "development-brand-asset.png"),
+    brandAssets: [],
     info: {
       materialAndColor: language === "en" ? "Matte black aluminum" : "哑光黑铝合金",
       sellingPoints: language === "en" ? "Magnetic attachment, compact body, fast charging" : "磁吸稳固、机身小巧、快速充电",
@@ -231,6 +269,8 @@ export async function createDevelopmentProductSuiteTask(language: ProductSuiteTe
     createdAt: now - 120000,
     updatedAt: now - 60000,
   };
+  task.productImages = task.productImage ? [task.productImage] : [];
+  task.brandAssets = task.brandAsset ? [task.brandAsset] : [];
   return task;
 }
 

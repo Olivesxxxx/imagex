@@ -127,20 +127,17 @@ describe("App", () => {
     expect(within(helpDialog).getByRole("tab", { name: "快速上手" })).toHaveAttribute("aria-selected", "true");
     await user.click(within(helpDialog).getByRole("tab", { name: "常见报错" }));
     expect(within(helpDialog).getByText("Failed to fetch / 请求失败")).toBeInTheDocument();
-    await user.click(within(helpDialog).getByRole("tab", { name: "更新日志" }));
-    expect(within(helpDialog).getByText(/Base64/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "编辑原始提示词文案" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /配置/ }));
     const settingsDialog = screen.getByRole("dialog", { name: "连接" });
     expect(settingsDialog).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "OpenAI 协议" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "私有协议" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重置参数" })).toBeInTheDocument();
+    expect(within(settingsDialog).getByLabelText("协议类型")).toHaveTextContent("OpenAI 协议");
+    expect(screen.getByRole("button", { name: "恢复默认参数" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重置参数" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完全清除" })).toBeInTheDocument();
-    await user.click(within(settingsDialog).getByRole("button", { name: "供应商配置" }));
-    const dialog = screen.getByRole("dialog", { name: /供应商配置/ });
+    const dialog = settingsDialog;
     expect(within(dialog).getByText(/generations \(gpt-image-2\)/)).toBeInTheDocument();
     expect(within(dialog).getByText(/http:\/\/localhost:8317\/v1\/images\/generations/)).toBeInTheDocument();
     expect(within(dialog).getByText(/edits \(gpt-image-2\)/)).toBeInTheDocument();
@@ -150,7 +147,8 @@ describe("App", () => {
     expect(within(dialog).getByText(/completions \(gpt-5.4-mini\)/)).toBeInTheDocument();
     expect(within(dialog).getByText(/http:\/\/localhost:8317\/v1\/chat\/completions/)).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("tab", { name: "私有协议" }));
+    await user.click(within(dialog).getByLabelText("协议类型"));
+    await user.click(await screen.findByRole("option", { name: "私有协议" }));
     expect(screen.getByLabelText("私有服务地址")).toHaveValue("https://video.codepup.cn");
     expect(screen.getByLabelText("x-api-key")).toHaveValue("");
     expect(screen.getByLabelText("生图模型")).toHaveValue("gpt-image-2");
@@ -160,24 +158,23 @@ describe("App", () => {
 
   test("switches OpenAI providers and manages a custom provider locally", async () => {
     const user = userEvent.setup();
+    const toastSuccessSpy = vi.spyOn(toast, "success").mockImplementation(() => "toast-id");
     renderApp();
     await user.click(screen.getByRole("button", { name: /配置/ }));
     const dialog = screen.getByRole("dialog", { name: "连接" });
 
-    await user.click(within(dialog).getByRole("combobox"));
-    expect(await screen.findByRole("option", { name: "灵速" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Geek" })).toBeInTheDocument();
-    await user.click(await screen.findByRole("option", { name: "Geek" }));
-    await user.click(within(dialog).getByRole("button", { name: "供应商配置" }));
-    expect(within(dialog).getByLabelText("API URL")).toHaveValue("https://hk3.geek2api.com/v1");
+    expect(within(dialog).getByRole("button", { name: /灵速.*lingsu/ })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Geek.*geek2api/ }));
+    expect(toastSuccessSpy).toHaveBeenCalledWith("已切换到供应商：Geek");
+    expect(within(dialog).getByLabelText("API URL")).toHaveValue("https://www.geek2api.com/v1");
+    expect(within(dialog).getByLabelText("图片返回方式")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("多图上传字段")).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "返回供应商列表" }));
     await user.click(within(dialog).getByRole("button", { name: /新增供应商/ }));
     expect(within(dialog).getByLabelText("供应商名称")).toHaveValue("供应商");
     await user.click(within(dialog).getByRole("button", { name: "删除供应商" }));
     const confirm = screen.getByRole("alertdialog", { name: "删除供应商？" });
     await user.click(within(confirm).getByRole("button", { name: "确认删除" }));
-    await user.click(within(dialog).getByRole("button", { name: "供应商配置" }));
     expect(within(dialog).getByLabelText("供应商名称")).toHaveValue("灵速");
   });
 
@@ -275,7 +272,8 @@ describe("App", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const forms = fetchMock.mock.calls.map((call) => call[1]?.body as FormData);
-    expect(forms.map((form) => form.getAll("image").length)).toEqual([2, 1]);
+    expect(forms.map((form) => form.getAll("image").length)).toEqual([0, 1]);
+    expect(forms.map((form) => form.getAll("image[]").length)).toEqual([2, 0]);
     expect(forms[0].get("prompt")).toContain("电商主图");
     expect(forms[1].get("prompt")).toContain("白底图");
     expect(forms.every((form) => form.get("n") === "1")).toBe(true);
@@ -629,7 +627,6 @@ describe("App", () => {
 
     renderApp();
     await user.click(await screen.findByRole("button", { name: /配置/ }));
-    await user.click(screen.getByRole("button", { name: "供应商配置" }));
 
     expect(screen.getByDisplayValue("https://proxy.example.com/openai/v1")).toBeInTheDocument();
     expect(screen.getByLabelText("generations 模型")).toHaveValue("gpt-image-3");
@@ -656,13 +653,13 @@ describe("App", () => {
 
     const resultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
     expect(within(resultPanel).getByText("未选择请求")).toBeInTheDocument();
-    expect(within(resultPanel).getByText("generations: gpt-image-3")).toBeInTheDocument();
+    expect(within(resultPanel).getByText(/自定义供应商.*OpenAI/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "切换到 English" }));
 
     const localizedResultPanel = document.querySelector('section[aria-live="polite"]') as HTMLElement;
     expect(within(localizedResultPanel).getByText("No request selected")).toBeInTheDocument();
-    expect(within(localizedResultPanel).getByText("generations: gpt-image-3")).toBeInTheDocument();
+    expect(within(localizedResultPanel).getByText(/自定义供应商.*OpenAI/)).toBeInTheDocument();
   });
 
   test("clamps request count to the supported range on blur", async () => {

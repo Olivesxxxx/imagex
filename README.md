@@ -1,6 +1,6 @@
 # ImageX
 
-ImageX 是一个本地优先的 OpenAI 兼容图像生成与编辑控制台。
+ImageX 是一个本地优先的多协议图像生成与编辑控制台，支持 OpenAI 兼容协议、Gemini 协议和私有协议。
 
 > [!IMPORTANT]
 > **来源与免责声明**
@@ -15,10 +15,12 @@ ImageX 是一个本地优先的 OpenAI 兼容图像生成与编辑控制台。
 
 ## 核心功能
 
-- 生成与编辑：支持文字生成图片、选择本地图片编辑、复用历史结果作为编辑输入。
-- 多接口调试：支持 `/v1/images/generations`、`/v1/images/edits`、`/v1/responses`、`/v1/chat/completions`。
+- 生成与编辑：支持文字生成图片、选择本地图片编辑、复用历史结果作为编辑输入；Gemini 当前支持文生图，图生图会明确提示暂未适配。
+- 多协议供应商：内置灵速、Auttyt、Geek、Gemini 和私有协议示例，可新增、删除、备注和随时切换供应商。
+- 多接口调试：OpenAI 兼容协议支持 `/v1/images/generations`、`/v1/images/edits`、`/v1/responses`、`/v1/chat/completions`；Gemini 使用 `generateContent`。
 - 队列控制：支持批量请求、并发数量、请求间隔、取消运行中请求、清理失败或已完成请求。
-- 本地工作流：支持 Prompt 历史、置顶、复用、图片下载、批量导出 ZIP、响应 JSON 查看。
+- 本地工作流：支持 Prompt 历史、置顶、复用、图片下载、批量导出 ZIP、响应 JSON 查看和六类电商产品套图任务；产品实拍参考图与商业素材都支持拖拽、粘贴和批量上传多张图片。
+- 结果状态：主结果面板显示当前供应商、协议、可用性、并发、间隔和 API 延迟，并支持手动刷新延迟。
 - 国际化：支持中文和英文界面，并在地址路径中保留语言状态。
 
 ## ImageX 的扩展方向
@@ -26,9 +28,11 @@ ImageX 是一个本地优先的 OpenAI 兼容图像生成与编辑控制台。
 ImageX 以 [CPA Image](https://github.com/codegrazier/cpa-image) 的 OpenAI 兼容图像控制台为基础，继续围绕“本地优先”和高频出图工作流进行扩展。两者共享 OpenAI 兼容 API 的基础思路，ImageX 当前重点增加了以下面向实际创作流程的能力：
 
 - 产品套图工作流：将主图、白底图、详情图、尺寸图、细节图和场景图组织成一个可编辑、可重复生成的任务。
-- 图片标注重生：在结果图上使用画笔、箭头、矩形、圆形和文字标记修改建议，支持文字再次编辑、撤回和恢复。
+- 图片标注重生：在结果图上使用画笔、箭头、矩形、圆形和文字标记修改建议；画布会在原图外扩展白色标注区，支持外部文字、文字字号、文字再次编辑、撤回和恢复。
 - 结果管理：结果列表支持筛选、多选、删除、单图下载和多图 ZIP 导出，便于整理批量生成结果。
-- 双协议配置：可分别配置 OpenAI 兼容协议和私有协议的地址、Key 与模型，并查看接口延迟。
+- 多协议配置：每个供应商独立保存协议、地址、Key 与模型；协议选项顺序为 OpenAI、Gemini、私有协议，左侧用颜色区分协议类型。
+- 配置恢复：可在当前供应商右上角恢复默认参数；完全清除仍用于清理整个浏览器中的配置、任务、图片和提示词记录。
+- 直连状态：主结果面板按连接状态和延迟显示“待检测、可用、较慢、不可用”等标签。
 - 浏览器端隐私：设置、提示词历史、任务记录、图片缓存和导出操作均在浏览器本地完成，不需要 ImageX 自建业务后端。
 - 本地开发辅助：开发环境提供占位图和测试数据，生产构建会自动关闭开发模式并移除占位图资源。
 
@@ -54,13 +58,15 @@ npm start
 
 ## 配置
 
-页面默认 API URL 是 `http://localhost:8317/v1`。如果你的代理或兼容服务部署在其他地址，可以直接填写根地址，例如 `https://proxy.example.com`，应用会按功能自动拼接接口路径：
+页面默认 OpenAI 兼容 API URL 是 `http://localhost:8317/v1`。内置供应商示例地址包括灵速 `https://lingsu.xyz/v1`、Auttyt `https://www.auttyt.top/v1` 和 Geek `https://www.geek2api.com/v1`。如果你的代理或兼容服务部署在其他地址，可以直接填写根地址，例如 `https://proxy.example.com`，应用会按功能自动拼接接口路径：
 
 - 图片生成：`/v1/images/generations`
 - 图片编辑：`/v1/images/edits`
 - Responses：`/v1/responses`
 - Chat Completions：`/v1/chat/completions`
 - 连接测试：`/v1/models`
+
+Gemini 供应商默认使用 `https://generativelanguage.googleapis.com/v1beta`，请求会自动拼接 `models/{模型}:generateContent`，API Key 作为 URL 参数发送。Gemini 图生图暂未适配，请使用 OpenAI 兼容或私有协议。
 
 ## 本地数据
 

@@ -246,6 +246,17 @@ describe("storage", () => {
       name: "product.png",
       mimeType: "image/png",
     };
+    task.productImages = [task.productImage, {
+      blob: new Blob(["second-angle"], { type: "image/jpeg" }),
+      name: "product-angle-2.jpg",
+      mimeType: "image/jpeg",
+    }];
+    task.brandAssets = [{
+      blob: new Blob(["badge"], { type: "image/png" }),
+      name: "badge.png",
+      mimeType: "image/png",
+    }];
+    task.brandAsset = task.brandAssets[0];
 
     const saved = await saveProductSuiteTask(task);
     const loaded = await loadProductSuiteTasks();
@@ -261,6 +272,8 @@ describe("storage", () => {
       productImage: expect.objectContaining({ name: "product.png", mimeType: "image/png" }),
     });
     expect(loaded[0].slots).toHaveLength(6);
+    expect(loaded[0].productImages).toHaveLength(2);
+    expect(loaded[0].brandAssets).toHaveLength(1);
     expect(loaded[0].slots[0].selectedVersion).toBe(2);
     expect(loaded[0].slots[1].selectedVersion).toBeNull();
     expect(renderProductSuitePrompt(loaded[0], "hero")).toContain("Magnetic charger");

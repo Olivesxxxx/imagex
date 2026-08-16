@@ -1,5 +1,6 @@
-import { ArrowLeftIcon, CheckCircle2Icon, Loader2Icon, PlusIcon, RotateCcwIcon, Settings2Icon, Trash2Icon } from "lucide-react";
+import { CheckCircle2Icon, Loader2Icon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -7,10 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segmented-tabs";
-import { Tabs } from "@/components/ui/tabs";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
-import { DEFAULTS, DEVELOPMENT_FIXTURES_ENABLED, type AppSettings } from "@/lib/image-console";
+import { DEFAULTS, DEFAULT_OPENAI_PROVIDERS, DEVELOPMENT_FIXTURES_ENABLED, IMAGE_RESPONSE_MODES, MULTI_IMAGE_FIELD_MODES, type AppSettings, type OpenAIProvider } from "@/lib/image-console";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
 
@@ -22,7 +21,6 @@ export interface SettingsDialogProps {
   setSettingsOpen: (open: boolean) => void;
   updateSettings: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   saveCurrentSettings: () => void;
-  resetSettings: () => void;
   clearAllData: () => void;
   testConnection: () => void;
 }
@@ -35,18 +33,13 @@ export function SettingsDialog({
   setSettingsOpen,
   updateSettings,
   saveCurrentSettings,
-  resetSettings,
   clearAllData,
   testConnection,
 }: SettingsDialogProps) {
   const { copy } = useI18n();
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [providerDeleteConfirmOpen, setProviderDeleteConfirmOpen] = useState(false);
-  const [providerConfigId, setProviderConfigId] = useState<string | null>(null);
-  const protocolView = settings.protocol;
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId) || null;
-  const providerConfig = settings.openaiProviders.find((provider) => provider.id === providerConfigId) || null;
-  const providerListView = protocolView === "openai" && !providerConfig;
 
   function updateProviderName(name: string) {
     if (!activeProvider) return;
@@ -55,19 +48,73 @@ export function SettingsDialog({
     ));
   }
 
+  function updateProviderConfig(patch: Partial<OpenAIProvider>) {
+    if (!activeProvider) return;
+    updateSettings("openaiProviders", settings.openaiProviders.map((provider) =>
+      provider.id === activeProvider.id ? { ...provider, ...patch } : provider,
+    ));
+  }
+
   function addProvider() {
     const id = `provider-${Date.now()}`;
-    const providers = [...settings.openaiProviders, { id, name: copy.settings.provider, baseUrl: "", apiKey: "" }];
+    const providers: OpenAIProvider[] = [...settings.openaiProviders, {
+      id,
+      name: copy.settings.provider,
+      protocol: "openai",
+      baseUrl: "",
+      apiKey: "",
+      generationsModel: DEFAULTS.generationsModel,
+      editsModel: DEFAULTS.editsModel,
+      responsesModel: DEFAULTS.responsesModel,
+      completionsModel: DEFAULTS.completionsModel,
+      privateBaseUrl: DEFAULTS.privateBaseUrl,
+      privateApiKey: "",
+      privateModel: DEFAULTS.privateModel,
+      geminiBaseUrl: DEFAULTS.geminiBaseUrl,
+      geminiApiKey: "",
+      geminiModel: DEFAULTS.geminiModel,
+      imageResponseMode: "auto",
+      multiImageField: "auto",
+    }];
     updateSettings("openaiProviders", providers);
     updateSettings("activeOpenAIProviderId", id);
-    setProviderConfigId(id);
   }
 
   function deleteProvider() {
     if (!activeProvider) return;
     updateSettings("openaiProviders", settings.openaiProviders.filter((provider) => provider.id !== activeProvider.id));
-    setProviderConfigId(null);
     setProviderDeleteConfirmOpen(false);
+  }
+
+  function selectProvider(provider: OpenAIProvider) {
+    if (provider.id === settings.activeOpenAIProviderId) return;
+    updateSettings("activeOpenAIProviderId", provider.id);
+    toast.success(copy.settings.providerSwitched(provider.name || copy.settings.provider));
+  }
+
+  function restoreProviderDefaults() {
+    if (!activeProvider) return;
+    const builtIn = DEFAULT_OPENAI_PROVIDERS.find((provider) => provider.id === activeProvider.id);
+    const fallback: OpenAIProvider = {
+      ...activeProvider,
+      protocol: "openai",
+      baseUrl: "",
+      apiKey: "",
+      generationsModel: DEFAULTS.generationsModel,
+      editsModel: DEFAULTS.editsModel,
+      responsesModel: DEFAULTS.responsesModel,
+      completionsModel: DEFAULTS.completionsModel,
+      privateBaseUrl: DEFAULTS.privateBaseUrl,
+      privateApiKey: "",
+      privateModel: DEFAULTS.privateModel,
+      geminiBaseUrl: DEFAULTS.geminiBaseUrl,
+      geminiApiKey: "",
+      geminiModel: DEFAULTS.geminiModel,
+      imageResponseMode: "auto",
+      multiImageField: "auto",
+    };
+    updateProviderConfig({ ...(builtIn || fallback), id: activeProvider.id, name: activeProvider.name });
+    toast.success(copy.settings.providerDefaultsRestored);
   }
 
   function handleSettingsOpenChange(open: boolean) {
@@ -77,251 +124,108 @@ export function SettingsDialog({
   return (
     <>
       <Dialog open={settingsOpen} onOpenChange={handleSettingsOpenChange}>
-        <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-xl">
-          <DialogHeader>
-            <div className="flex items-start gap-2">
-              {providerConfig ? (
-                <Button type="button" variant="ghost" size="icon" className="-ml-2 shrink-0" aria-label={copy.settings.backToProviders} title={copy.settings.backToProviders} onClick={() => setProviderConfigId(null)}>
-                  <ArrowLeftIcon />
-                </Button>
-              ) : null}
-              <div className="flex min-w-0 flex-col gap-2">
-                <DialogTitle>{providerConfig ? `${copy.settings.providerConfiguration}: ${providerConfig.name}` : copy.settings.title}</DialogTitle>
-                <DialogDescription>{providerConfig ? copy.settings.providerConfigurationDescription : copy.settings.description}</DialogDescription>
-              </div>
-            </div>
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>{copy.settings.title}</DialogTitle>
+            <DialogDescription>{copy.settings.description}</DialogDescription>
           </DialogHeader>
+          <div className="standard-scrollbar min-h-0 overflow-y-auto p-6">
+            <div className="grid gap-4">
+              <div className="grid min-w-0 gap-4 md:grid-cols-[13rem_minmax(0,1fr)] md:items-start">
+                <aside className="grid min-w-0 gap-2 rounded-md border bg-muted/20 p-2 md:sticky md:top-0">
+                  <FieldTitle className="px-1">{copy.settings.provider}</FieldTitle>
+                  <div className="standard-scrollbar grid max-h-44 min-w-0 gap-1 overflow-y-auto pr-1 md:max-h-[32rem]">
+                    {settings.openaiProviders.map((provider) => {
+                      const selected = provider.id === settings.activeOpenAIProviderId;
+                      const protocolLabel = provider.protocol === "private" ? copy.settings.privateProtocol : provider.protocol === "gemini" ? copy.settings.geminiProtocol : copy.settings.openAiProtocol;
+                      const address = provider.protocol === "private" ? provider.privateBaseUrl : provider.protocol === "gemini" ? provider.geminiBaseUrl : provider.baseUrl;
+                      const protocolAccent = provider.protocol === "private" ? "border-l-violet-500" : provider.protocol === "gemini" ? "border-l-emerald-500" : "border-l-neutral-900";
+                      return (
+                        <Button key={provider.id} type="button" variant={selected ? "default" : "ghost"} size="sm" className={`h-auto min-w-0 justify-start border-l-4 px-2 py-2 text-left ${protocolAccent}`} aria-pressed={selected} onClick={() => selectProvider(provider)}>
+                          <span className="grid min-w-0 gap-0.5">
+                            <span className="truncate font-medium">{provider.name || copy.settings.provider}</span>
+                            <span className={`truncate text-xs ${selected ? "text-background/70" : "text-muted-foreground"}`}>{protocolLabel} · {address || copy.settings.apiUrl}</span>
+                          </span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="w-full justify-center" onClick={addProvider}><PlusIcon data-icon="inline-start" />{copy.settings.addProvider}</Button>
+                </aside>
 
-          <Tabs value={protocolView} onValueChange={(value) => { setProviderConfigId(null); updateSettings("protocol", value as AppSettings["protocol"]); }}>
-            <SegmentedTabsList className="grid w-full grid-cols-2">
-              <SegmentedTabsTrigger value="openai">{copy.settings.openAiProtocol}</SegmentedTabsTrigger>
-              <SegmentedTabsTrigger value="private">{copy.settings.privateProtocol}</SegmentedTabsTrigger>
-            </SegmentedTabsList>
-          </Tabs>
+                {activeProvider ? (
+                  <FieldGroup className="min-w-0 rounded-md border p-4">
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                      <div className="min-w-0 truncate text-sm font-medium">{activeProvider.name || copy.settings.provider}</div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={restoreProviderDefaults}><RotateCcwIcon data-icon="inline-start" />{copy.settings.restoreProviderDefaults}</Button>
+                        <Button type="button" variant="destructive" size="sm" onClick={() => setProviderDeleteConfirmOpen(true)}><Trash2Icon data-icon="inline-start" />{copy.settings.deleteProvider}</Button>
+                      </div>
+                    </div>
+                    <Field>
+                      <FieldLabel htmlFor="providerProtocol">{copy.settings.providerProtocol}</FieldLabel>
+                      <Select value={activeProvider.protocol} onValueChange={(value) => updateProviderConfig({ protocol: value as AppSettings["protocol"] })}>
+                        <SelectTrigger id="providerProtocol" aria-label={copy.settings.providerProtocol}><SelectValue /></SelectTrigger>
+                         <SelectContent><SelectItem value="openai">{copy.settings.openAiProtocol}</SelectItem><SelectItem value="gemini">{copy.settings.geminiProtocol}</SelectItem><SelectItem value="private">{copy.settings.privateProtocol}</SelectItem></SelectContent>
+                      </Select>
+                    </Field>
+                    <Field><FieldLabel htmlFor="providerName">{copy.settings.providerName}</FieldLabel><Input id="providerName" value={activeProvider.name} onChange={(event) => updateProviderName(event.target.value)} /></Field>
 
-          {protocolView === "openai" && !providerConfig ? <FieldGroup>
-            <FieldSet className="gap-3 rounded-md border p-3">
-              <FieldTitle>{copy.settings.provider}</FieldTitle>
-              <div className="grid min-w-0 gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Select
-                    value={settings.activeOpenAIProviderId || undefined}
-                    disabled={!settings.openaiProviders.length}
-                    onValueChange={(value) => {
-                      updateSettings("activeOpenAIProviderId", value);
-                    }}
-                  >
-                    <SelectTrigger className="min-w-0 flex-1" aria-label={copy.settings.providerPlaceholder}>
-                      <SelectValue placeholder={copy.settings.providerPlaceholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {settings.openaiProviders.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id}>{provider.name || provider.baseUrl || copy.settings.provider}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="outline" size="icon" aria-label={copy.settings.providerConfiguration} title={copy.settings.providerConfiguration} disabled={!activeProvider} onClick={() => setProviderConfigId(activeProvider?.id || null)}>
-                    <Settings2Icon />
-                  </Button>
-                </div>
-                <Button type="button" variant="outline" size="sm" className="w-full justify-center" onClick={addProvider}>
-                  <PlusIcon data-icon="inline-start" />
-                  {copy.settings.addProvider}
-                </Button>
+                    {activeProvider.protocol === "openai" ? (
+                      <>
+                        <Field><FieldLabel htmlFor="baseUrl">{copy.settings.apiUrl}</FieldLabel><Input id="baseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.baseUrl} value={activeProvider.baseUrl} onChange={(event) => updateProviderConfig({ baseUrl: event.target.value })} /></Field>
+                        <Field><FieldLabel htmlFor="apiKey">{copy.settings.apiKey}</FieldLabel><Input id="apiKey" type="password" spellCheck={false} autoComplete="off" placeholder="api-key" value={activeProvider.apiKey} onChange={(event) => updateProviderConfig({ apiKey: event.target.value })} /></Field>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <Field><FieldLabel htmlFor="generationsModel">{copy.settings.generationsModel}</FieldLabel><Input id="generationsModel" value={activeProvider.generationsModel} onChange={(event) => updateProviderConfig({ generationsModel: event.target.value })} /></Field>
+                          <Field><FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel><Input id="editsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} /></Field>
+                          <Field><FieldLabel htmlFor="responsesModel">{copy.settings.responsesModel}</FieldLabel><Input id="responsesModel" value={activeProvider.responsesModel} onChange={(event) => updateProviderConfig({ responsesModel: event.target.value })} /></Field>
+                          <Field><FieldLabel htmlFor="completionsModel">{copy.settings.completionsModel}</FieldLabel><Input id="completionsModel" value={activeProvider.completionsModel} onChange={(event) => updateProviderConfig({ completionsModel: event.target.value })} /></Field>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <Field>
+                            <FieldLabel htmlFor="imageResponseMode">{copy.settings.imageResponseMode}</FieldLabel>
+                            <Select value={activeProvider.imageResponseMode} onValueChange={(value) => updateProviderConfig({ imageResponseMode: value as OpenAIProvider["imageResponseMode"] })}><SelectTrigger id="imageResponseMode" aria-label={copy.settings.imageResponseMode}><SelectValue /></SelectTrigger><SelectContent><SelectItem value={IMAGE_RESPONSE_MODES[0]}>{copy.settings.imageResponseModeAuto}</SelectItem><SelectItem value={IMAGE_RESPONSE_MODES[1]}>{copy.settings.imageResponseModeBase64}</SelectItem><SelectItem value={IMAGE_RESPONSE_MODES[2]}>{copy.settings.imageResponseModeUrl}</SelectItem></SelectContent></Select>
+                            <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.imageResponseModeDescription}</p>
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="multiImageField">{copy.settings.multiImageField}</FieldLabel>
+                            <Select value={activeProvider.multiImageField} onValueChange={(value) => updateProviderConfig({ multiImageField: value as OpenAIProvider["multiImageField"] })}><SelectTrigger id="multiImageField" aria-label={copy.settings.multiImageField}><SelectValue /></SelectTrigger><SelectContent><SelectItem value={MULTI_IMAGE_FIELD_MODES[0]}>{copy.settings.multiImageFieldAuto}</SelectItem><SelectItem value={MULTI_IMAGE_FIELD_MODES[1]}>{copy.settings.multiImageFieldRepeated}</SelectItem><SelectItem value={MULTI_IMAGE_FIELD_MODES[2]}>{copy.settings.multiImageFieldArray}</SelectItem></SelectContent></Select>
+                            <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.multiImageFieldDescription}</p>
+                          </Field>
+                        </div>
+                      </>
+                    ) : activeProvider.protocol === "private" ? (
+                      <>
+                        <Field><FieldLabel htmlFor="privateBaseUrl">{copy.settings.privateBaseUrl}</FieldLabel><Input id="privateBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.privateBaseUrl} value={activeProvider.privateBaseUrl} onChange={(event) => updateProviderConfig({ privateBaseUrl: event.target.value })} /></Field>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Field><FieldLabel htmlFor="privateApiKey">{copy.settings.privateApiKey}</FieldLabel><Input id="privateApiKey" type="password" spellCheck={false} autoComplete="off" placeholder={copy.settings.privateApiKeyPlaceholder} value={activeProvider.privateApiKey} onChange={(event) => updateProviderConfig({ privateApiKey: event.target.value })} /></Field><Field><FieldLabel htmlFor="privateModel">{copy.settings.privateModel}</FieldLabel><Input id="privateModel" value={activeProvider.privateModel} onChange={(event) => updateProviderConfig({ privateModel: event.target.value })} /></Field></div>
+                      </>
+                    ) : (
+                      <>
+                        <Field><FieldLabel htmlFor="geminiBaseUrl">{copy.settings.geminiBaseUrl}</FieldLabel><Input id="geminiBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.geminiBaseUrl} value={activeProvider.geminiBaseUrl} onChange={(event) => updateProviderConfig({ geminiBaseUrl: event.target.value })} /></Field>
+                        <Field><FieldLabel htmlFor="geminiApiKey">{copy.settings.geminiApiKey}</FieldLabel><Input id="geminiApiKey" type="password" spellCheck={false} autoComplete="off" placeholder="AIza..." value={activeProvider.geminiApiKey} onChange={(event) => updateProviderConfig({ geminiApiKey: event.target.value })} /></Field>
+                        <Field><FieldLabel htmlFor="geminiModel">{copy.settings.geminiModel}</FieldLabel><Input id="geminiModel" value={activeProvider.geminiModel} onChange={(event) => updateProviderConfig({ geminiModel: event.target.value })} /></Field>
+                      </>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Field><FieldLabel htmlFor="requestConcurrency">{copy.settings.concurrency}</FieldLabel><Input id="requestConcurrency" type="number" min={1} max={100} step={1} inputMode="numeric" value={settings.requestConcurrency} onChange={(event) => updateSettings("requestConcurrency", event.target.value)} /></Field><Field><FieldLabel htmlFor="requestIntervalSeconds">{copy.settings.interval}</FieldLabel><Input id="requestIntervalSeconds" type="number" min={0} max={3600} step={1} inputMode="numeric" value={settings.requestIntervalSeconds} onChange={(event) => updateSettings("requestIntervalSeconds", event.target.value)} /></Field></div>
+                    <Field orientation="horizontal" className="!items-center"><Checkbox id="rememberKey" checked={settings.rememberKey} onCheckedChange={(checked) => updateSettings("rememberKey", checked === true)} /><FieldContent><FieldLabel htmlFor="rememberKey">{copy.settings.rememberKey}</FieldLabel></FieldContent></Field>
+                    <FieldSet><FieldTitle>{copy.settings.endpointPreview}</FieldTitle><pre className="min-w-0 whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs leading-relaxed text-muted-foreground">{endpointPreview}</pre></FieldSet>
+                  </FieldGroup>
+                ) : (
+                  <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center"><p className="text-sm text-muted-foreground">{copy.settings.noProviders}</p><Button type="button" variant="outline" size="sm" onClick={addProvider}><PlusIcon data-icon="inline-start" />{copy.settings.addProvider}</Button></div>
+                )}
               </div>
-              {!settings.openaiProviders.length ? <p className="text-xs text-muted-foreground">{copy.settings.noProviders}</p> : null}
-            </FieldSet>
-          </FieldGroup> : protocolView === "openai" && providerConfig ? <FieldGroup>
-            <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-3">
-              <div className="min-w-0 text-sm font-medium">{providerConfig.name || copy.settings.provider}</div>
-              <Button type="button" variant="destructive" size="sm" onClick={() => setProviderDeleteConfirmOpen(true)}>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t bg-background px-6 py-4 gap-2 sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="destructive" onClick={() => setClearAllConfirmOpen(true)}>
                 <Trash2Icon data-icon="inline-start" />
-                {copy.settings.deleteProvider}
+                {copy.settings.clearAllData}
               </Button>
+              {DEVELOPMENT_FIXTURES_ENABLED ? <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"><Checkbox id="developmentMode" checked={settings.developmentMode} onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)} /><span>{copy.settings.developmentMode}</span></label> : null}
             </div>
-            <Field>
-              <FieldLabel htmlFor="providerName">{copy.settings.providerName}</FieldLabel>
-              <Input id="providerName" value={providerConfig.name} onChange={(event) => updateProviderName(event.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="baseUrl">{copy.settings.apiUrl}</FieldLabel>
-              <Input
-                id="baseUrl"
-                type="url"
-                spellCheck={false}
-                autoComplete="url"
-                placeholder={DEFAULTS.baseUrl}
-                value={settings.baseUrl}
-                onChange={(event) => updateSettings("baseUrl", event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="apiKey">{copy.settings.apiKey}</FieldLabel>
-              <Input
-                id="apiKey"
-                type="password"
-                spellCheck={false}
-                autoComplete="off"
-                placeholder="api-key"
-                value={settings.apiKey}
-                onChange={(event) => updateSettings("apiKey", event.target.value)}
-              />
-            </Field>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="generationsModel">{copy.settings.generationsModel}</FieldLabel>
-                <Input
-                  id="generationsModel"
-                  type="text"
-                  spellCheck={false}
-                  value={settings.generationsModel}
-                  onChange={(event) => updateSettings("generationsModel", event.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel>
-                <Input
-                  id="editsModel"
-                  type="text"
-                  spellCheck={false}
-                  value={settings.editsModel}
-                  onChange={(event) => updateSettings("editsModel", event.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="responsesModel">{copy.settings.responsesModel}</FieldLabel>
-                <Input
-                  id="responsesModel"
-                  type="text"
-                  spellCheck={false}
-                  value={settings.responsesModel}
-                  onChange={(event) => updateSettings("responsesModel", event.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="completionsModel">{copy.settings.completionsModel}</FieldLabel>
-                <Input
-                  id="completionsModel"
-                  type="text"
-                  spellCheck={false}
-                  value={settings.completionsModel}
-                  onChange={(event) => updateSettings("completionsModel", event.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="requestConcurrency">{copy.settings.concurrency}</FieldLabel>
-                <Input
-                  id="requestConcurrency"
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  inputMode="numeric"
-                  value={settings.requestConcurrency}
-                  onChange={(event) => updateSettings("requestConcurrency", event.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="requestIntervalSeconds">{copy.settings.interval}</FieldLabel>
-                <Input
-                  id="requestIntervalSeconds"
-                  type="number"
-                  min={0}
-                  max={3600}
-                  step={1}
-                  inputMode="numeric"
-                  value={settings.requestIntervalSeconds}
-                  onChange={(event) => updateSettings("requestIntervalSeconds", event.target.value)}
-                />
-              </Field>
-            </div>
-            <Field orientation="horizontal" className="!items-center">
-              <Checkbox
-                id="rememberKey"
-                checked={settings.rememberKey}
-                onCheckedChange={(checked) => updateSettings("rememberKey", checked === true)}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor="rememberKey">{copy.settings.rememberKey}</FieldLabel>
-              </FieldContent>
-            </Field>
-            {DEVELOPMENT_FIXTURES_ENABLED ? (
-              <Field orientation="horizontal" className="!items-start">
-                <Checkbox
-                  id="developmentMode"
-                  checked={settings.developmentMode}
-                  onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="developmentMode">{copy.settings.developmentMode}</FieldLabel>
-                  <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p>
-                </FieldContent>
-              </Field>
-            ) : null}
-            <FieldSet>
-              <FieldTitle>{copy.settings.endpointPreview}</FieldTitle>
-              <pre className="min-w-0 whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
-                {endpointPreview}
-              </pre>
-            </FieldSet>
-          </FieldGroup> : (
-            <FieldGroup>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field className="sm:col-span-2">
-                  <FieldLabel htmlFor="privateBaseUrl">{copy.settings.privateBaseUrl}</FieldLabel>
-                  <Input id="privateBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.privateBaseUrl} value={settings.privateBaseUrl} onChange={(event) => updateSettings("privateBaseUrl", event.target.value)} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="privateApiKey">{copy.settings.privateApiKey}</FieldLabel>
-                  <Input id="privateApiKey" type="password" spellCheck={false} autoComplete="off" placeholder={copy.settings.privateApiKeyPlaceholder} value={settings.privateApiKey} onChange={(event) => updateSettings("privateApiKey", event.target.value)} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="privateModel">{copy.settings.privateModel}</FieldLabel>
-                  <Input id="privateModel" type="text" spellCheck={false} value={settings.privateModel} onChange={(event) => updateSettings("privateModel", event.target.value)} />
-                </Field>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="privateRequestConcurrency">{copy.settings.concurrency}</FieldLabel>
-                  <Input id="privateRequestConcurrency" type="number" min={1} max={100} step={1} inputMode="numeric" value={settings.requestConcurrency} onChange={(event) => updateSettings("requestConcurrency", event.target.value)} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="privateRequestIntervalSeconds">{copy.settings.interval}</FieldLabel>
-                  <Input id="privateRequestIntervalSeconds" type="number" min={0} max={3600} step={1} inputMode="numeric" value={settings.requestIntervalSeconds} onChange={(event) => updateSettings("requestIntervalSeconds", event.target.value)} />
-                </Field>
-              </div>
-              <Field orientation="horizontal" className="!items-center">
-                <Checkbox id="privateRememberKey" checked={settings.rememberKey} onCheckedChange={(checked) => updateSettings("rememberKey", checked === true)} />
-                <FieldContent><FieldLabel htmlFor="privateRememberKey">{copy.settings.rememberKey}</FieldLabel></FieldContent>
-              </Field>
-              {DEVELOPMENT_FIXTURES_ENABLED ? (
-                <Field orientation="horizontal" className="!items-start">
-                  <Checkbox id="privateDevelopmentMode" checked={settings.developmentMode} onCheckedChange={(checked) => updateSettings("developmentMode", checked === true)} />
-                  <FieldContent><FieldLabel htmlFor="privateDevelopmentMode">{copy.settings.developmentMode}</FieldLabel><p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.developmentModeDescription}</p></FieldContent>
-                </Field>
-              ) : null}
-              <FieldSet>
-                <FieldTitle>{copy.settings.endpointPreview}</FieldTitle>
-                <pre className="min-w-0 whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs leading-relaxed text-muted-foreground">{endpointPreview}</pre>
-              </FieldSet>
-            </FieldGroup>
-          )}
-
-          <DialogFooter className="gap-2 sm:justify-between">
-            {!providerConfig ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" onClick={resetSettings}>
-                  <RotateCcwIcon data-icon="inline-start" />
-                  {copy.settings.reset}
-                </Button>
-                <Button type="button" variant="destructive" onClick={() => setClearAllConfirmOpen(true)}>
-                  <Trash2Icon data-icon="inline-start" />
-                  {copy.settings.clearAllData}
-                </Button>
-              </div>
-            ) : <span />}
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
@@ -333,7 +237,7 @@ export function SettingsDialog({
                       : "outline"
                 }
                 className="w-28 justify-center"
-                disabled={protocolView !== "openai"}
+                disabled={activeProvider?.protocol !== "openai"}
                 onClick={testConnection}
               >
                 {testConnectionStatus.tone === "busy" ? (

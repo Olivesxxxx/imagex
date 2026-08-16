@@ -353,10 +353,9 @@ export function QuickStartDialog({ open, onOpenChange }: { open: boolean; onOpen
           <DialogDescription>{quickStart.description}</DialogDescription>
         </DialogHeader>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
-          <SegmentedTabsList className="grid w-full grid-cols-3">
-            <SegmentedTabsTrigger value="getting-started">{quickStart.tabs.gettingStarted}</SegmentedTabsTrigger>
-            <SegmentedTabsTrigger value="errors">{quickStart.tabs.errors}</SegmentedTabsTrigger>
-            <SegmentedTabsTrigger value="changelog">{quickStart.tabs.changelog}</SegmentedTabsTrigger>
+           <SegmentedTabsList className="grid w-full grid-cols-2">
+             <SegmentedTabsTrigger value="getting-started">{quickStart.tabs.gettingStarted}</SegmentedTabsTrigger>
+             <SegmentedTabsTrigger value="errors">{quickStart.tabs.errors}</SegmentedTabsTrigger>
           </SegmentedTabsList>
           <TabsContent value="getting-started" className="mt-1">
             <ol className="grid list-decimal gap-3 pl-5 text-sm leading-relaxed">
@@ -370,11 +369,6 @@ export function QuickStartDialog({ open, onOpenChange }: { open: boolean; onOpen
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{error.description}</p>
               </section>
             ))}
-          </TabsContent>
-          <TabsContent value="changelog" className="mt-1">
-            <ul className="grid list-disc gap-3 pl-5 text-sm leading-relaxed text-muted-foreground">
-              {quickStart.changelog.map((entry) => <li key={entry} className="pl-1">{entry}</li>)}
-            </ul>
           </TabsContent>
         </Tabs>
       </DialogContent>

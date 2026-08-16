@@ -227,9 +227,12 @@ export function saveSettings(values: StoredConsoleSettings) {
     ...normalized.shared,
     apiKey: normalized.shared.rememberKey ? normalized.shared.apiKey : "",
     privateApiKey: normalized.shared.rememberKey ? normalized.shared.privateApiKey : "",
+    geminiApiKey: normalized.shared.rememberKey ? normalized.shared.geminiApiKey : "",
     openaiProviders: normalized.shared.openaiProviders.map((provider) => ({
       ...provider,
       apiKey: normalized.shared.rememberKey ? provider.apiKey : "",
+      privateApiKey: normalized.shared.rememberKey ? provider.privateApiKey : "",
+      geminiApiKey: normalized.shared.rememberKey ? provider.geminiApiKey : "",
     })),
   };
   const persisted: Record<string, unknown> = {
@@ -241,6 +244,8 @@ export function saveSettings(values: StoredConsoleSettings) {
     activeOpenAIProviderId: normalized.shared.activeOpenAIProviderId,
     privateBaseUrl: normalized.shared.privateBaseUrl,
     privateModel: normalized.shared.privateModel,
+    geminiBaseUrl: normalized.shared.geminiBaseUrl,
+    geminiModel: normalized.shared.geminiModel,
     generationsModel: normalized.shared.generationsModel,
     editsModel: normalized.shared.editsModel,
     responsesModel: normalized.shared.responsesModel,
@@ -261,6 +266,7 @@ export function saveSettings(values: StoredConsoleSettings) {
   if (normalized.shared.rememberKey) {
     persisted.apiKey = normalized.shared.apiKey;
     persisted.privateApiKey = normalized.shared.privateApiKey;
+    persisted.geminiApiKey = normalized.shared.geminiApiKey;
   }
 
   localStorageStore()?.setItem(STORAGE_KEY, JSON.stringify(persisted));

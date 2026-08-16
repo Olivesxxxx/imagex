@@ -72,8 +72,8 @@ function requestRecordFixture(overrides: Partial<ImageRequestRecord>): ImageRequ
 
 describe("image console logic", () => {
   test("provides editable default OpenAI providers and preserves an explicit empty list", () => {
-    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Geek"]);
-    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(3);
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Auttyt", "Geek", "Gemini", "私有协议"]);
+    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(6);
     expect(normalizeSharedSettings({}).openaiProviders.at(-1)).toMatchObject({ id: "legacy-custom" });
     expect(normalizeSharedSettings({ openaiProviders: [] }).openaiProviders).toEqual([]);
     expect(normalizeSharedSettings({
@@ -81,6 +81,9 @@ describe("image console logic", () => {
       activeOpenAIProviderId: "custom",
       baseUrl: "https://example.com/v1",
     })).toMatchObject({ activeOpenAIProviderId: "custom", baseUrl: "https://example.com/v1" });
+    expect(normalizeSharedSettings({
+      openaiProviders: [{ id: "custom", name: "我的接口", baseUrl: "https://example.com/v1", apiKey: "key" }],
+    }).openaiProviders[0]).toMatchObject({ imageResponseMode: "auto", multiImageField: "auto" });
   });
 
   test("uses the private service default while keeping its credential blank", () => {

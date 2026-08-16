@@ -54,3 +54,10 @@ export function normalizePrivateImageEndpoint(baseUrl: string) {
 export function normalizePrivateImageEditsEndpoint(baseUrl: string) {
   return privateRouteFromBaseUrl(baseUrl, "/api/images/edits");
 }
+
+export function normalizeGeminiImageEndpoint(baseUrl: string, model: string) {
+  const input = trimTrailingSlash(baseUrl || "https://generativelanguage.googleapis.com/v1beta");
+  const normalizedModel = String(model || "gemini-2.5-flash-image").trim();
+  if (/\/models\/[^/]+:generateContent$/i.test(input)) return input;
+  return `${input}/models/${encodeURIComponent(normalizedModel)}:generateContent`;
+}

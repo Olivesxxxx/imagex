@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { fetchModels, postImageEdit, postImageGeneration, postPrivateImageEdit, postPrivateImageGeneration } from "@/lib/api";
+import { fetchModels, postGeminiImageGeneration, postImageEdit, postImageGeneration, postPrivateImageEdit, postPrivateImageGeneration } from "@/lib/api";
 import {
   normalizeChatCompletionsEndpoint,
   normalizeImageEditsEndpoint,
@@ -9,6 +9,7 @@ import {
   normalizeModelsEndpoint,
   normalizePrivateImageEditsEndpoint,
   normalizePrivateImageEndpoint,
+  normalizeGeminiImageEndpoint,
   normalizeResponsesEndpoint,
 } from "@/lib/endpoints";
 import {
@@ -20,6 +21,7 @@ import {
   buildChatCompletionsImageRequests,
   buildGenerationRequests,
   buildPayload,
+  applyPromptPolicy,
   buildResponsesImagePayload,
   buildResponsesImageRequests,
   createRequestRecords,
@@ -59,6 +61,7 @@ import {
   type GenerationMethod,
   type ImageRequestRecord,
   type ModeSettings,
+  type OpenAIProvider,
   type SharedSettings,
   type StoredConsoleSettings,
   type RequestFilter,
@@ -117,14 +120,17 @@ function normalizeSettings(values: AppSettings, defaultStrictPromptText: string)
     apiKey: shared.apiKey,
     openaiProviders: shared.openaiProviders,
     activeOpenAIProviderId: shared.activeOpenAIProviderId,
-    protocol: values.protocol === "private" ? "private" : "openai",
-    privateBaseUrl: String(values.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl,
-    privateApiKey: String(values.privateApiKey || "").trim(),
-    privateModel: String(values.privateModel || DEFAULTS.privateModel).trim() || DEFAULTS.privateModel,
-    generationsModel: String(values.generationsModel || DEFAULTS.generationsModel).trim(),
-    editsModel: String(values.editsModel || DEFAULTS.editsModel).trim(),
-    responsesModel: String(values.responsesModel || DEFAULTS.responsesModel).trim(),
-    completionsModel: String(values.completionsModel || DEFAULTS.completionsModel).trim(),
+    protocol: shared.protocol,
+    privateBaseUrl: shared.privateBaseUrl,
+    privateApiKey: shared.privateApiKey,
+    privateModel: shared.privateModel,
+    geminiBaseUrl: shared.geminiBaseUrl,
+    geminiApiKey: shared.geminiApiKey,
+    geminiModel: shared.geminiModel,
+    generationsModel: shared.generationsModel,
+    editsModel: shared.editsModel,
+    responsesModel: shared.responsesModel,
+    completionsModel: shared.completionsModel,
     rememberKey: Boolean(values.rememberKey),
     developmentMode: DEVELOPMENT_FIXTURES_ENABLED && Boolean(values.developmentMode),
     strictPromptText: normalizedStrictPromptText,
@@ -176,11 +182,52 @@ function isCrossOriginFetchFailure(endpoint: string, error: unknown) {
   }
 }
 
-function missingConnectionMessage(settings: Pick<AppSettings, "protocol" | "baseUrl" | "apiKey" | "privateBaseUrl" | "privateApiKey">, copy: ReturnType<typeof getCopy>) {
-  const baseUrl = String(settings.protocol === "private" ? settings.privateBaseUrl : settings.baseUrl || "").trim();
-  const apiKey = String(settings.protocol === "private" ? settings.privateApiKey : settings.apiKey || "").trim();
+function missingConnectionMessage(settings: Pick<AppSettings, "protocol" | "baseUrl" | "apiKey" | "privateBaseUrl" | "privateApiKey" | "geminiBaseUrl" | "geminiApiKey">, copy: ReturnType<typeof getCopy>) {
+  const baseUrl = String(settings.protocol === "private" ? settings.privateBaseUrl : settings.protocol === "gemini" ? settings.geminiBaseUrl : settings.baseUrl || "").trim();
+  const apiKey = String(settings.protocol === "private" ? settings.privateApiKey : settings.protocol === "gemini" ? settings.geminiApiKey : settings.apiKey || "").trim();
   if (baseUrl && apiKey) return "";
   return copy.generator.connectionRequired;
+}
+
+function isBrowserNetworkFailure(error: unknown) {
+  const message =
+    error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string"
+      ? String((error as { message: string }).message).trim().toLowerCase()
+      : "";
+
+  return ["failed to fetch", "networkerror", "network error", "load failed"].some((pattern) => message.includes(pattern));
+}
+
+function openAIImageOptionsFromSettings(settings: AppSettings) {
+  const provider = settings.openaiProviders.find((item) => item.id === settings.activeOpenAIProviderId);
+  return {
+    imageResponseMode: provider?.imageResponseMode || "auto",
+    multiImageField: provider?.multiImageField || "auto",
+  } as const;
+}
+
+function sharedSettingsForProvider(shared: SharedSettings, provider?: OpenAIProvider): SharedSettings {
+  if (!provider) {
+    return { ...shared, protocol: "openai", baseUrl: "", apiKey: "", activeOpenAIProviderId: "" };
+  }
+
+  return {
+    ...shared,
+    protocol: provider.protocol,
+    activeOpenAIProviderId: provider.id,
+    baseUrl: provider.baseUrl,
+    apiKey: provider.apiKey,
+    generationsModel: provider.generationsModel,
+    editsModel: provider.editsModel,
+    responsesModel: provider.responsesModel,
+    completionsModel: provider.completionsModel,
+    privateBaseUrl: provider.privateBaseUrl,
+    privateApiKey: provider.privateApiKey,
+    privateModel: provider.privateModel,
+    geminiBaseUrl: provider.geminiBaseUrl,
+    geminiApiKey: provider.geminiApiKey,
+    geminiModel: provider.geminiModel,
+  };
 }
 
 function isGeneratedImage(value: ReturnType<typeof prepareImageForDetailCache>): value is GeneratedImage {
@@ -1025,7 +1072,17 @@ export function useImageConsole() {
           throw new Error(copy.runtime.editRequestMissingImages);
         }
 
-        const body = request.protocol === "private"
+        const body = request.protocol === "gemini"
+          ? request.method === "edit"
+            ? (() => { throw new Error(language === "en" ? "Gemini image editing is not supported yet. Use an OpenAI-compatible provider for image-to-image." : "Gemini 协议暂不支持图生图，请切换到 OpenAI 兼容协议。") })()
+            : await postGeminiImageGeneration(
+                request.endpoint,
+                request.apiKey || "",
+                String(request.payload.prompt || request.payload.input || ""),
+                controller.signal,
+                language,
+              )
+          : request.protocol === "private"
           ? request.method === "edit"
             ? await postPrivateImageEdit(
                 request.endpoint,
@@ -1050,6 +1107,7 @@ export function useImageConsole() {
                 request.editImages || [],
                 controller.signal,
                 language,
+                request.openAIImageOptions,
               )
             : await postImageGeneration(
                 request.endpoint,
@@ -1057,6 +1115,7 @@ export function useImageConsole() {
                 request.payload,
                 controller.signal,
                 language,
+                request.openAIImageOptions,
               );
 
         if (cancelRequestedRef.current.has(requestId)) {
@@ -1083,6 +1142,9 @@ export function useImageConsole() {
         const localImages = await Promise.all(
           extractedImages.map((image) => hydrateUrlImageBlob(image, controller.signal)),
         );
+        if (localImages.some((image) => image.kind === "url" && !(image.blob instanceof Blob))) {
+          toast.warning(copy.runtime.remoteImageLimited);
+        }
         const detailImages = (
           await Promise.all(localImages.map((image) => prepareImageForDetailCacheWithDimensions(image)))
         ).filter(isGeneratedImage);
@@ -1128,6 +1190,8 @@ export function useImageConsole() {
         const failedRequest = requestRecordsRef.current.find((item) => item.id === requestId);
         if (failedRequest && await isCrossOriginFetchFailure(failedRequest.endpoint, typedError)) {
           toast.error(copy.runtime.crossOriginRequestFailed);
+        } else if (failedRequest && isBrowserNetworkFailure(typedError)) {
+          toast.error(copy.runtime.browserRequestFailed);
         }
         const shouldKeepRuntimeDetails = selectedRequestIdRef.current === requestId;
         if (failedRequest && typedError.responseBody != null) {
@@ -1267,6 +1331,11 @@ export function useImageConsole() {
         `edits (${settings.privateModel})\n${normalizePrivateImageEditsEndpoint(settings.privateBaseUrl)}`,
       ].join("\n\n");
     }
+    if (settings.protocol === "gemini") {
+      const baseUrl = String(settings.geminiBaseUrl || DEFAULTS.geminiBaseUrl).replace(/\/+$/, "");
+      const model = String(settings.geminiModel || DEFAULTS.geminiModel).trim() || DEFAULTS.geminiModel;
+      return `generateContent (${model})\n${baseUrl}/models/${model}:generateContent?key=••••`;
+    }
     const baseUrl = settings.baseUrl || DEFAULTS.baseUrl;
     const generationsModel = String(settings.generationsModel || DEFAULTS.generationsModel).trim();
     const editsModel = String(settings.editsModel || DEFAULTS.editsModel).trim();
@@ -1282,6 +1351,8 @@ export function useImageConsole() {
     settings.protocol,
     settings.privateBaseUrl,
     settings.privateModel,
+    settings.geminiBaseUrl,
+    settings.geminiModel,
     settings.baseUrl,
     settings.completionsModel,
     settings.editsModel,
@@ -1454,8 +1525,11 @@ export function useImageConsole() {
         key === "openaiProviders" ||
         key === "activeOpenAIProviderId" ||
         key === "privateBaseUrl" ||
-        key === "privateApiKey" ||
-        key === "privateModel" ||
+         key === "privateApiKey" ||
+         key === "privateModel" ||
+         key === "geminiBaseUrl" ||
+         key === "geminiApiKey" ||
+         key === "geminiModel" ||
         key === "rememberKey" ||
         key === "developmentMode" ||
         key === "generationsModel" ||
@@ -1475,18 +1549,17 @@ export function useImageConsole() {
           const providers = Array.isArray(value) ? value : [];
           const active = providers.find((provider) => provider.id === current.shared.activeOpenAIProviderId)
             || providers[0];
-          nextShared = {
-            ...nextShared,
-            activeOpenAIProviderId: active?.id || "",
-            ...(active ? { baseUrl: active.baseUrl, apiKey: active.apiKey } : {}),
-          };
+          nextShared = sharedSettingsForProvider(nextShared, active);
         } else if (key === "activeOpenAIProviderId") {
           const active = current.shared.openaiProviders.find((provider) => provider.id === value);
-          if (active) nextShared = { ...nextShared, baseUrl: active.baseUrl, apiKey: active.apiKey };
-        } else if ((key === "baseUrl" || key === "apiKey") && current.shared.activeOpenAIProviderId) {
+          nextShared = sharedSettingsForProvider(nextShared, active);
+        } else if ((key === "baseUrl" || key === "apiKey" || key === "geminiBaseUrl" || key === "geminiApiKey" || key === "geminiModel") && current.shared.activeOpenAIProviderId) {
           nextShared.openaiProviders = current.shared.openaiProviders.map((provider) =>
             provider.id === current.shared.activeOpenAIProviderId
-              ? { ...provider, ...(key === "baseUrl" ? { baseUrl: String(value) } : { apiKey: String(value) }) }
+              ? {
+                  ...provider,
+                  ...(key === "baseUrl" ? { baseUrl: String(value) } : key === "apiKey" ? { apiKey: String(value) } : { [key]: String(value) }),
+                }
               : provider,
           );
         }
@@ -1509,7 +1582,7 @@ export function useImageConsole() {
         },
       };
     });
-    if (key === "protocol" || key === "baseUrl" || key === "apiKey" || key === "openaiProviders" || key === "activeOpenAIProviderId" || key === "privateBaseUrl" || key === "privateApiKey") {
+    if (key === "protocol" || key === "baseUrl" || key === "apiKey" || key === "openaiProviders" || key === "activeOpenAIProviderId" || key === "privateBaseUrl" || key === "privateApiKey" || key === "geminiBaseUrl" || key === "geminiApiKey" || key === "geminiModel") {
       setTestConnectionStatus({ label: copy.tests.test, tone: "default" });
     }
   }, [copy]);
@@ -1553,6 +1626,8 @@ export function useImageConsole() {
     } catch (error) {
       if (await isCrossOriginFetchFailure(endpoint, error)) {
         toast.error(copy.runtime.crossOriginRequestFailed);
+      } else if (isBrowserNetworkFailure(error)) {
+        toast.error(copy.runtime.browserRequestFailed);
       }
       setTestConnectionStatus({ label: copy.tests.connectionFailed, tone: "error" });
     }
@@ -1579,7 +1654,12 @@ export function useImageConsole() {
       let endpoint: string;
       let method: GenerationMethod;
       try {
-        if (currentSettings.protocol === "private") {
+        if (currentSettings.protocol === "gemini") {
+          const payload = { model: currentSettings.geminiModel, prompt: applyPromptPolicy(prompt, currentSettings.strictPrompt, currentSettings.strictPromptText) };
+          requestPayloads = buildGenerationRequests(payload);
+          endpoint = normalizeGeminiImageEndpoint(currentSettings.geminiBaseUrl, currentSettings.geminiModel);
+          method = "gpt-image-2";
+        } else if (currentSettings.protocol === "private") {
           const payload = buildPrivateImagePayload(values, language);
           requestPayloads = buildGenerationRequests(payload);
           endpoint = normalizePrivateImageEndpoint(values.privateBaseUrl);
@@ -1625,10 +1705,11 @@ export function useImageConsole() {
         date,
         requestRecordsRef.current,
         method,
+        currentSettings.protocol === "openai" ? openAIImageOptionsFromSettings(currentSettings) : undefined,
       ).map((request) => ({
         ...request,
         protocol: currentSettings.protocol,
-        apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.apiKey,
+        apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.protocol === "gemini" ? currentSettings.geminiApiKey : currentSettings.apiKey,
       }));
 
       commitRecords((records) => [...records, ...newRequests]);
@@ -1701,6 +1782,9 @@ export function useImageConsole() {
     const runtimeImages = effectiveEditImages.map((image) => ({ ...image }));
 
     try {
+      if (currentSettings.protocol === "gemini") {
+        throw new Error(language === "en" ? "Gemini image editing is not supported yet. Use an OpenAI-compatible provider for image-to-image." : "Gemini 协议暂不支持图生图，请切换到 OpenAI 兼容协议。 ");
+      }
       const payload = currentSettings.protocol === "private"
         ? buildPrivateEditImagePayload(values, runtimeImages, language)
         : buildEditImagePayload(values, runtimeImages, language);
@@ -1734,13 +1818,14 @@ export function useImageConsole() {
       date,
       requestRecordsRef.current,
       method,
+      currentSettings.protocol === "openai" ? openAIImageOptionsFromSettings(currentSettings) : undefined,
     ).map((request) => ({
       ...request,
       title: overrides?.productSuite
         ? `${request.title} · ${productSuiteSlotLabel(overrides.productSuite.slotKey, language === "en" ? "en" : "zh")} · v${overrides.productSuite.version || 1}`
         : request.title,
       protocol: currentSettings.protocol,
-      apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.apiKey,
+      apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.protocol === "gemini" ? currentSettings.geminiApiKey : currentSettings.apiKey,
       editImages: runtimeImages,
       productSuiteTaskId: overrides?.productSuite?.taskId,
       productSuiteBatchId: overrides?.productSuite?.batchId,
@@ -2064,8 +2149,10 @@ export function useImageConsole() {
           id: task.id,
           name: task.name,
           info: task.info,
-          hasProductImage: Boolean(task.productImage),
-          hasBrandAsset: Boolean(task.brandAsset),
+          hasProductImage: Boolean(task.productImages?.length || task.productImage),
+          productImageCount: task.productImages?.length || (task.productImage ? 1 : 0),
+          hasBrandAsset: Boolean(task.brandAssets?.length || task.brandAsset),
+          brandAssetCount: task.brandAssets?.length || (task.brandAsset ? 1 : 0),
           productBatchId: task.productBatchId,
           productBatchNumber: task.productBatchNumber,
           slots: exportedSlots,
