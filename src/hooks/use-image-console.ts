@@ -78,7 +78,7 @@ import {
 import { applyCompletedRequestResult, applyFailedRequestResult, imageSizeBytes } from "@/lib/request-result";
 import { adjacentVisibleRequestId, isActiveRequest, nextQueueRunPlan } from "@/lib/request-queue";
 import { createZipBlob, type ZipFileEntry } from "@/lib/zip";
-import { clearProductSuiteTasks, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, renderProductSuitePrompt, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
+import { clearProductSuiteTasks, renderProductSuitePrompt, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
 import {
   clearCachedRequests,
   loadCachedRequests,
@@ -97,6 +97,19 @@ import {
   saveSettings,
 } from "@/lib/storage";
 import { getCopy, useI18n } from "@/lib/i18n";
+
+type DevelopmentRequestFixtures = typeof import("@/lib/development-request-fixtures");
+let developmentRequestFixturesPromise: Promise<DevelopmentRequestFixtures> | null = null;
+
+function loadDevelopmentRequestFixtures() {
+  if (!import.meta.env.DEV) return Promise.resolve<DevelopmentRequestFixtures | null>(null);
+  developmentRequestFixturesPromise ??= import("@/lib/development-request-fixtures");
+  return developmentRequestFixturesPromise;
+}
+
+function isDevelopmentRequest(request: Pick<ImageRequestRecord, "endpoint">) {
+  return request.endpoint.startsWith("development://");
+}
 
 export type ConnectionTone = "default" | "busy" | "ok" | "error";
 export type ConnectionStatus = { label: string; tone: ConnectionTone };
@@ -402,156 +415,6 @@ function downloadBlob(blob: Blob, filename: string) {
   }, 0);
 }
 
-const DEVELOPMENT_REQUEST_PREFIX = "imagex-development-placeholder-";
-
-function isDevelopmentRequest(request: Pick<ImageRequestRecord, "id">) {
-  return request.id.startsWith(DEVELOPMENT_REQUEST_PREFIX);
-}
-
-function developmentSuiteImage(index: number): GeneratedImage {
-  return {
-    src: `/placeholders/dev-placeholder-${index}.png`,
-    kind: "url",
-    path: `development-product-suite-${index}.png`,
-    mimeType: "image/png",
-    width: 800,
-    height: 600,
-  };
-}
-
-function createDevelopmentSuiteRequest(
-  slotKey: string,
-  version: number,
-  status: "done" | "error",
-  imageIndex: number,
-  offset = 120000,
-  batchId = "development-batch-1",
-  batchNumber = 1,
-): ImageRequestRecord {
-  const createdAt = Date.now() - offset;
-  const image = status === "done" ? developmentSuiteImage(imageIndex) : null;
-  return {
-    id: `${DEVELOPMENT_REQUEST_PREFIX}suite-${slotKey}-v${version}`,
-    title: `DEV-SUITE-${slotKey}-v${version}`,
-    index: version,
-    total: 1,
-    method: "edit",
-    protocol: "openai",
-    endpoint: "development://product-suite-placeholder",
-    payload: {
-      model: "development-product-suite",
-      prompt: `ImageX product suite development fixture: ${slotKey}`,
-      n: 1,
-      size: "800x600",
-    },
-    sourcePrompt: `ImageX product suite development fixture: ${slotKey}`,
-    imageCount: image ? 1 : 0,
-    imageResolution: image ? "800x600" : "",
-    hasCachedDetails: Boolean(image),
-    detailsMissing: false,
-    thumbnail: image,
-    status,
-    createdAt,
-    startedAt: createdAt,
-    endedAt: createdAt + 500,
-    completedAt: status === "done" ? createdAt + 500 : null,
-    images: image ? [image] : [],
-    response: status === "done" ? { developmentMode: true, productSuite: true, imageCount: 1 } : null,
-    error: status === "error" ? "开发示例：模拟生成失败，可点击重试生成新版本。" : "",
-    controller: null,
-    cancelRequested: false,
-    editImages: [],
-    productSuiteTaskId: DEVELOPMENT_PRODUCT_SUITE_TASK_ID,
-    productSuiteBatchId: batchId,
-    productSuiteBatchNumber: batchNumber,
-    productSuiteSlotKey: slotKey,
-    productSuiteVersion: version,
-  };
-}
-
-function developmentPlaceholderRequests(): ImageRequestRecord[] {
-  const now = Date.now();
-  const image = (index: number): GeneratedImage => ({
-    src: `/placeholders/dev-placeholder-${index}.png`,
-    kind: "url",
-    path: `dev-placeholder-${index}.png`,
-    mimeType: "image/png",
-    width: 800,
-    height: 600,
-  });
-  const groups = [
-    [image(1), image(2)],
-    [image(3), image(4)],
-  ];
-
-  const placeholders: ImageRequestRecord[] = groups.map((images, index) => ({
-    id: `${DEVELOPMENT_REQUEST_PREFIX}${index + 1}`,
-    title: `DEV-PLACEHOLDER-${index + 1}`,
-    index: index + 1,
-    total: groups.length,
-    method: "gpt-image-2",
-    endpoint: "development://placeholder",
-    payload: {
-      model: "development-placeholder",
-      prompt: "ImageX development mode placeholder",
-      n: images.length,
-      size: "800x600",
-    },
-    sourcePrompt: "ImageX development mode placeholder",
-    imageCount: images.length,
-    imageResolution: "800x600",
-    hasCachedDetails: false,
-    detailsMissing: false,
-    thumbnail: images[0],
-    status: "done",
-    createdAt: now - (groups.length - index) * 1000,
-    startedAt: now - (groups.length - index) * 1000,
-    endedAt: now - (groups.length - index) * 1000 + 500,
-    completedAt: now - (groups.length - index) * 1000 + 500,
-    images,
-    response: { developmentMode: true, imageCount: images.length },
-    error: "",
-    controller: null,
-    cancelRequested: false,
-    editImages: [],
-  }));
-
-  return [
-    ...placeholders,
-    createDevelopmentSuiteRequest("hero", 1, "done", 1, 180000),
-    createDevelopmentSuiteRequest("hero", 2, "done", 2, 150000),
-    createDevelopmentSuiteRequest("hero", 3, "done", 3, 135000),
-    createDevelopmentSuiteRequest("hero", 4, "done", 4, 120000),
-    createDevelopmentSuiteRequest("hero", 5, "done", 1, 105000),
-    createDevelopmentSuiteRequest("hero", 6, "done", 2, 90000),
-    createDevelopmentSuiteRequest("hero", 7, "done", 3, 75000),
-    createDevelopmentSuiteRequest("hero", 8, "done", 4, 60000),
-    createDevelopmentSuiteRequest("hero", 9, "done", 1, 55000),
-    createDevelopmentSuiteRequest("hero", 10, "done", 2, 50000),
-    createDevelopmentSuiteRequest("hero", 11, "done", 3, 45000),
-    createDevelopmentSuiteRequest("hero", 12, "done", 4, 40000),
-    createDevelopmentSuiteRequest("hero", 13, "done", 1, 35000),
-    createDevelopmentSuiteRequest("hero", 14, "done", 2, 30000),
-    createDevelopmentSuiteRequest("hero", 15, "done", 3, 28000),
-    createDevelopmentSuiteRequest("hero", 16, "done", 4, 26000),
-    createDevelopmentSuiteRequest("hero", 17, "done", 1, 24000),
-    createDevelopmentSuiteRequest("hero", 18, "done", 2, 22000),
-    createDevelopmentSuiteRequest("hero", 19, "done", 3, 20000),
-    createDevelopmentSuiteRequest("hero", 20, "done", 4, 18000),
-    createDevelopmentSuiteRequest("hero", 21, "done", 1, 16000),
-    createDevelopmentSuiteRequest("hero", 22, "done", 2, 14000),
-    createDevelopmentSuiteRequest("hero", 23, "done", 3, 12000),
-    createDevelopmentSuiteRequest("hero", 24, "done", 4, 10000),
-    createDevelopmentSuiteRequest("hero", 25, "done", 1, 8000),
-    createDevelopmentSuiteRequest("whiteBackground", 1, "done", 3, 165000),
-    createDevelopmentSuiteRequest("detail", 1, "error", 1, 160000),
-    createDevelopmentSuiteRequest("size", 1, "done", 4, 145000),
-    createDevelopmentSuiteRequest("closeUp", 1, "error", 2, 140000),
-    createDevelopmentSuiteRequest("closeUp", 2, "done", 3, 120000),
-    createDevelopmentSuiteRequest("scene", 1, "done", 2, 105000),
-  ];
-}
-
 function uniqueZipEntryName(name: string, usedNames: Set<string>) {
   if (!usedNames.has(name)) {
     usedNames.add(name);
@@ -803,11 +666,13 @@ export function useImageConsole() {
   useEffect(() => {
     let cancelled = false;
 
-    void loadCachedRequests(language).then((records) => {
+    void loadCachedRequests(language).then(async (records) => {
       if (cancelled) return;
       const realRecords = records.filter((request) => !isDevelopmentRequest(request));
-      const nextRecords = settingsRef.current.developmentMode
-        ? [...developmentPlaceholderRequests(), ...realRecords]
+      const fixtures = settingsRef.current.developmentMode ? await loadDevelopmentRequestFixtures() : null;
+      if (cancelled) return;
+      const nextRecords = fixtures
+        ? [...fixtures.developmentPlaceholderRequests(), ...realRecords]
         : realRecords;
       requestRecordsRef.current = nextRecords;
       setRequestRecords(nextRecords);
@@ -820,20 +685,31 @@ export function useImageConsole() {
   }, []);
 
   useEffect(() => {
-    const realRecords = requestRecordsRef.current.filter((request) => !isDevelopmentRequest(request));
-    const nextRecords = settings.developmentMode
-      ? [...developmentPlaceholderRequests(), ...realRecords]
-      : realRecords;
+    let cancelled = false;
+    void (async () => {
+      const previousRecords = requestRecordsRef.current;
+      const realRecords = previousRecords.filter((request) => !isDevelopmentRequest(request));
+      const fixtures = settings.developmentMode ? await loadDevelopmentRequestFixtures() : null;
+      if (cancelled) return;
+      const nextRecords = fixtures
+        ? [...fixtures.developmentPlaceholderRequests(), ...realRecords]
+        : realRecords;
 
-    revokeRemovedObjectUrls(requestRecordsRef.current, nextRecords);
-    requestRecordsRef.current = nextRecords;
-    setRequestRecords(nextRecords);
+      revokeRemovedObjectUrls(requestRecordsRef.current, nextRecords);
+      requestRecordsRef.current = nextRecords;
+      setRequestRecords(nextRecords);
 
-    if (!settings.developmentMode) {
-      setSelectedRequestId((current) =>
-        current?.startsWith(DEVELOPMENT_REQUEST_PREFIX) ? null : current,
-      );
-    }
+      if (!settings.developmentMode) {
+        setSelectedRequestId((current) => {
+          if (!current) return current;
+          return previousRecords.some((request) => request.id === current && isDevelopmentRequest(request)) ? null : current;
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [settings.developmentMode]);
 
   const selectedRequestDetailLoadKey = (() => {
@@ -1742,7 +1618,7 @@ export function useImageConsole() {
     editImages?: EditInputImage[];
     count?: number;
     silent?: boolean;
-    productSuite?: { taskId: string; batchId?: string; batchNumber?: number; slotKey: string; version?: number };
+    productSuite?: { taskId: string; batchId?: string; batchNumber?: number; slotKey: string; slotLabel?: string; version?: number };
   }) => {
     const effectivePrompt = overrides?.prompt ?? prompt;
     const effectiveEditImages = overrides?.editImages ?? editImages;
@@ -1765,22 +1641,25 @@ export function useImageConsole() {
 
     if (DEVELOPMENT_FIXTURES_ENABLED && settingsRef.current.developmentMode && overrides?.productSuite) {
       const version = overrides.productSuite.version || 1;
-      const fixture = createDevelopmentSuiteRequest(
-        overrides.productSuite.slotKey,
-        version,
-        "done",
-        (version % 4) + 1,
-        30000,
-        overrides.productSuite.batchId || "development-batch-1",
-        overrides.productSuite.batchNumber || 1,
-      );
-      const simulatedRequest: ImageRequestRecord = {
-        ...fixture,
-        id: `${fixture.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      };
-      commitRecords((records) => [...records, simulatedRequest]);
-      setSelectedRequestId((currentId) => currentId || simulatedRequest.id);
-      if (!overrides.silent) toast.success(copy.generator.submissionSuccess(1));
+      void loadDevelopmentRequestFixtures().then((fixtures) => {
+        if (!fixtures) return;
+        const fixture = fixtures.createDevelopmentSuiteRequest(
+          overrides.productSuite!.slotKey,
+          version,
+          "done",
+          (version % 4) + 1,
+          30000,
+          overrides.productSuite!.batchId || "development-batch-1",
+          overrides.productSuite!.batchNumber || 1,
+        );
+        const simulatedRequest: ImageRequestRecord = {
+          ...fixture,
+          id: `${fixture.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        };
+        commitRecords((records) => [...records, simulatedRequest]);
+        setSelectedRequestId((currentId) => currentId || simulatedRequest.id);
+        if (!overrides.silent) toast.success(copy.generator.submissionSuccess(1));
+      });
       return true;
     }
 
@@ -1838,7 +1717,7 @@ export function useImageConsole() {
     ).map((request) => ({
       ...request,
       title: overrides?.productSuite
-        ? `${request.title} · ${productSuiteSlotLabel(overrides.productSuite.slotKey, language === "en" ? "en" : "zh")} · v${overrides.productSuite.version || 1}`
+        ? `${request.title} · ${overrides.productSuite.slotLabel || productSuiteSlotLabel(overrides.productSuite.slotKey, language === "en" ? "en" : "zh")} · v${overrides.productSuite.version || 1}`
         : request.title,
       protocol: currentSettings.protocol,
       apiKey: currentSettings.protocol === "private" ? currentSettings.privateApiKey : currentSettings.protocol === "gemini" ? currentSettings.geminiApiKey : currentSettings.apiKey,
@@ -1847,6 +1726,7 @@ export function useImageConsole() {
       productSuiteBatchId: overrides?.productSuite?.batchId,
       productSuiteBatchNumber: overrides?.productSuite?.batchNumber,
       productSuiteSlotKey: overrides?.productSuite?.slotKey,
+      productSuiteSlotLabel: overrides?.productSuite?.slotLabel,
       productSuiteVersion: overrides?.productSuite?.version,
     }));
 
@@ -2133,7 +2013,7 @@ export function useImageConsole() {
 
         const image = images[0] || selectedRequest?.thumbnail || null;
         const blob = image ? await blobFromGeneratedImage(image) : null;
-        const slotLabel = productSuiteSlotLabel(slot.key, exportLanguage);
+        const slotLabel = slot.label || productSuiteSlotLabel(slot.key, exportLanguage);
         const exportedVersion = selectedRequest ? selectedRequest.productSuiteVersion || 1 : null;
         const renderedPrompt = renderProductSuitePrompt(task, slot.key, exportLanguage);
         const slotManifest = {

@@ -8,13 +8,10 @@ import { ResultPanel } from "@/components/result-panel";
 import { ProductSuitePanel } from "@/components/product-suite-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useImageConsole, type ExportZipProgress } from "@/hooks/use-image-console";
 import { toast } from "sonner";
 import {
-  isDefaultStrictPromptText,
-  normalizeStrictPromptText,
   requestImageCount,
   type ConsoleMode,
   type EditInputImage,
@@ -44,75 +41,6 @@ function productSuiteBrandAssets(task: ProductSuiteTask): ProductSuiteAsset[] {
 
 function productSuiteAssetsToEditImages(assets: ProductSuiteAsset[], sourcePrefix: string): EditInputImage[] {
   return assets.map((asset, index) => productSuiteAssetToEditImage(asset, `${sourcePrefix}:${index + 1}`));
-}
-
-function StrictPromptEditorDialog({
-  open,
-  value,
-  onOpenChange,
-  onSave,
-}: {
-  open: boolean;
-  value: string;
-  onOpenChange: (open: boolean) => void;
-  onSave: (value: string) => void;
-}) {
-  const { copy } = useI18n();
-  const defaultText = copy.promptEditor.defaultText;
-  const normalizeForLanguage = (input: unknown) =>
-    isDefaultStrictPromptText(input) ? defaultText : normalizeStrictPromptText(input);
-  const [draft, setDraft] = useState(() => normalizeForLanguage(value));
-
-  useEffect(() => {
-    if (!open) return;
-    setDraft(normalizeForLanguage(value));
-  }, [defaultText, open, value]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="standard-scrollbar max-h-[calc(100vh-2rem)] overflow-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{copy.promptEditor.title}</DialogTitle>
-          <DialogDescription>{copy.promptEditor.description}</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-3">
-          <div className="rounded-md border bg-muted/30 px-3 py-3">
-            <p className="text-xs font-medium text-muted-foreground">{copy.promptEditor.header}</p>
-            <Textarea
-              id="strictPromptText"
-              aria-label={copy.promptEditor.bodyLabel}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              rows={8}
-              className="mt-3 min-h-44 resize-none"
-            />
-            <p className="mt-3 text-xs font-medium text-muted-foreground">{copy.promptEditor.footer}</p>
-          </div>
-        </div>
-
-        <DialogFooter className="gap-2 sm:justify-between">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {copy.promptEditor.cancel}
-          </Button>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setDraft(defaultText)}>
-              {copy.promptEditor.restoreDefault}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                onSave(normalizeStrictPromptText(draft));
-                onOpenChange(false);
-              }}
-            >
-              {copy.promptEditor.confirm}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 function ClearRequestsDialog({
@@ -258,7 +186,6 @@ export default function App() {
   const [cancelRequestsDialogOpen, setCancelRequestsDialogOpen] = useState(false);
   const [clearFailedDialogOpen, setClearFailedDialogOpen] = useState(false);
   const [clearCompletedDialogOpen, setClearCompletedDialogOpen] = useState(false);
-  const [strictPromptEditorOpen, setStrictPromptEditorOpen] = useState(false);
   const [productSuiteOpen, setProductSuiteOpen] = useState(false);
   const [productSuiteHasDraft, setProductSuiteHasDraft] = useState(false);
   const [quickStartOpen, setQuickStartOpen] = useState(false);
@@ -273,7 +200,6 @@ export default function App() {
     cancelRequestsDialogOpen ||
     clearFailedDialogOpen ||
     clearCompletedDialogOpen ||
-    strictPromptEditorOpen ||
     quickStartOpen ||
     Boolean(annotationTarget) ||
     exportZipConfirmOpen ||
@@ -443,6 +369,7 @@ export default function App() {
           batchId: task.productBatchId,
           batchNumber: task.productBatchNumber,
           slotKey: slot.key,
+          slotLabel: slot.label,
           version,
         },
       });
@@ -454,7 +381,6 @@ export default function App() {
     }
 
     if (submittedCount > 0) {
-      handleModeChange("edit");
       consoleState.setEditImages(lastImages);
       consoleState.setPrompt(lastPrompt);
       if (!brandAssetsUsed) brandImages.forEach((image) => URL.revokeObjectURL(image.src));
@@ -483,6 +409,7 @@ export default function App() {
         batchId: task.productBatchId,
         batchNumber: task.productBatchNumber,
         slotKey,
+        slotLabel: task.slots.find((slot) => slot.key === slotKey)?.label,
         version,
       },
     });
@@ -493,19 +420,31 @@ export default function App() {
       return 0;
     }
 
-    handleModeChange("edit");
     consoleState.setEditImages(editImages);
     consoleState.setPrompt(prompt);
     return 1;
   }
 
-  const workflowUsesTaskLayout = productSuiteOpen && productSuiteHasDraft;
-
   return (
     <>
-      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-y-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-x-0 lg:overflow-hidden">
-        <div className="standard-scrollbar flex min-h-0 w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto">
-          <div id="result-panel" className="h-[clamp(300px,54dvh,620px)] shrink-0">
+      <main id="main" className="grid min-h-dvh w-full max-w-full min-w-0 grid-cols-1 gap-3 overflow-x-hidden bg-muted/30 p-4 lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(320px,400px)] lg:overflow-hidden">
+        <aside className={productSuiteOpen
+          ? "flex min-h-0 min-w-0 flex-col gap-3 lg:grid lg:grid-rows-[clamp(300px,48dvh,620px)_minmax(0,1fr)] lg:h-full lg:overflow-hidden"
+          : "flex min-h-0 min-w-0 flex-col lg:h-full lg:overflow-hidden"}>
+          <div className={productSuiteOpen ? "flex min-h-48 min-w-0 flex-col rounded-2xl border border-border bg-card p-3 shadow-none lg:min-h-0" : "flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-border bg-card p-3 shadow-none"}>
+            <PromptHistoryPanel
+              promptHistory={consoleState.promptHistory}
+              promptHistoryCount={consoleState.promptHistoryCount}
+              promptHistoryPinnedCount={consoleState.promptHistoryPinnedCount}
+              onSelectPrompt={consoleState.selectPromptHistory}
+              onDeletePrompt={consoleState.deletePromptHistory}
+              onTogglePromptPin={consoleState.togglePromptHistoryPin}
+            />
+          </div>
+          <div id="product-suite-task-sidebar" className={productSuiteOpen ? "flex min-h-0 min-w-0 flex-col" : "hidden"} />
+        </aside>
+        <div className="standard-scrollbar main-column-scroll flex min-h-0 min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto overscroll-contain lg:overflow-y-scroll">
+          <div id="result-panel" className="h-[clamp(300px,48dvh,620px)] shrink-0">
             <ResultPanel
               selectedRequest={consoleState.selectedRequest}
               selectedRequestDetailLoadingId={consoleState.selectedRequestDetailLoadingId}
@@ -521,11 +460,13 @@ export default function App() {
               previewTarget={previewTarget}
             />
           </div>
-          <div className={workflowUsesTaskLayout
-            ? "flex w-full max-w-full min-w-0 flex-none flex-col"
-            : productSuiteOpen
-              ? "flex min-h-0 flex-1 flex-col"
-              : "hidden"}>
+          <div
+            className={productSuiteOpen
+              ? productSuiteHasDraft
+                ? "flex min-w-0 flex-none flex-col gap-3"
+                : "flex min-h-0 min-w-0 flex-1 flex-col gap-3"
+              : "hidden"}
+          >
               <ProductSuitePanel
                 open={productSuiteOpen}
                 onOpenChange={setProductSuiteOpen}
@@ -554,7 +495,7 @@ export default function App() {
                 requestRecords={consoleState.requestRecords}
               />
           </div>
-          <div className={productSuiteOpen ? "hidden" : "col-span-full grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]"}>
+          <div className={productSuiteOpen ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
                 <GeneratorPanel
                   mode={consoleState.mode}
                   editImages={consoleState.editImages}
@@ -574,23 +515,10 @@ export default function App() {
                   onCancelGeneration={consoleState.cancelAllRequests}
                   addHistoricalEditImage={consoleState.addHistoricalEditImage}
                   onModeChange={handleModeChange}
-                  onOpenStrictPromptEditor={() => {
-                    setStrictPromptEditorOpen(true);
-                  }}
                   onOpenQuickStart={() => setQuickStartOpen(true)}
                   onOpenProductSuite={() => setProductSuiteOpen(true)}
                   workflowOpen={productSuiteOpen}
                 />
-                <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-3 shadow-none">
-                  <PromptHistoryPanel
-                    promptHistory={consoleState.promptHistory}
-                    promptHistoryCount={consoleState.promptHistoryCount}
-                    promptHistoryPinnedCount={consoleState.promptHistoryPinnedCount}
-                    onSelectPrompt={consoleState.selectPromptHistory}
-                    onDeletePrompt={consoleState.deletePromptHistory}
-                    onTogglePromptPin={consoleState.togglePromptHistoryPin}
-                  />
-                </div>
           </div>
         </div>
         <RequestListPanel
@@ -632,14 +560,6 @@ export default function App() {
           consoleState.clearAllData();
         }}
         testConnection={consoleState.testConnection}
-      />
-      <StrictPromptEditorDialog
-        open={strictPromptEditorOpen}
-        value={consoleState.settings.strictPromptText}
-        onOpenChange={setStrictPromptEditorOpen}
-        onSave={(value) => {
-          consoleState.updateSettings("strictPromptText", value);
-        }}
       />
       <QuickStartDialog open={quickStartOpen} onOpenChange={setQuickStartOpen} />
       <AnnotationWorkspace

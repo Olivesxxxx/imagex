@@ -421,7 +421,7 @@ export function ResultPanel({
     ? `${requestStatusDisplayLabel(copy.requestStatusLabels, selectedRequest.status)}${selectedRequestResolution ? ` · ${selectedRequestResolution}` : ""}${selectedRequestSize ? ` · ${selectedRequestSize}` : ""}`
     : copy.requestCardStatus.unselectedSubtitle;
   const selectedProductSuiteAssociation = selectedRequest?.productSuiteSlotKey && selectedRequest.productSuiteVersion
-    ? `${selectedRequest.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(selectedRequest.productSuiteBatchNumber)} · ` : ""}${copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
+    ? `${selectedRequest.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(selectedRequest.productSuiteBatchNumber)} · ` : ""}${selectedRequest.productSuiteSlotLabel || copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
     : "";
   const selectedRequestMetaText = selectedProductSuiteAssociation
     ? `${selectedProductSuiteAssociation} · ${selectedRequestStatusText}`

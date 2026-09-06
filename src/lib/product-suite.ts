@@ -12,7 +12,7 @@ export const PRODUCT_SUITE_SLOT_KEYS = [
   "scene",
 ] as const;
 
-export type ProductSuiteSlotKey = (typeof PRODUCT_SUITE_SLOT_KEYS)[number];
+export type ProductSuiteSlotKey = (typeof PRODUCT_SUITE_SLOT_KEYS)[number] | `custom-${string}`;
 export type ProductSuiteTemplateLanguage = "zh" | "en";
 
 export interface ProductSuiteAsset {
@@ -24,6 +24,7 @@ export interface ProductSuiteAsset {
 export interface ProductSuiteInfo {
   materialAndColor: string;
   sellingPoints: string;
+  sellingPointItems: string[];
   dimensions: string;
   forbiddenElements: string;
   consistencyRequirement: string;
@@ -33,6 +34,7 @@ export interface ProductSuiteInfo {
 
 export interface ProductSuiteSlot {
   key: ProductSuiteSlotKey;
+  label?: string;
   enabled: boolean;
   promptTemplate: string;
   selectedVersion: number | null;
@@ -81,7 +83,7 @@ export function createDefaultProductSuiteSlots(language: ProductSuiteTemplateLan
 }
 
 function emptyProductSuiteInfo(): ProductSuiteInfo {
-  return { materialAndColor: "", sellingPoints: "", dimensions: "", forbiddenElements: "", consistencyRequirement: "", brandTone: "", targetPlatform: "" };
+  return { materialAndColor: "", sellingPoints: "", sellingPointItems: [], dimensions: "", forbiddenElements: "", consistencyRequirement: "", brandTone: "", targetPlatform: "" };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,7 +104,7 @@ function normalizeAssets(value: unknown): ProductSuiteAsset[] {
 
 function normalizeProductSuiteSlots(value: unknown): ProductSuiteSlot[] {
   const source = Array.isArray(value) ? value : [];
-  return PRODUCT_SUITE_SLOT_KEYS.map((key) => {
+  const builtInSlots = PRODUCT_SUITE_SLOT_KEYS.map((key) => {
     const match = source.find((item) => isRecord(item) && item.key === key);
     const record = isRecord(match) ? match : null;
     const selectedVersion = Number(record?.selectedVersion);
@@ -113,6 +115,19 @@ function normalizeProductSuiteSlots(value: unknown): ProductSuiteSlot[] {
       selectedVersion: Number.isInteger(selectedVersion) && selectedVersion > 0 ? selectedVersion : null,
     };
   });
+  const customSlots = source.filter((item): item is Record<string, unknown> => isRecord(item) && typeof item.key === "string" && item.key.startsWith("custom-"))
+    .map((record, index) => {
+      const key = String(record.key) as `custom-${string}`;
+      const selectedVersion = Number(record.selectedVersion);
+      return {
+        key,
+        label: String(record.label || `Custom slot ${index + 1}`),
+        enabled: typeof record.enabled === "boolean" ? record.enabled : true,
+        promptTemplate: String(record.promptTemplate || ""),
+        selectedVersion: Number.isInteger(selectedVersion) && selectedVersion > 0 ? selectedVersion : null,
+      };
+    });
+  return [...builtInSlots, ...customSlots];
 }
 
 function normalizeProductBatchId(value: unknown) {
@@ -132,6 +147,13 @@ export function normalizeProductSuiteTask(value: unknown): ProductSuiteTask | nu
   const createdAt = Number(value.createdAt || Date.now());
   const updatedAt = Number(value.updatedAt || createdAt);
   const source = isRecord(value.info) ? value.info : {};
+  const legacySellingPoints = String(source.sellingPoints || "");
+  const explicitSellingPointItems = Array.isArray(source.sellingPointItems)
+    ? source.sellingPointItems.map((item) => String(item || "")).filter((item) => item.trim())
+    : [];
+  const normalizedSellingPointItems = explicitSellingPointItems.length
+    ? explicitSellingPointItems
+    : legacySellingPoints.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
   const legacyProductImage = normalizeAsset(value.productImage);
   const legacyBrandAsset = normalizeAsset(value.brandAsset);
   const productImages = normalizeAssets(value.productImages);
@@ -150,7 +172,8 @@ export function normalizeProductSuiteTask(value: unknown): ProductSuiteTask | nu
     brandAssets: normalizedBrandAssets,
     info: {
       materialAndColor: String(source.materialAndColor || ""),
-      sellingPoints: String(source.sellingPoints || ""),
+      sellingPoints: legacySellingPoints || normalizedSellingPointItems.join("\n"),
+      sellingPointItems: normalizedSellingPointItems,
       dimensions: String(source.dimensions || ""),
       forbiddenElements: String(source.forbiddenElements || ""),
       consistencyRequirement: String(source.consistencyRequirement || ""),
@@ -223,68 +246,22 @@ export function createProductSuiteBatchId(now = Date.now()) {
   return `product-batch-${now}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function developmentAsset(path: string, name: string): Promise<ProductSuiteAsset> {
-  try {
-    const response = await fetch(path);
-    if (response.ok) {
-      const blob = await response.blob();
-      if (blob.size) return { blob, name, mimeType: blob.type || "image/png" };
-    }
-  } catch {
-    // The development fixture can still load in test environments without a public asset server.
-  }
-
-  const fallback = new Blob(
-    [`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="#e5e7eb"/><rect x="180" y="120" width="440" height="360" rx="32" fill="#9ca3af"/><circle cx="400" cy="270" r="94" fill="#f9fafb"/><path d="M300 420h200" stroke="#f9fafb" stroke-width="24" stroke-linecap="round"/></svg>`],
-    { type: "image/svg+xml" },
-  );
-  return { blob: fallback, name: name.replace(/\.png$/i, ".svg"), mimeType: "image/svg+xml" };
-}
-
-export async function createDevelopmentProductSuiteTask(language: ProductSuiteTemplateLanguage = "zh"): Promise<ProductSuiteTask> {
-  const now = Date.now();
-  const task: ProductSuiteTask = {
-    id: DEVELOPMENT_PRODUCT_SUITE_TASK_ID,
-    name: language === "en" ? "Development product suite example" : "开发示例：磁吸无线充电宝套图",
-    productBatchId: "development-batch-1",
-    productBatchNumber: 1,
-    productImageHash: "development-product-reference",
-    productImage: await developmentAsset("/placeholders/dev-placeholder-1.png", "development-product-reference.png"),
-    productImages: [],
-    brandAsset: await developmentAsset("/placeholders/dev-placeholder-2.png", "development-brand-asset.png"),
-    brandAssets: [],
-    info: {
-      materialAndColor: language === "en" ? "Matte black aluminum" : "哑光黑铝合金",
-      sellingPoints: language === "en" ? "Magnetic attachment, compact body, fast charging" : "磁吸稳固、机身小巧、快速充电",
-      dimensions: "105 x 68 x 18 mm",
-      forbiddenElements: language === "en" ? "No extra logos, hands, or invented specifications" : "不要出现多余品牌、手部或虚构参数",
-      consistencyRequirement: language === "en" ? "Keep the product shape, black finish, and camera angle consistent across the suite." : "保持产品外形、黑色材质和主要视角在整套图片中一致。",
-      brandTone: language === "en" ? "clean, modern, trustworthy" : "干净、现代、可信",
-      targetPlatform: language === "en" ? "E-commerce storefront" : "电商首页",
-    },
-    slots: createDefaultProductSuiteSlots(language).map((slot) => ({
-      ...slot,
-      selectedVersion: slot.key === "hero" ? 1 : null,
-    })),
-    createdAt: now - 120000,
-    updatedAt: now - 60000,
-  };
-  task.productImages = task.productImage ? [task.productImage] : [];
-  task.brandAssets = task.brandAsset ? [task.brandAsset] : [];
-  return task;
-}
-
 export function renderProductSuitePrompt(task: ProductSuiteTask, slotKey: ProductSuiteSlotKey, language: ProductSuiteTemplateLanguage = "zh") {
   const slot = task.slots.find((item) => item.key === slotKey);
-  const template = slot?.promptTemplate || defaultSlotTemplate(slotKey, language);
+  const template = slot?.promptTemplate || defaultSlotTemplate(slotKey, language) || (language === "en"
+    ? "Create a custom product image for {{商品名}}."
+    : "生成一张自定义产品图片，突出{{商品名}}。");
   const values: Record<string, string> = {
     商品名: task.name || (language === "en" ? "the product" : "该商品"),
     材质颜色: task.info.materialAndColor || (language === "en" ? "not specified" : "未填写"),
-    核心卖点: task.info.sellingPoints || (language === "en" ? "not specified" : "未填写"),
+    核心卖点: task.info.sellingPoints || task.info.sellingPointItems.join("\n") || (language === "en" ? "not specified" : "未填写"),
     尺寸: task.info.dimensions || (language === "en" ? "not specified" : "未填写"),
     品牌语气: task.info.brandTone || (language === "en" ? "clean ecommerce product photography" : "干净的电商产品摄影"),
     目标平台: task.info.targetPlatform || (language === "en" ? "ecommerce" : "电商平台"),
   };
+  task.info.sellingPointItems.slice(0, 10).forEach((point, index) => {
+    values[`卖点${index + 1}`] = point || (language === "en" ? "not specified" : "未填写");
+  });
   const rendered = Object.entries(values).reduce((current, [key, value]) => current.replaceAll("{{" + key + "}}", value), template);
   const forbidden = task.info.forbiddenElements.trim();
   const forbiddenLine = forbidden ? "\n" + (language === "en" ? "Avoid" : "不要出现") + ": " + forbidden : "";

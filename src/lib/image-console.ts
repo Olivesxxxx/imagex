@@ -286,6 +286,7 @@ export interface ImageRequestRecord {
   productSuiteBatchId?: string;
   productSuiteBatchNumber?: number;
   productSuiteSlotKey?: string;
+  productSuiteSlotLabel?: string;
   productSuiteVersion?: number;
 }
 
@@ -1068,6 +1069,7 @@ export function prepareRequestForCache(request: ImageRequestRecord, language: Me
     productSuiteBatchId: request.productSuiteBatchId,
     productSuiteBatchNumber: request.productSuiteBatchNumber,
     productSuiteSlotKey: request.productSuiteSlotKey,
+    productSuiteSlotLabel: request.productSuiteSlotLabel,
     productSuiteVersion: request.productSuiteVersion,
   };
 }
@@ -1115,6 +1117,7 @@ export function restoreCachedRequest(
     productSuiteBatchId: String(request.productSuiteBatchId || "").trim() || undefined,
     productSuiteBatchNumber: Number.isFinite(Number(request.productSuiteBatchNumber)) ? Number(request.productSuiteBatchNumber) : undefined,
     productSuiteSlotKey: String(request.productSuiteSlotKey || "").trim() || undefined,
+    productSuiteSlotLabel: String(request.productSuiteSlotLabel || "").trim() || undefined,
     productSuiteVersion: Number.isFinite(Number(request.productSuiteVersion)) ? Number(request.productSuiteVersion) : undefined,
   };
 }

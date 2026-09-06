@@ -164,6 +164,17 @@
     scrollbar-gutter: stable;
   }
 
+  .main-column-scroll {
+    scrollbar-gutter: auto;
+    margin-right: -12px;
+  }
+
+  @media (max-width: 63.999rem) {
+    .main-column-scroll {
+      margin-right: 0;
+    }
+  }
+
   /* The task list should size its items to the panel edge; the scrollbar is
      transient and must not permanently reduce their available width. */
   .product-suite-task-scroll {

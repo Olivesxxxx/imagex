@@ -93,7 +93,7 @@ function RequestRow({
   const { copy, language } = useI18n();
   const { pendingKey: pendingDeleteRequestId, requestConfirmation } = useTimedConfirmation(DELETE_CONFIRMATION_TIMEOUT_MS);
   const productSuiteAssociation = request.productSuiteSlotKey && request.productSuiteVersion
-    ? `${request.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(request.productSuiteBatchNumber)} · ` : ""}${copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
+    ? `${request.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(request.productSuiteBatchNumber)} · ` : ""}${request.productSuiteSlotLabel || copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
     : "";
   const requestSummary = productSuiteAssociation
     ? generationMethodDisplayName(request.method)
@@ -337,7 +337,7 @@ export function RequestListPanel({
   }, [clearDialogOpen, deleteSelectionDialogOpen, extraModalOpen, filteredRequests, jsonDialogOpen, onSelectRequest, selectedRequestId, settingsOpen]);
 
   return (
-    <aside className="relative flex min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none" aria-label={copy.requestList}>
+    <aside className="relative flex min-h-0 min-w-0 flex-col rounded-2xl border border-border bg-card shadow-none lg:h-full" aria-label={copy.requestList}>
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <strong className="shrink-0 text-sm leading-none">{copy.requestList}</strong>

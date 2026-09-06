@@ -1,15 +1,12 @@
 import {
   CheckIcon,
   CircleHelpIcon,
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ImageIcon,
   ImagePlusIcon,
   LanguagesIcon,
   Loader2Icon,
-  MessageSquareIcon,
-  PencilIcon,
   PinIcon,
   PlayIcon,
   RectangleHorizontalIcon,
@@ -23,7 +20,6 @@ import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, typ
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Input } from "@/components/ui/input";
@@ -64,6 +60,9 @@ const panelControlClassName = "!h-8 !min-h-8 !max-h-8 !py-1 w-full min-w-0 justi
 const panelSelectTriggerClassName = cn(panelControlClassName, "justify-between text-left [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1");
 const panelLabelClassName = "flex h-4 min-h-4 items-center text-xs font-medium leading-none text-muted-foreground";
 const panelIconButtonClassName = "!h-8 !min-h-8 !max-h-8 !w-8 !min-w-8 !px-0 rounded-md";
+const panelToolbarClassName = "flex min-w-0 flex-wrap items-end gap-2.5";
+const panelToolbarIconGroupClassName = "flex shrink-0 items-center gap-1.5";
+const panelToolbarSelectGroupClassName = "flex min-w-0 flex-wrap items-end gap-1.5";
 const SIZE_GROUPS = [
   { key: "square", icon: SquareIcon, options: SIZE_OPTION_GROUPS.square },
   { key: "landscape", icon: RectangleHorizontalIcon, options: SIZE_OPTION_GROUPS.landscape },
@@ -95,7 +94,6 @@ export interface GeneratorPanelProps {
   onCancelGeneration: () => void;
   addHistoricalEditImage: (value: string) => Promise<void>;
   onModeChange: (mode: ConsoleMode) => void;
-  onOpenStrictPromptEditor: () => void;
   onOpenQuickStart: () => void;
   onOpenProductSuite: () => void;
   workflowOpen: boolean;
@@ -175,6 +173,85 @@ export function SizeSelect({ value, onValueChange, className }: { value: string;
   );
 }
 
+export function HeaderUtilityButtons({
+  connectionStatus,
+  setSettingsOpen,
+  onOpenQuickStart,
+}: {
+  connectionStatus: ConnectionStatus;
+  setSettingsOpen: (open: boolean) => void;
+  onOpenQuickStart: () => void;
+}) {
+  const { copy, toggleLanguage } = useI18n();
+
+  return (
+    <div className={panelToolbarIconGroupClassName}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={toggleLanguage} aria-label={copy.switchLanguageTooltip}>
+            <LanguagesIcon />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={onOpenQuickStart} aria-label={copy.generator.quickStart.buttonLabel}>
+            <CircleHelpIcon />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{copy.generator.quickStart.buttonLabel}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
+            size="icon-sm"
+            className={panelIconButtonClassName}
+            onClick={() => setSettingsOpen(true)}
+            aria-label={copy.generator.settingsTooltip}
+            title={copy.generator.settingsTooltip}
+          >
+            {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{copy.generator.settingsTooltip}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+export function HeaderParameterControls({
+  settings,
+  updateSettings,
+  countInputId = "n",
+}: {
+  settings: AppSettings;
+  updateSettings: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  countInputId?: string;
+}) {
+  const { copy } = useI18n();
+
+  return (
+    <div className={panelToolbarSelectGroupClassName}>
+      <SizeSelect className="w-fit min-w-28 flex-none" value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
+      <OptionSelect
+        className="w-fit min-w-24 flex-none"
+        label={copy.generator.quality}
+        value={String(settings.quality)}
+        options={QUALITY_OPTIONS}
+        optionLabels={copy.generator.qualityOptions}
+        onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
+      />
+      <div className="flex w-16 min-w-16 flex-col gap-1">
+        <label htmlFor={countInputId} className={panelLabelClassName}>{copy.generator.count}</label>
+        <Input id={countInputId} name={countInputId} type="number" min={1} max={100} step={1} inputMode="numeric" value={settings.n} onChange={(event) => updateSettings("n", event.target.value)} onBlur={(event) => updateSettings("n", clampRequestCountInput(event.target.value))} className={cn(panelControlClassName, "bg-transparent text-center")} />
+      </div>
+    </div>
+  );
+}
+
 export function WorkflowHeaderControls({
   settings,
   updateSettings,
@@ -188,56 +265,11 @@ export function WorkflowHeaderControls({
   setSettingsOpen: (open: boolean) => void;
   onOpenQuickStart: () => void;
 }) {
-  const { copy, toggleLanguage } = useI18n();
-
   return (
-    <div className="flex min-w-0 flex-wrap items-end gap-3">
-      <div className="flex shrink-0 items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={toggleLanguage} aria-label={copy.switchLanguageTooltip}>
-              <LanguagesIcon />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={onOpenQuickStart} aria-label={copy.generator.quickStart.buttonLabel}>
-              <CircleHelpIcon />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{copy.generator.quickStart.buttonLabel}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
-              size="icon-sm"
-              className={panelIconButtonClassName}
-              onClick={() => setSettingsOpen(true)}
-              aria-label={copy.generator.settingsTooltip}
-              title={copy.generator.settingsTooltip}
-            >
-              {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{copy.generator.settingsTooltip}</TooltipContent>
-        </Tooltip>
-      </div>
-      <div className="flex min-w-0 flex-wrap items-end gap-2">
-        <SizeSelect className="w-28 flex-none" value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
-        <OptionSelect
-          className="w-24 flex-none"
-          label={copy.generator.quality}
-          value={String(settings.quality)}
-          options={QUALITY_OPTIONS}
-          optionLabels={copy.generator.qualityOptions}
-          onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
-        />
-      </div>
-    </div>
+    <>
+      <HeaderUtilityButtons connectionStatus={connectionStatus} setSettingsOpen={setSettingsOpen} onOpenQuickStart={onOpenQuickStart} />
+      <HeaderParameterControls settings={settings} updateSettings={updateSettings} countInputId="workflow-n" />
+    </>
   );
 }
 
@@ -332,7 +364,7 @@ export function PromptHistoryPanel({
           </div>
         </ScrollArea>
       ) : (
-        <div className="h-12 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        <div className="h-12 w-full min-w-0 max-w-full overflow-hidden px-0 py-2 text-xs text-muted-foreground">
           {copy.promptHistory.empty}
         </div>
       )}
@@ -395,7 +427,6 @@ export function GeneratorPanel({
   onCancelGeneration,
   addHistoricalEditImage,
   onModeChange,
-  onOpenStrictPromptEditor,
   onOpenQuickStart,
   onOpenProductSuite,
   workflowOpen,
@@ -529,10 +560,10 @@ export function GeneratorPanel({
 
   return (
     <form noValidate onSubmit={submitGeneration} className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none">
-      <div className="grid shrink-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
+      <div className={panelToolbarClassName}>
         <div className="flex min-w-0 flex-col gap-1">
           <span className={panelLabelClassName}>{copy.generator.mode}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <Tabs value={workflowOpen ? "workflow" : mode} onValueChange={handleModeChange}>
               <SegmentedTabsList>
                 {([ ["generate", copy.generator.generate], ["edit", copy.generator.edit], ["workflow", copy.generator.workflow] ] as const).map(([value, label]) => (
@@ -546,80 +577,11 @@ export function GeneratorPanel({
                 ))}
               </SegmentedTabsList>
             </Tabs>
-            <div className="flex shrink-0 items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button type="button" variant="outline" size="icon-sm" className={panelIconButtonClassName} onClick={toggleLanguage} aria-label={copy.switchLanguageTooltip}>
-                    <LanguagesIcon />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{copy.switchLanguageTooltip}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    className={panelIconButtonClassName}
-                    onClick={onOpenQuickStart}
-                    aria-label={copy.generator.quickStart.buttonLabel}
-                  >
-                    <CircleHelpIcon />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{copy.generator.quickStart.buttonLabel}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant={connectionStatus.tone === "ok" ? "secondary" : connectionStatus.tone === "error" ? "destructive" : "outline"}
-                    size="icon-sm"
-                    className={panelIconButtonClassName}
-                    onClick={() => setSettingsOpen(true)}
-                    aria-label={copy.generator.settingsTooltip}
-                    title={copy.generator.settingsTooltip}
-                  >
-                    {connectionStatus.tone === "busy" ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{copy.generator.settingsTooltip}</TooltipContent>
-              </Tooltip>
-            </div>
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-end gap-2">
-          <SizeSelect className="w-28 flex-none" value={String(settings.size)} onValueChange={(value) => updateSettings("size", value as AppSettings["size"])} />
-          <OptionSelect
-            className="w-24 flex-none"
-            label={copy.generator.quality}
-            value={String(settings.quality)}
-            options={QUALITY_OPTIONS}
-            optionLabels={copy.generator.qualityOptions}
-            onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
-          />
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <label htmlFor="n" className={panelLabelClassName}>{copy.generator.count}</label>
-            <Input id="n" name="n" type="number" min={1} max={100} step={1} inputMode="numeric" value={settings.n} onChange={(event) => updateSettings("n", event.target.value)} onBlur={(event) => updateSettings("n", clampRequestCountInput(event.target.value))} className={cn(panelControlClassName, "bg-transparent text-center")} />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className={panelLabelClassName}>{copy.generator.keepOriginalPrompt}</span>
-            <label htmlFor="strictPrompt" className={cn(panelControlClassName, "flex cursor-pointer items-center gap-2 px-2.5")}>
-              <Checkbox id="strictPrompt" checked={settings.strictPrompt} onCheckedChange={(checked) => updateSettings("strictPrompt", checked === true)} />
-              <span className="min-w-0 truncate">{copy.generator.keep}</span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-xs" className="ml-auto shrink-0" aria-label={copy.generator.editOriginalPromptTooltip} onClick={onOpenStrictPromptEditor}>
-                    <PencilIcon />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{copy.generator.editOriginalPromptTooltip}</TooltipContent>
-              </Tooltip>
-            </label>
-          </div>
-        </div>
+        <HeaderUtilityButtons connectionStatus={connectionStatus} setSettingsOpen={setSettingsOpen} onOpenQuickStart={onOpenQuickStart} />
+        <HeaderParameterControls settings={settings} updateSettings={updateSettings} />
       </div>
 
       <div
@@ -637,41 +599,9 @@ export function GeneratorPanel({
 
         {mode === "edit" ? (
           <div className="flex min-h-0 min-w-0 flex-col gap-2">
-            <div className="grid min-w-0 shrink-0 gap-2 sm:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-1">
-                <label htmlFor="editImages" className={panelLabelClassName}>{copy.generator.selectLocalImage}</label>
-                <button type="button" className={cn(panelControlClassName, "flex cursor-pointer items-center justify-between gap-2 text-muted-foreground")} disabled={editImageSelectionFull} onClick={() => editImagesInputRef.current?.click()}>
-                  <span className="min-w-0 truncate text-left">{copy.generator.choose}</span>
-                  <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
-                </button>
-                <Input id="editImages" ref={editImagesInputRef} type="file" accept="image/*" multiple disabled={editImageSelectionFull} onChange={handleEditImagesChange} className="hidden" />
-              </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <label htmlFor="historicalEditImages" className={panelLabelClassName}>{copy.generator.selectHistoricalImage}</label>
-                <Select value={historicalEditImageValue} onValueChange={(value) => { void addHistoricalEditImage(value); }}>
-                  <SelectTrigger id="historicalEditImages" size="sm" className={cn(panelSelectTriggerClassName, "text-muted-foreground")} disabled={!historicalEditImageOptions.length || editImageSelectionFull}>
-                    <SelectValue placeholder={copy.generator.choose} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {historicalEditImageOptions.length ? historicalEditImageOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="min-h-14 items-center py-2 pr-3">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="flex size-9 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30">
-                              {option.thumbnail?.src ? <img src={option.thumbnail.src} alt="" aria-hidden="true" className="h-full w-full object-cover object-center" /> : <span className="flex h-full w-full items-center justify-center text-muted-foreground"><ImageIcon className="size-4" /></span>}
-                            </span>
-                            <span className="min-w-0 truncate">{option.label}</span>
-                          </span>
-                        </SelectItem>
-                      )) : <SelectItem value="__empty" disabled>{copy.generator.noHistoricalImages}</SelectItem>}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
             <div
               className={cn(
-                "flex min-h-24 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors",
+                "mt-5 flex min-h-24 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors",
                 editImageDragActive ? "border-foreground/50 bg-muted/50" : "bg-muted/10",
               )}
               role="region"
@@ -706,6 +636,34 @@ export function GeneratorPanel({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pt-1">
+        {mode === "edit" ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Button type="button" variant="outline" size="sm" className={cn(panelControlClassName, "!w-fit !min-w-0 shrink-0 px-2.5")} disabled={editImageSelectionFull} onClick={() => editImagesInputRef.current?.click()} aria-label={copy.generator.selectLocalImage}>
+              <ImagePlusIcon data-icon="inline-start" />{copy.generator.selectLocalImage}
+            </Button>
+            <Input id="editImages" ref={editImagesInputRef} type="file" accept="image/*" multiple disabled={editImageSelectionFull} onChange={handleEditImagesChange} className="hidden" />
+            <Select value={historicalEditImageValue} onValueChange={(value) => { void addHistoricalEditImage(value); }}>
+              <SelectTrigger id="historicalEditImages" size="sm" className={cn(panelSelectTriggerClassName, "!w-fit !min-w-0 shrink-0 bg-muted/30 px-2.5")} disabled={!historicalEditImageOptions.length || editImageSelectionFull} aria-label={copy.generator.selectHistoricalImage}>
+                <ImageIcon />
+                <SelectValue placeholder={copy.generator.selectHistoricalImage} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {historicalEditImageOptions.length ? historicalEditImageOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="min-h-14 items-center py-2 pr-3">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="flex size-9 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30">
+                          {option.thumbnail?.src ? <img src={option.thumbnail.src} alt="" aria-hidden="true" className="h-full w-full object-cover object-center" /> : <span className="flex h-full w-full items-center justify-center text-muted-foreground"><ImageIcon className="size-4" /></span>}
+                        </span>
+                        <span className="min-w-0 truncate">{option.label}</span>
+                      </span>
+                    </SelectItem>
+                  )) : <SelectItem value="__empty" disabled>{copy.generator.noHistoricalImages}</SelectItem>}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           {isGenerating ? (
             <Button
@@ -730,30 +688,6 @@ export function GeneratorPanel({
                 <PlayIcon data-icon="inline-start" />
                 {copy.generator.generations}
               </Button>
-              {settings.protocol === "openai" ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
-                    onClick={() => enqueueGeneration("responses")}
-                  >
-                    <ImageIcon data-icon="inline-start" />
-                    {copy.generator.responses}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}
-                    onClick={() => enqueueGeneration("completions")}
-                  >
-                    <MessageSquareIcon data-icon="inline-start" />
-                    {copy.generator.completions}
-                  </Button>
-                </>
-              ) : null}
             </>
           )}
         </div>

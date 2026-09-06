@@ -8,12 +8,8 @@ import { AppRoot } from "@/AppRoot";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider, getSeoMetadata, getCopy, type Language } from "@/lib/i18n";
 import {
-  DEFAULT_STRICT_PROMPT_TEXT,
-  DEFAULT_STRICT_PROMPT_TEXT_EN,
   REQUEST_CACHE_KEY,
   STORAGE_KEY,
-  STRICT_PROMPT_FOOTER,
-  STRICT_PROMPT_HEADER,
   normalizeImageEndpoint,
   type AppSettings,
   type ImageRequestRecord,
@@ -128,8 +124,6 @@ describe("App", () => {
     await user.click(within(helpDialog).getByRole("tab", { name: "常见报错" }));
     expect(within(helpDialog).getByText("Failed to fetch / 请求失败")).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "编辑原始提示词文案" })).toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: /配置/ }));
     const settingsDialog = screen.getByRole("dialog", { name: "连接" });
     expect(settingsDialog).toBeInTheDocument();
@@ -201,7 +195,7 @@ describe("App", () => {
     expect(within(dialog).getByText("主图")).toBeInTheDocument();
     expect(within(dialog).getByText(/点击“生成整套”后/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("tab", { name: "文生图" }));
-    expect(screen.queryByRole("region", { name: "产品套图任务" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "产品套图任务" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "文生图" })).toBeInTheDocument();
   });
 
@@ -295,7 +289,6 @@ describe("App", () => {
         expect(within(button).getByText("完成")).toBeInTheDocument();
       }
     });
-    await user.click(screen.getByRole("tab", { name: "工作流" }));
     const reopenedDialog = await screen.findByRole("region", { name: "产品套图任务" });
     expect(within(reopenedDialog).getAllByText("尚未选定最终版本")).toHaveLength(6);
     await user.click(within(reopenedDialog).getAllByRole("button", { name: "重新生成此槽位" })[0]);
@@ -367,7 +360,6 @@ describe("App", () => {
       expect(cached.filter((request) => request.productSuiteSlotKey === "whiteBackground")[0]?.status).toBe("done");
     });
 
-    await user.click(screen.getByRole("tab", { name: "工作流" }));
     const reopenedDialog = await screen.findByRole("region", { name: "产品套图任务" });
     await user.click(within(reopenedDialog).getByRole("button", { name: "仅重试失败槽位 (1)" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -678,80 +670,6 @@ describe("App", () => {
     await user.type(countInput, "0");
     await user.tab();
     expect(countInput).toHaveValue(1);
-  });
-
-  test("keeps strict prompt head and tail fixed while editing the body", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderApp();
-    await user.click(screen.getByRole("button", { name: "编辑原始提示词文案" }));
-
-    const editor = screen.getByRole("dialog", { name: "编辑原始提示词" });
-    expect(within(editor).getByText(STRICT_PROMPT_HEADER)).toBeInTheDocument();
-    expect(within(editor).getByText(STRICT_PROMPT_FOOTER)).toBeInTheDocument();
-
-    const body = within(editor).getByLabelText("原始提示词正文");
-    expect(body).toHaveValue(DEFAULT_STRICT_PROMPT_TEXT);
-    await user.clear(body);
-    await user.type(body, "只保留主体和光影");
-    await user.click(within(editor).getByRole("button", { name: "确定" }));
-    await user.click(screen.getByRole("button", { name: /配置/ }));
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
-
-    expect(await screen.findByAltText("Generated image 1", { exact: false })).toBeInTheDocument();
-    const bodyJson = JSON.parse(String(fetchMock.mock.calls[0][1]?.body || "{}")) as { prompt?: string };
-    expect(bodyJson.prompt).toContain(STRICT_PROMPT_HEADER);
-    expect(bodyJson.prompt).toContain("只保留主体和光影");
-    expect(bodyJson.prompt).toContain(`${STRICT_PROMPT_FOOTER}\nglass jellyfish`);
-  });
-
-  test("uses the language default strict prompt body and preserves custom text across language switches", async () => {
-    localStorage.setItem("ImageX-language", "en");
-    const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderApp();
-
-    await user.click(screen.getByRole("button", { name: "Edit strict prompt text" }));
-
-    const englishEditor = screen.getByRole("dialog", { name: "Edit strict prompt" });
-    const englishBody = within(englishEditor).getByLabelText("Strict prompt body");
-    expect(englishBody).toHaveValue(DEFAULT_STRICT_PROMPT_TEXT_EN);
-
-    await user.clear(englishBody);
-    await user.type(englishBody, "Keep only the subject and lighting");
-    await user.click(within(englishEditor).getByRole("button", { name: "Confirm" }));
-
-    await user.type(await screen.findByLabelText(/^(提示词|Prompt)$/), "glass jellyfish");
-    await user.click(screen.getByRole("button", { name: /^(图片生成|generations)$/ }));
-
-    const bodyJson = JSON.parse(String(fetchMock.mock.calls[0][1]?.body || "{}")) as { prompt?: string };
-    expect(bodyJson.prompt).toContain("Keep only the subject and lighting");
-
-    cleanup();
-    window.history.replaceState({}, "", "/");
-    localStorage.setItem("ImageX-language", "zh");
-    renderApp();
-    await user.click(screen.getByRole("button", { name: "编辑原始提示词文案" }));
-
-    const chineseEditor = screen.getByRole("dialog", { name: "编辑原始提示词" });
-    expect(within(chineseEditor).getByLabelText("原始提示词正文")).toHaveValue("Keep only the subject and lighting");
   });
 
   test("shows prompt validation errors as toast messages", async () => {

@@ -380,6 +380,9 @@ type Copy = {
     brandAsset: string;
     materialAndColor: string;
     sellingPoints: string;
+    sellingPointItem: (index: number) => string;
+    addSellingPoint: string;
+    removeSellingPoint: string;
     dimensions: string;
     dimensionsPlaceholder: string;
     forbiddenElements: string;
@@ -393,10 +396,16 @@ type Copy = {
     saveTask: string;
     slotsTitle: string;
     slotsDescription: string;
+    addCustomSlot: string;
+    customSlotLabel: string;
+    removeCustomSlot: string;
     slotLabels: Record<string, string>;
     slotEnabled: string;
     slotPrompt: string;
-    renderedPrompt: string;
+    referenceHelp: string;
+    insertReference: string;
+    referenceLabels: Record<string, string>;
+    referenceExamples: Record<string, string>;
     resetTemplate: string;
     generateSuite: string;
     missingProductImage: string;
@@ -740,8 +749,8 @@ const COPY: Record<Language, Copy> = {
       promptLabel: "提示词",
       promptPlaceholder: "一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰",
       editPromptPlaceholder: "例如：保留原图主体，只调整光影和风格",
-      selectLocalImage: "选择本地图片",
-      selectHistoricalImage: "选择已生成图片",
+      selectLocalImage: "上传图片作为参考图",
+      selectHistoricalImage: "以生成的图片作为参考图",
       choose: "请选择",
       noHistoricalImages: "暂无可选图片",
       selectAtLeastOneImage: "请选择一张或多张图片。",
@@ -828,6 +837,9 @@ const COPY: Record<Language, Copy> = {
       brandAsset: "可选商业标识/星星素材",
       materialAndColor: "材质/颜色",
       sellingPoints: "核心卖点",
+      sellingPointItem: (index) => `卖点${index}`,
+      addSellingPoint: "添加卖点",
+      removeSellingPoint: "删除此卖点",
       dimensions: "尺寸数据",
       dimensionsPlaceholder: "例如：长 12cm，宽 6cm，厚 1.8cm",
       forbiddenElements: "禁用元素/不要出现",
@@ -839,12 +851,18 @@ const COPY: Record<Language, Copy> = {
       nextStepHint: "点击“生成整套”后，只提交已启用槽位，每个槽位固定生成 1 张；产品图支持多角度参考，主图可额外使用商业标识素材。",
       deleteTask: "删除任务",
       saveTask: "保存任务",
-      slotsTitle: "六图槽位",
+      slotsTitle: "图像槽位",
       slotsDescription: "每个槽位都有独立提示词模板，提交前可以单独修改；关闭槽位后不会参与后续整套生成。",
+      addCustomSlot: "添加自定义槽位",
+      customSlotLabel: "自定义槽位名称",
+      removeCustomSlot: "删除自定义槽位",
       slotLabels: { hero: "主图", whiteBackground: "白底图", detail: "详情图", size: "尺寸图", closeUp: "细节图", scene: "场景图" },
       slotEnabled: "启用此槽位",
       slotPrompt: "提示词模板",
-      renderedPrompt: "最终提示词预览",
+      referenceHelp: "输入 / 选择要引用的字段，选中后会显示为彩色标签。",
+      insertReference: "选择引用字段",
+      referenceLabels: { 商品名: "商品名称", 材质颜色: "材质/颜色", 核心卖点: "核心卖点", 卖点1: "卖点1", 卖点2: "卖点2", 卖点3: "卖点3", 卖点4: "卖点4", 卖点5: "卖点5", 卖点6: "卖点6", 卖点7: "卖点7", 卖点8: "卖点8", 卖点9: "卖点9", 卖点10: "卖点10", 尺寸: "尺寸数据", 品牌语气: "品牌语气", 目标平台: "目标平台" },
+      referenceExamples: { 商品名: "插入名称", 材质颜色: "插入材质", 核心卖点: "插入卖点", 卖点1: "插入卖点1", 卖点2: "插入卖点2", 卖点3: "插入卖点3", 卖点4: "插入卖点4", 卖点5: "插入卖点5", 卖点6: "插入卖点6", 卖点7: "插入卖点7", 卖点8: "插入卖点8", 卖点9: "插入卖点9", 卖点10: "插入卖点10", 尺寸: "插入尺寸", 品牌语气: "插入语气", 目标平台: "插入平台" },
       resetTemplate: "恢复模板",
       generateSuite: "生成整套",
       missingProductImage: "请先上传产品实拍参考图。",
@@ -1213,8 +1231,8 @@ const COPY: Record<Language, Copy> = {
       promptLabel: "Prompt",
       promptPlaceholder: "A translucent glass mechanical jellyfish floating on a city rooftop at dawn, product photography, crisp detail",
       editPromptPlaceholder: "For example: keep the original subject and only adjust lighting and style",
-      selectLocalImage: "Choose local images",
-      selectHistoricalImage: "Choose generated images",
+      selectLocalImage: "Upload image as reference",
+      selectHistoricalImage: "Use generated image as reference",
       choose: "Choose",
       noHistoricalImages: "No selectable images",
       selectAtLeastOneImage: "Please choose one or more images.",
@@ -1301,6 +1319,9 @@ const COPY: Record<Language, Copy> = {
       brandAsset: "Optional commercial badge/star asset",
       materialAndColor: "Material/color",
       sellingPoints: "Key selling points",
+      sellingPointItem: (index) => `Selling point ${index}`,
+      addSellingPoint: "Add selling point",
+      removeSellingPoint: "Remove this selling point",
       dimensions: "Dimensions",
       dimensionsPlaceholder: "For example: 12cm long, 6cm wide, 1.8cm thick",
       forbiddenElements: "Forbidden elements",
@@ -1312,12 +1333,18 @@ const COPY: Record<Language, Copy> = {
       nextStepHint: "Generate suite submits only enabled slots, with exactly one image per slot. Add multiple product angles and optional commercial assets when needed.",
       deleteTask: "Delete task",
       saveTask: "Save task",
-      slotsTitle: "Six image slots",
+      slotsTitle: "Image slots",
       slotsDescription: "Each slot has its own prompt template. Edit it before submission; disabled slots will be skipped by the future batch generation.",
+      addCustomSlot: "Add custom slot",
+      customSlotLabel: "Custom slot name",
+      removeCustomSlot: "Remove custom slot",
       slotLabels: { hero: "Hero", whiteBackground: "White background", detail: "Detail", size: "Size", closeUp: "Close-up", scene: "Scene" },
       slotEnabled: "Enable this slot",
       slotPrompt: "Prompt template",
-      renderedPrompt: "Rendered prompt preview",
+      referenceHelp: "Type / to choose a field. Selected references appear as colored labels.",
+      insertReference: "Choose a reference field",
+      referenceLabels: { 商品名: "Product name", 材质颜色: "Material/color", 核心卖点: "Selling points", 卖点1: "Selling point 1", 卖点2: "Selling point 2", 卖点3: "Selling point 3", 卖点4: "Selling point 4", 卖点5: "Selling point 5", 卖点6: "Selling point 6", 卖点7: "Selling point 7", 卖点8: "Selling point 8", 卖点9: "Selling point 9", 卖点10: "Selling point 10", 尺寸: "Dimensions", 品牌语气: "Brand tone", 目标平台: "Target platform" },
+      referenceExamples: { 商品名: "Insert name", 材质颜色: "Insert material", 核心卖点: "Insert points", 卖点1: "Insert point 1", 卖点2: "Insert point 2", 卖点3: "Insert point 3", 卖点4: "Insert point 4", 卖点5: "Insert point 5", 卖点6: "Insert point 6", 卖点7: "Insert point 7", 卖点8: "Insert point 8", 卖点9: "Insert point 9", 卖点10: "Insert point 10", 尺寸: "Insert size", 品牌语气: "Insert tone", 目标平台: "Insert platform" },
       resetTemplate: "Restore template",
       generateSuite: "Generate suite",
       missingProductImage: "Upload a product reference photo first.",
