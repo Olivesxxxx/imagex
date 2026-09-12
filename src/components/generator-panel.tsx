@@ -44,6 +44,8 @@ import { useTimedConfirmation } from "@/hooks/use-timed-confirmation";
 import {
   MAX_EDIT_INPUT_IMAGES,
   MAX_IMAGE_COUNT,
+  BACKGROUND_OPTIONS,
+  OUTPUT_FORMAT_OPTIONS,
   QUALITY_OPTIONS,
   SIZE_OPTION_GROUPS,
   sizeOptionDisplayLabel,
@@ -236,6 +238,8 @@ export function HeaderParameterControls({
   countInputId?: string;
 }) {
   const { copy } = useI18n();
+  const isEnglish = copy.generator.quality === "Quality";
+  const backgroundLabels = isEnglish ? { auto: "Auto", opaque: "Opaque", transparent: "Transparent" } : { auto: "自动", opaque: "不透明", transparent: "透明" };
 
   return (
     <div className={panelToolbarSelectGroupClassName}>
@@ -247,6 +251,22 @@ export function HeaderParameterControls({
         options={QUALITY_OPTIONS}
         optionLabels={copy.generator.qualityOptions}
         onValueChange={(value) => updateSettings("quality", value as AppSettings["quality"])}
+      />
+      <OptionSelect
+        className="w-fit min-w-24 flex-none"
+        label={isEnglish ? "Background" : "背景"}
+        value={String(settings.background)}
+        options={BACKGROUND_OPTIONS}
+        optionLabels={backgroundLabels}
+        onValueChange={(value) => updateSettings("background", value as AppSettings["background"])}
+      />
+      <OptionSelect
+        className="w-fit min-w-24 flex-none"
+        label={isEnglish ? "Format" : "格式"}
+        value={String(settings.outputFormat)}
+        options={OUTPUT_FORMAT_OPTIONS}
+        optionLabels={isEnglish ? { png: "PNG", webp: "WebP", jpeg: "JPEG" } : { png: "PNG", webp: "WebP", jpeg: "JPEG" }}
+        onValueChange={(value) => updateSettings("outputFormat", value as AppSettings["outputFormat"])}
       />
       <div className="flex w-16 min-w-16 flex-col gap-1">
         <label htmlFor={countInputId} className={panelLabelClassName}>{copy.generator.count}</label>
