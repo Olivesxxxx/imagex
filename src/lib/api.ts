@@ -16,6 +16,8 @@ export function authHeaders(apiKey: string, contentType: string | null = "applic
   return headers;
 }
 
+// Kept private for legacy persisted request compatibility; no UI path emits
+// this protocol anymore.
 function privateAuthHeaders(apiKey: string, contentType: string | null = "application/json") {
   const headers: Record<string, string> = {};
   if (contentType) headers["Content-Type"] = contentType;
@@ -122,13 +124,50 @@ async function postJsonWithResponseFormatFallback(
   });
 
   const responseFormat = options.imageResponseMode === "url" ? "url" : "b64_json";
-  const response = await request(withResponseFormat(payload, responseFormat));
+  const response = await request({ ...withResponseFormat(payload, responseFormat) as Record<string, unknown>, ...(options.streamImages ? { stream: true, partial_images: options.streamPartialImages } : {}) });
+  if (options.streamImages && response.ok && response.body && response.headers.get("content-type")?.includes("text/event-stream")) {
+    const streamed = await parseEventStreamBody(response, signal);
+    return validateParsedResponseBody(new Response(JSON.stringify(streamed), { status: response.status }), streamed, language);
+  }
   const body = await parseResponseBody(response);
   if (options.imageResponseMode !== "auto" || !responseFormatIsUnsupported(response, body)) {
     return validateParsedResponseBody(response, body, language);
   }
 
   return validatedResponseBody(await request(withoutResponseFormat(payload)), language);
+}
+
+async function parseEventStreamBody(response: Response, signal?: AbortSignal): Promise<unknown> {
+  if (!response.body) return parseResponseBody(response);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let latest: unknown = null;
+  const consumeLine = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const text = line.slice(5).trim();
+    if (!text || text === "[DONE]") return;
+    try {
+      const event = JSON.parse(text) as Record<string, unknown>;
+      const candidate = event.response ?? event.data ?? event;
+      latest = candidate;
+      if (event.type === "response.completed" && event.response && typeof event.response === "object") latest = event.response;
+      if (event.type === "image_generation.completed" && event.data && typeof event.data === "object") latest = event.data;
+    } catch {
+      // Ignore keep-alive/non-JSON SSE frames.
+    }
+  };
+  while (true) {
+    if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    for (const line of lines) consumeLine(line);
+    if (done) break;
+  }
+  if (buffer) consumeLine(buffer);
+  return latest;
 }
 
 function isImagesGenerationEndpoint(endpoint: string) {
@@ -162,6 +201,7 @@ function buildImageEditFormData(
   language: "zh" | "en",
   imageField: "image" | "image[]",
   responseFormat: "b64_json" | "url" | null,
+  mask?: { file?: File; blob?: Blob; name: string; mimeType?: string },
 ) {
   const formData = new FormData();
   const normalizedPayload = withoutResponseFormat(payload) as Record<string, unknown>;
@@ -194,6 +234,14 @@ function buildImageEditFormData(
     formData.append(imageField, file, image.name);
   }
 
+  if (mask) {
+    const file = mask.file || mask.blob;
+    if (!file) {
+      throw new Error(language === "en" ? "Edit request mask is not uploadable." : "编辑请求的遮罩无法上传。" );
+    }
+    formData.append("mask", file, mask.name || "mask.png");
+  }
+
   if (responseFormat) formData.append("response_format", responseFormat);
   return formData;
 }
@@ -206,6 +254,7 @@ export async function postImageEdit(
   signal: AbortSignal,
   language: "zh" | "en" = "zh",
   options: OpenAIImageRequestOptions = { imageResponseMode: "auto", multiImageField: "auto" },
+  mask?: { file?: File; blob?: Blob; name: string; mimeType?: string },
 ) {
   const requestedResponseFormat: "b64_json" | "url" = options.imageResponseMode === "url" ? "url" : "b64_json";
   const initialImageField: "image" | "image[]" = images.length > 1 && options.multiImageField !== "image" ? "image[]" : "image";
@@ -213,7 +262,7 @@ export async function postImageEdit(
   const request = (imageField: "image" | "image[]", responseFormat: "b64_json" | "url" | null) => fetch(endpoint, {
     method: "POST",
     headers: authHeaders(apiKey, null),
-    body: buildImageEditFormData(payload, images, language, imageField, responseFormat),
+    body: buildImageEditFormData(payload, images, language, imageField, responseFormat, mask),
     signal,
   });
 
@@ -310,11 +359,13 @@ export async function fetchModels(
   baseUrl: string,
   apiKey: string,
   language: "zh" | "en" = "zh",
+  signal?: AbortSignal,
 ) {
   const endpoint = normalizeModelsEndpoint(baseUrl);
   const response = await fetch(endpoint, {
     method: "GET",
     headers: authHeaders(apiKey),
+    signal,
   });
   return { endpoint, body: await validatedResponseBody(response, language) };
 }

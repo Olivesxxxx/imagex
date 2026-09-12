@@ -158,9 +158,9 @@ describe("App", () => {
     const dialog = screen.getByRole("dialog", { name: "连接" });
 
     expect(within(dialog).getByRole("button", { name: /灵速.*lingsu/ })).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /Geek.*geek2api/ }));
-    expect(toastSuccessSpy).toHaveBeenCalledWith("已切换到供应商：Geek");
-    expect(within(dialog).getByLabelText("API URL")).toHaveValue("https://www.geek2api.com/v1");
+    await user.click(within(dialog).getByRole("button", { name: /MHOO.*api.mhoo/ }));
+    expect(toastSuccessSpy).toHaveBeenCalledWith("已切换到供应商：MHOO");
+    expect(within(dialog).getByLabelText("API URL")).toHaveValue("https://api.mhoo.cc/v1");
     expect(within(dialog).getByLabelText("图片返回方式")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("多图上传字段")).toBeInTheDocument();
 

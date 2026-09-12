@@ -40,6 +40,13 @@ export function SettingsDialog({
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [providerDeleteConfirmOpen, setProviderDeleteConfirmOpen] = useState(false);
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId) || null;
+  const testConfigurationReady = Boolean(
+    activeProvider && (
+      activeProvider.protocol === "openai"
+        ? activeProvider.baseUrl.trim() && activeProvider.apiKey.trim() && activeProvider.generationsModel.trim() && activeProvider.editsModel.trim()
+        : activeProvider.geminiBaseUrl.trim() && activeProvider.geminiApiKey.trim() && activeProvider.geminiModel.trim()
+    ),
+  );
 
   function updateProviderName(name: string) {
     if (!activeProvider) return;
@@ -75,6 +82,8 @@ export function SettingsDialog({
       geminiModel: DEFAULTS.geminiModel,
       imageResponseMode: "auto",
       multiImageField: "auto",
+      streamImages: false,
+      streamPartialImages: 2,
     }];
     updateSettings("openaiProviders", providers);
     updateSettings("activeOpenAIProviderId", id);
@@ -112,6 +121,8 @@ export function SettingsDialog({
       geminiModel: DEFAULTS.geminiModel,
       imageResponseMode: "auto",
       multiImageField: "auto",
+      streamImages: false,
+      streamPartialImages: 2,
     };
     updateProviderConfig({ ...(builtIn || fallback), id: activeProvider.id, name: activeProvider.name });
     toast.success(copy.settings.providerDefaultsRestored);
@@ -137,9 +148,9 @@ export function SettingsDialog({
                   <div className="standard-scrollbar grid max-h-44 min-w-0 gap-1 overflow-y-auto pr-1 md:max-h-[32rem]">
                     {settings.openaiProviders.map((provider) => {
                       const selected = provider.id === settings.activeOpenAIProviderId;
-                      const protocolLabel = provider.protocol === "private" ? copy.settings.privateProtocol : provider.protocol === "gemini" ? copy.settings.geminiProtocol : copy.settings.openAiProtocol;
-                      const address = provider.protocol === "private" ? provider.privateBaseUrl : provider.protocol === "gemini" ? provider.geminiBaseUrl : provider.baseUrl;
-                      const protocolAccent = provider.protocol === "private" ? "border-l-violet-500" : provider.protocol === "gemini" ? "border-l-emerald-500" : "border-l-neutral-900";
+                      const protocolLabel = provider.protocol === "gemini" ? copy.settings.geminiProtocol : copy.settings.openAiProtocol;
+                      const address = provider.protocol === "gemini" ? provider.geminiBaseUrl : provider.baseUrl;
+                      const protocolAccent = provider.protocol === "gemini" ? "border-l-emerald-500" : "border-l-neutral-900";
                       return (
                         <Button key={provider.id} type="button" variant={selected ? "default" : "ghost"} size="sm" className={`h-auto min-w-0 justify-start border-l-4 px-2 py-2 text-left ${protocolAccent}`} aria-pressed={selected} onClick={() => selectProvider(provider)}>
                           <span className="grid min-w-0 gap-0.5">
@@ -166,7 +177,7 @@ export function SettingsDialog({
                       <FieldLabel htmlFor="providerProtocol">{copy.settings.providerProtocol}</FieldLabel>
                       <Select value={activeProvider.protocol} onValueChange={(value) => updateProviderConfig({ protocol: value as AppSettings["protocol"] })}>
                         <SelectTrigger id="providerProtocol" aria-label={copy.settings.providerProtocol}><SelectValue /></SelectTrigger>
-                         <SelectContent><SelectItem value="openai">{copy.settings.openAiProtocol}</SelectItem><SelectItem value="gemini">{copy.settings.geminiProtocol}</SelectItem><SelectItem value="private">{copy.settings.privateProtocol}</SelectItem></SelectContent>
+                        <SelectContent><SelectItem value="openai">{copy.settings.openAiProtocol}</SelectItem><SelectItem value="gemini">{copy.settings.geminiProtocol}</SelectItem></SelectContent>
                       </Select>
                     </Field>
                     <Field><FieldLabel htmlFor="providerName">{copy.settings.providerName}</FieldLabel><Input id="providerName" value={activeProvider.name} onChange={(event) => updateProviderName(event.target.value)} /></Field>
@@ -178,9 +189,8 @@ export function SettingsDialog({
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <Field><FieldLabel htmlFor="generationsModel">{copy.settings.generationsModel}</FieldLabel><Input id="generationsModel" value={activeProvider.generationsModel} onChange={(event) => updateProviderConfig({ generationsModel: event.target.value })} /></Field>
                           <Field><FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel><Input id="editsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} /></Field>
-                          <Field><FieldLabel htmlFor="responsesModel">{copy.settings.responsesModel}</FieldLabel><Input id="responsesModel" value={activeProvider.responsesModel} onChange={(event) => updateProviderConfig({ responsesModel: event.target.value })} /></Field>
-                          <Field><FieldLabel htmlFor="completionsModel">{copy.settings.completionsModel}</FieldLabel><Input id="completionsModel" value={activeProvider.completionsModel} onChange={(event) => updateProviderConfig({ completionsModel: event.target.value })} /></Field>
                         </div>
+                        <Field orientation="horizontal" className="!items-center"><Checkbox id="streamImages" checked={activeProvider.streamImages} onCheckedChange={(checked) => updateProviderConfig({ streamImages: checked === true })} /><FieldContent><FieldLabel htmlFor="streamImages">流式生成中间图</FieldLabel><p className="text-xs text-muted-foreground">供应商支持时保持连接并接收 partial_images。</p></FieldContent></Field>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <Field>
                             <FieldLabel htmlFor="imageResponseMode">{copy.settings.imageResponseMode}</FieldLabel>
@@ -193,11 +203,6 @@ export function SettingsDialog({
                             <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.multiImageFieldDescription}</p>
                           </Field>
                         </div>
-                      </>
-                    ) : activeProvider.protocol === "private" ? (
-                      <>
-                        <Field><FieldLabel htmlFor="privateBaseUrl">{copy.settings.privateBaseUrl}</FieldLabel><Input id="privateBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.privateBaseUrl} value={activeProvider.privateBaseUrl} onChange={(event) => updateProviderConfig({ privateBaseUrl: event.target.value })} /></Field>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Field><FieldLabel htmlFor="privateApiKey">{copy.settings.privateApiKey}</FieldLabel><Input id="privateApiKey" type="password" spellCheck={false} autoComplete="off" placeholder={copy.settings.privateApiKeyPlaceholder} value={activeProvider.privateApiKey} onChange={(event) => updateProviderConfig({ privateApiKey: event.target.value })} /></Field><Field><FieldLabel htmlFor="privateModel">{copy.settings.privateModel}</FieldLabel><Input id="privateModel" value={activeProvider.privateModel} onChange={(event) => updateProviderConfig({ privateModel: event.target.value })} /></Field></div>
                       </>
                     ) : (
                       <>
@@ -237,8 +242,8 @@ export function SettingsDialog({
                       : "outline"
                 }
                 className="w-28 justify-center"
-                disabled={activeProvider?.protocol !== "openai"}
-                onClick={testConnection}
+                disabled={!testConfigurationReady || testConnectionStatus.tone === "busy"}
+                onClick={() => void testConnection()}
               >
                 {testConnectionStatus.tone === "busy" ? (
                   <Loader2Icon data-icon="inline-start" className="animate-spin" />
@@ -247,7 +252,7 @@ export function SettingsDialog({
                 )}
                 {testConnectionStatus.label}
               </Button>
-              <Button type="button" onClick={saveCurrentSettings}>
+              <Button type="button" onClick={() => { saveCurrentSettings(); if (testConfigurationReady) window.setTimeout(() => void testConnection(), 0); }}>
                 {copy.settings.save}
               </Button>
             </div>

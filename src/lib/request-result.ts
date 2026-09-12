@@ -71,6 +71,7 @@ export function applyCompletedRequestResult(
     endedAt,
     completedAt: extractedImageCount ? completedAt : request.completedAt ?? null,
     editImages: [],
+    editMask: undefined,
   };
 }
 
@@ -106,5 +107,6 @@ export function applyFailedRequestResult(
     hasCachedDetails: request.hasCachedDetails || responseBody != null,
     endedAt,
     editImages: [],
+    editMask: undefined,
   };
 }

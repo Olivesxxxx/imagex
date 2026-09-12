@@ -52,6 +52,12 @@ describe("endpoint normalization", () => {
     );
   });
 
+  test("preserves relative same-origin proxy prefixes", () => {
+    expect(normalizeImageEndpoint("/api-proxy")).toBe("/api-proxy/images/generations");
+    expect(normalizeImageEditsEndpoint("/api-proxy/")).toBe("/api-proxy/images/edits");
+    expect(normalizeModelsEndpoint("/api-proxy")).toBe("/api-proxy/models");
+  });
+
   test("normalizes private service URLs into synchronous image endpoints", () => {
     expect(normalizePrivateImageEndpoint("https://private.example")).toBe(
       "https://private.example/api/images/generations",

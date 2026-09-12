@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { GeneratorPanel, PromptHistoryPanel, QuickStartDialog } from "@/components/generator-panel";
 import { AnnotationWorkspace, type AnnotationImageSource } from "@/components/annotation-workspace";
+import { MaskEditor, type MaskEditorImage } from "@/components/mask-editor";
 import { RequestListPanel } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { ProductSuitePanel } from "@/components/product-suite-panel";
@@ -190,6 +191,7 @@ export default function App() {
   const [productSuiteHasDraft, setProductSuiteHasDraft] = useState(false);
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [annotationTarget, setAnnotationTarget] = useState<{ image: AnnotationImageSource; originalPrompt: string } | null>(null);
+  const [maskEditorTarget, setMaskEditorTarget] = useState<EditInputImage | null>(null);
   const [exportZipConfirmOpen, setExportZipConfirmOpen] = useState(false);
   const [exportZipProgressOpen, setExportZipProgressOpen] = useState(false);
   const [exportZipProgress, setExportZipProgress] = useState<ExportZipProgress>({ current: 0, total: 0 });
@@ -202,6 +204,7 @@ export default function App() {
     clearCompletedDialogOpen ||
     quickStartOpen ||
     Boolean(annotationTarget) ||
+    Boolean(maskEditorTarget) ||
     exportZipConfirmOpen ||
     exportZipProgressOpen;
 
@@ -499,6 +502,7 @@ export default function App() {
                 <GeneratorPanel
                   mode={consoleState.mode}
                   editImages={consoleState.editImages}
+                  editMask={consoleState.editMask}
                   historicalEditImageValue={consoleState.historicalEditImageValue}
                   historicalEditImageOptions={consoleState.historicalEditImageOptions}
                   settings={consoleState.settings}
@@ -507,6 +511,7 @@ export default function App() {
                   promptFocusSignal={promptFocusSignal}
                   setPrompt={consoleState.setPrompt}
                   setEditImages={consoleState.setEditImages}
+                  setEditMask={consoleState.setEditMask}
                   updateSettings={consoleState.updateSettings}
                   setSettingsOpen={consoleState.setSettingsOpen}
                   enqueueGeneration={consoleState.enqueueGeneration}
@@ -518,6 +523,7 @@ export default function App() {
                   onOpenQuickStart={() => setQuickStartOpen(true)}
                   onOpenProductSuite={() => setProductSuiteOpen(true)}
                   workflowOpen={productSuiteOpen}
+                  onOpenMaskEditor={(image) => setMaskEditorTarget(image)}
                 />
           </div>
         </div>
@@ -570,6 +576,17 @@ export default function App() {
           if (!open) setAnnotationTarget(null);
         }}
         onSubmit={handleAnnotationSubmit}
+      />
+      <MaskEditor
+        open={Boolean(maskEditorTarget)}
+        image={maskEditorTarget ? { src: maskEditorTarget.src, name: maskEditorTarget.name } : null}
+        language={language === "en" ? "en" : "zh"}
+        onOpenChange={(open) => { if (!open) setMaskEditorTarget(null); }}
+        onApply={(blob) => {
+          consoleState.setEditMask({ src: URL.createObjectURL(blob), name: "mask.png", mimeType: "image/png", blob, sourceKey: maskEditorTarget?.sourceKey });
+          setMaskEditorTarget(null);
+          toast.success(language === "en" ? "Mask applied" : "遮罩已应用");
+        }}
       />
       <ExportZipConfirmDialog
         open={exportZipConfirmOpen}

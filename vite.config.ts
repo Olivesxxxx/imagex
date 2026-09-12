@@ -5,6 +5,35 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Optional development-only same-origin proxy. Production builds are
+  // static assets and never include this server configuration.
+  ...(process.env.IMAGEX_API_PROXY_TARGET
+    ? {
+        server: {
+          proxy: {
+            "/api-proxy": {
+              target: process.env.IMAGEX_API_PROXY_TARGET,
+              changeOrigin: true,
+              secure: true,
+              // The rewrite below explicitly includes the target's path
+              // prefix (commonly `/v1`), so avoid Vite prepending it again.
+              prependPath: false,
+              rewrite: (requestPath: string) => {
+                const target = process.env.IMAGEX_API_PROXY_TARGET || "";
+                let targetPath = "";
+                try {
+                  targetPath = new URL(target).pathname.replace(/\/$/, "");
+                } catch {
+                  // Leave the target path empty when an invalid proxy target
+                  // is supplied; Vite will surface the connection error.
+                }
+                return `${targetPath}${requestPath.replace(/^\/api-proxy/, "")}` || "/";
+              },
+            },
+          },
+        },
+      }
+    : {}),
   build: {
     rollupOptions: {
       output: {
@@ -27,5 +56,6 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    exclude: ["gpt_image_playground-main/**", "dist/**", "node_modules/**"],
   },
 });

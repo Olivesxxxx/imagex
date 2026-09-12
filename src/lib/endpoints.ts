@@ -1,4 +1,4 @@
-export const DEFAULT_BASE_URL = "http://localhost:8317/v1";
+export const DEFAULT_BASE_URL = "https://lingsu.xyz/v1";
 
 function trimTrailingSlash(value: unknown) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -8,6 +8,15 @@ function routeFromBaseUrl(baseUrl: string, route: string) {
   const input = trimTrailingSlash(baseUrl || DEFAULT_BASE_URL);
   const normalizedRoute = route.startsWith("/") ? route : `/${route}`;
   const routeWithoutV1 = normalizedRoute.replace(/^\/v1\//, "/");
+
+  // Relative same-origin proxy prefixes (for example `/api-proxy`) already
+  // identify the API gateway. Do not inject an extra `/v1` segment; the
+  // development proxy can forward the request to a target that includes its
+  // own version prefix.
+  if (input.startsWith("/")) {
+    if (input.endsWith(normalizedRoute) || input.endsWith(routeWithoutV1)) return input;
+    return `${input}${routeWithoutV1}`;
+  }
 
   if (input.endsWith(normalizedRoute) || input.endsWith(routeWithoutV1)) {
     return input;

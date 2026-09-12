@@ -10,5 +10,7 @@ yarn-debug.log*
 pnpm-debug.log*
 coverage/
 ImageX-deploy-dist.zip
+gpt_image_playground-main/
+image.aigw.store.har.txt
 codepup_api.txt
 error.txt

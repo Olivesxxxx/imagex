@@ -7,6 +7,7 @@ import {
   ImagePlusIcon,
   LanguagesIcon,
   Loader2Icon,
+  PencilIcon,
   PinIcon,
   PlayIcon,
   RectangleHorizontalIcon,
@@ -78,6 +79,7 @@ interface HistoricalEditImageOption {
 export interface GeneratorPanelProps {
   mode: ConsoleMode;
   editImages: EditInputImage[];
+  editMask?: EditInputImage;
   historicalEditImageValue: string;
   historicalEditImageOptions: HistoricalEditImageOption[];
   settings: AppSettings;
@@ -86,9 +88,10 @@ export interface GeneratorPanelProps {
   promptFocusSignal: number;
   setPrompt: (value: string) => void;
   setEditImages: Dispatch<SetStateAction<EditInputImage[]>>;
+  setEditMask: Dispatch<SetStateAction<EditInputImage | undefined>>;
   updateSettings: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   setSettingsOpen: (open: boolean) => void;
-  enqueueGeneration: (generationMode: "images" | "responses" | "completions") => boolean;
+  enqueueGeneration: () => boolean;
   enqueueEditGeneration: () => boolean;
   isGenerating: boolean;
   onCancelGeneration: () => void;
@@ -97,6 +100,7 @@ export interface GeneratorPanelProps {
   onOpenQuickStart: () => void;
   onOpenProductSuite: () => void;
   workflowOpen: boolean;
+  onOpenMaskEditor: (image: EditInputImage) => void;
 }
 
 function clampRequestCountInput(value: unknown) {
@@ -411,6 +415,7 @@ export function QuickStartDialog({ open, onOpenChange }: { open: boolean; onOpen
 export function GeneratorPanel({
   mode,
   editImages,
+  editMask,
   historicalEditImageValue,
   historicalEditImageOptions,
   settings,
@@ -419,6 +424,7 @@ export function GeneratorPanel({
   promptFocusSignal,
   setPrompt,
   setEditImages,
+  setEditMask,
   updateSettings,
   setSettingsOpen,
   enqueueGeneration,
@@ -430,6 +436,7 @@ export function GeneratorPanel({
   onOpenQuickStart,
   onOpenProductSuite,
   workflowOpen,
+  onOpenMaskEditor,
 }: GeneratorPanelProps) {
   const { copy, toggleLanguage } = useI18n();
   const editImagesInputRef = useRef<HTMLInputElement>(null);
@@ -482,7 +489,7 @@ export function GeneratorPanel({
       return;
     }
 
-    enqueueGeneration("images");
+    enqueueGeneration();
   }
 
   function addEditImageFiles(files: File[]) {
@@ -498,6 +505,7 @@ export function GeneratorPanel({
       name: file.name,
       mimeType: file.type || "application/octet-stream",
       file,
+      sourceKey: `local:${file.name}:${file.lastModified}:${file.size}:${Math.random().toString(36).slice(2, 8)}`,
     }));
 
     if (nextImages.length) {
@@ -624,6 +632,9 @@ export function GeneratorPanel({
                       <Button type="button" variant="secondary" size="icon-xs" className="absolute right-1 top-1 rounded-full bg-background/90 shadow-none" aria-label={`${copy.historyImage.deleteButton} ${index + 1}`} onClick={() => setEditImages((current) => current.filter((_, currentIndex) => currentIndex !== index))}>
                         <XIcon />
                       </Button>
+                      <Button type="button" variant="secondary" size="icon-xs" className="absolute bottom-1 right-1 rounded-full bg-background/90 shadow-none" aria-label={`编辑遮罩 ${index + 1}`} onClick={() => onOpenMaskEditor(image)}>
+                        <PencilIcon />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -642,6 +653,7 @@ export function GeneratorPanel({
               <ImagePlusIcon data-icon="inline-start" />{copy.generator.selectLocalImage}
             </Button>
             <Input id="editImages" ref={editImagesInputRef} type="file" accept="image/*" multiple disabled={editImageSelectionFull} onChange={handleEditImagesChange} className="hidden" />
+            {editMask ? <Button type="button" variant="secondary" size="sm" className={cn(panelControlClassName, "!w-fit !min-w-0 shrink-0 px-2.5")} onClick={() => setEditMask(undefined)}><PencilIcon data-icon="inline-start" />清除遮罩</Button> : null}
             <Select value={historicalEditImageValue} onValueChange={(value) => { void addHistoricalEditImage(value); }}>
               <SelectTrigger id="historicalEditImages" size="sm" className={cn(panelSelectTriggerClassName, "!w-fit !min-w-0 shrink-0 bg-muted/30 px-2.5")} disabled={!historicalEditImageOptions.length || editImageSelectionFull} aria-label={copy.generator.selectHistoricalImage}>
                 <ImageIcon />

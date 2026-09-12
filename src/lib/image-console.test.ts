@@ -72,9 +72,15 @@ function requestRecordFixture(overrides: Partial<ImageRequestRecord>): ImageRequ
 
 describe("image console logic", () => {
   test("provides editable default OpenAI providers and preserves an explicit empty list", () => {
-    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Auttyt", "Geek", "Gemini", "私有协议"]);
-    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(6);
-    expect(normalizeSharedSettings({}).openaiProviders.at(-1)).toMatchObject({ id: "legacy-custom" });
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Auttyt", "MHOO", "Gemini"]);
+    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(4);
+    expect(normalizeSharedSettings({}).openaiProviders.map((provider) => provider.id)).toEqual([
+      "lingsu",
+      "auttyt",
+      "mhoo",
+      "gemini",
+    ]);
+    expect(normalizeSharedSettings({}).openaiProviders[0]).toMatchObject({ streamImages: false, streamPartialImages: 2 });
     expect(normalizeSharedSettings({ openaiProviders: [] }).openaiProviders).toEqual([]);
     expect(normalizeSharedSettings({
       openaiProviders: [{ id: "custom", name: "我的接口", baseUrl: "https://example.com/v1", apiKey: "key" }],
@@ -416,7 +422,7 @@ describe("image console logic", () => {
     const requests = buildEditImageRequests(payload, 3);
 
     expect(requests).toHaveLength(3);
-    expect(requests[0].model).toBe("gpt-image-2");
+    expect(requests[0].model).toBe("gpt-image-2.5");
     expect(requests[0].n).toBe(1);
     expect(requests[0].moderation).toBeUndefined();
     expect(requests[0].background).toBeUndefined();

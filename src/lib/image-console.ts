@@ -88,7 +88,9 @@ export type ImageBackground = (typeof BACKGROUND_OPTIONS)[number];
 export type ImageOutputFormat = (typeof OUTPUT_FORMAT_OPTIONS)[number];
 export type ImageResponseMode = (typeof IMAGE_RESPONSE_MODES)[number];
 export type MultiImageFieldMode = (typeof MULTI_IMAGE_FIELD_MODES)[number];
-export type ApiProtocol = "openai" | "private" | "gemini";
+/** @deprecated Private protocol is no longer exposed; retained only so old
+ * cached request manifests can be read without crashing TypeScript clients. */
+export type ApiProtocol = "openai" | "gemini" | "private";
 export type ConsoleMode = "generate" | "edit";
 export type GeneratorModeTab = ConsoleMode | "workflow";
 export type GenerationMethod = "gpt-image-2" | "image_generation" | "completions" | "edit";
@@ -110,14 +112,15 @@ export interface OpenAIProvider {
   geminiModel: string;
   imageResponseMode: ImageResponseMode;
   multiImageField: MultiImageFieldMode;
+  streamImages: boolean;
+  streamPartialImages: number;
 }
-export type OpenAIImageRequestOptions = Pick<OpenAIProvider, "imageResponseMode" | "multiImageField">;
+export type OpenAIImageRequestOptions = Pick<OpenAIProvider, "imageResponseMode" | "multiImageField"> & Partial<Pick<OpenAIProvider, "streamImages" | "streamPartialImages">>;
 export const DEFAULT_OPENAI_PROVIDERS: OpenAIProvider[] = [
-  { id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2", editsModel: "gpt-image-2", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto" },
-  { id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2", editsModel: "gpt-image-2", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto" },
-  { id: "geek", name: "Geek", protocol: "openai", baseUrl: "https://www.geek2api.com/v1", apiKey: "", generationsModel: "gpt-image-2", editsModel: "gpt-image-2", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto" },
-  { id: "gemini", name: "Gemini", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2", editsModel: "gpt-image-2", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto" },
-  { id: "private", name: "私有协议", protocol: "private", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2", editsModel: "gpt-image-2", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto" },
+  { id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
+  { id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
+  { id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
+  { id: "gemini", name: "Gemini", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
 ];
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
 export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
@@ -281,6 +284,7 @@ export interface ImageRequestRecord {
   cancelRequested?: boolean;
   apiKey?: string;
   editImages?: EditInputImage[];
+  editMask?: EditInputImage;
   openAIImageOptions?: OpenAIImageRequestOptions;
   productSuiteTaskId?: string;
   productSuiteBatchId?: string;
@@ -291,7 +295,7 @@ export interface ImageRequestRecord {
 }
 
 export interface CachedRequestRecord
-  extends Omit<ImageRequestRecord, "images" | "response" | "controller" | "cancelRequested" | "apiKey" | "editImages" | "openAIImageOptions"> {
+  extends Omit<ImageRequestRecord, "images" | "response" | "controller" | "cancelRequested" | "apiKey" | "editImages" | "editMask" | "openAIImageOptions"> {
   imageCount: number;
   hasCachedDetails: boolean;
   imageSizeBytes?: number;
@@ -300,7 +304,7 @@ export interface CachedRequestRecord
 
 export const DEFAULTS: AppSettings = {
   protocol: "openai",
-  baseUrl: DEFAULT_BASE_URL,
+  baseUrl: DEFAULT_OPENAI_PROVIDERS[0]?.baseUrl || DEFAULT_BASE_URL,
   apiKey: "",
   openaiProviders: DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider })),
   activeOpenAIProviderId: "",
@@ -312,8 +316,8 @@ export const DEFAULTS: AppSettings = {
   geminiModel: "gemini-2.5-flash-image",
   rememberKey: false,
   developmentMode: false,
-  generationsModel: "gpt-image-2",
-  editsModel: "gpt-image-2",
+  generationsModel: "gpt-image-2.5",
+  editsModel: "gpt-image-2.5",
   responsesModel: "gpt-5.4-mini",
   completionsModel: "gpt-5.4-mini",
   strictPromptText: "",
@@ -327,26 +331,6 @@ export const DEFAULTS: AppSettings = {
   outputFormat: "png",
 };
 
-const DEFAULT_LOCAL_PROVIDER: OpenAIProvider = {
-  id: "legacy-custom",
-  name: "本地兼容接口",
-  protocol: "openai",
-  baseUrl: DEFAULT_BASE_URL,
-  apiKey: "",
-  generationsModel: DEFAULTS.generationsModel,
-  editsModel: DEFAULTS.editsModel,
-  responsesModel: DEFAULTS.responsesModel,
-  completionsModel: DEFAULTS.completionsModel,
-  privateBaseUrl: DEFAULTS.privateBaseUrl,
-  privateApiKey: "",
-  privateModel: DEFAULTS.privateModel,
-  geminiBaseUrl: DEFAULTS.geminiBaseUrl,
-  geminiApiKey: "",
-  geminiModel: DEFAULTS.geminiModel,
-  imageResponseMode: "auto",
-  multiImageField: "auto",
-};
-
 // Vite replaces this value at build time. Production bundles must never expose
 // the local development fixtures, even if a user edits browser storage.
 export const DEVELOPMENT_FIXTURES_ENABLED = import.meta.env.DEV;
@@ -355,8 +339,8 @@ export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
   protocol: DEFAULTS.protocol,
   baseUrl: DEFAULTS.baseUrl,
   apiKey: DEFAULTS.apiKey,
-  openaiProviders: [...DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider })), { ...DEFAULT_LOCAL_PROVIDER }],
-  activeOpenAIProviderId: DEFAULT_LOCAL_PROVIDER.id,
+  openaiProviders: DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider })),
+  activeOpenAIProviderId: DEFAULT_OPENAI_PROVIDERS[0]?.id || "",
   privateBaseUrl: DEFAULTS.privateBaseUrl,
   privateApiKey: DEFAULTS.privateApiKey,
   privateModel: DEFAULTS.privateModel,
@@ -444,8 +428,7 @@ export function normalizeStrictPromptText(value: unknown) {
 
 export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
   const source = isSettingsRecord(values) ? values : {};
-  const hasProviders = Object.prototype.hasOwnProperty.call(source, "openaiProviders");
-  const sourceProtocol: ApiProtocol = source.protocol === "private" ? "private" : source.protocol === "gemini" ? "gemini" : "openai";
+  const sourceProtocol: ApiProtocol = source.protocol === "gemini" ? "gemini" : "openai";
   const currentBaseUrl = String(source.baseUrl || DEFAULTS.baseUrl).trim() || DEFAULTS.baseUrl;
   const currentApiKey = String(source.apiKey || "").trim();
   const currentPrivateBaseUrl = String(source.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl;
@@ -459,59 +442,11 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
   const currentResponsesModel = String(source.responsesModel || source.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel;
   const currentCompletionsModel = String(source.completionsModel || source.llmModel || DEFAULTS.completionsModel).trim() || DEFAULTS.completionsModel;
   const openaiProviders = normalizeOpenAIProviders(source.openaiProviders, source);
-  if (!hasProviders && !openaiProviders.some((provider) => provider.baseUrl === currentBaseUrl)) {
-    openaiProviders.push({
-      id: "legacy-custom",
-      name: "自定义供应商",
-      protocol: "openai",
-      baseUrl: currentBaseUrl,
-      apiKey: currentApiKey,
-      generationsModel: currentGenerationsModel,
-      editsModel: currentEditsModel,
-      responsesModel: currentResponsesModel,
-      completionsModel: currentCompletionsModel,
-      privateBaseUrl: currentPrivateBaseUrl,
-      privateApiKey: currentPrivateApiKey,
-      privateModel: currentPrivateModel,
-      geminiBaseUrl: currentGeminiBaseUrl,
-      geminiApiKey: currentGeminiApiKey,
-      geminiModel: currentGeminiModel,
-      imageResponseMode: "auto",
-      multiImageField: "auto",
-    });
-  }
-  const sourceProviders = Array.isArray(source.openaiProviders) ? source.openaiProviders : [];
-  const hasProviderProtocol = sourceProviders.some((provider) => isSettingsRecord(provider) && Object.prototype.hasOwnProperty.call(provider, "protocol"));
-  let migratedPrivateProviderId = "";
-  if (sourceProtocol === "private" && !hasProviderProtocol) {
-    migratedPrivateProviderId = "legacy-private";
-    openaiProviders.push({
-      id: migratedPrivateProviderId,
-      name: "私有协议",
-      protocol: "private",
-      baseUrl: currentBaseUrl,
-      apiKey: currentApiKey,
-      generationsModel: currentGenerationsModel,
-      editsModel: currentEditsModel,
-      responsesModel: currentResponsesModel,
-      completionsModel: currentCompletionsModel,
-      privateBaseUrl: currentPrivateBaseUrl,
-      privateApiKey: currentPrivateApiKey,
-      privateModel: currentPrivateModel,
-      geminiBaseUrl: currentGeminiBaseUrl,
-      geminiApiKey: currentGeminiApiKey,
-      geminiModel: currentGeminiModel,
-      imageResponseMode: "auto",
-      multiImageField: "auto",
-    });
-  }
   const requestedActiveId = String(source.activeOpenAIProviderId || "").trim();
-  const matchedProvider = sourceProtocol === "private"
-    ? openaiProviders.find((provider) => provider.protocol === "private" && provider.privateBaseUrl === currentPrivateBaseUrl)
-    : sourceProtocol === "gemini"
+  const matchedProvider = sourceProtocol === "gemini"
       ? openaiProviders.find((provider) => provider.protocol === "gemini" && provider.geminiBaseUrl === currentGeminiBaseUrl)
       : openaiProviders.find((provider) => provider.protocol === "openai" && provider.baseUrl === currentBaseUrl);
-  const activeProviderId = migratedPrivateProviderId || (requestedActiveId && openaiProviders.some((provider) => provider.id === requestedActiveId)
+  const activeProviderId = (requestedActiveId && openaiProviders.some((provider) => provider.id === requestedActiveId)
     ? requestedActiveId
     : matchedProvider?.id || "");
   const activeProvider = openaiProviders.find((provider) => provider.id === activeProviderId);
@@ -730,7 +665,7 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
     providers.push({
       id,
       name: String(item.name || "未命名供应商").trim() || "未命名供应商",
-      protocol: item.protocol === "private" ? "private" : item.protocol === "gemini" ? "gemini" : "openai",
+      protocol: item.protocol === "gemini" ? "gemini" : "openai",
       baseUrl: String(item.baseUrl || "").trim(),
       apiKey: String(item.apiKey || "").trim(),
       generationsModel: String(item.generationsModel || fallback.generationsModel || fallback.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
@@ -745,6 +680,8 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
       geminiModel: String(item.geminiModel || fallback.geminiModel || DEFAULTS.geminiModel).trim() || DEFAULTS.geminiModel,
       imageResponseMode: optionFromValue(item.imageResponseMode, IMAGE_RESPONSE_MODES, "auto"),
       multiImageField: optionFromValue(item.multiImageField, MULTI_IMAGE_FIELD_MODES, "auto"),
+      streamImages: Boolean(item.streamImages),
+      streamPartialImages: Math.min(5, Math.max(1, Number(item.streamPartialImages) || 2)),
     });
     return providers;
   }, []);
@@ -1087,7 +1024,7 @@ export function restoreCachedRequest(
     index: Number.parseInt(String(request.index), 10) || 1,
     total: Number.parseInt(String(request.total), 10) || 1,
     method: request.method || "",
-    protocol: request.protocol === "private" ? "private" : "openai",
+    protocol: request.protocol === "gemini" ? "gemini" : "openai",
     endpoint: String(request.endpoint || ""),
     payload: request.payload || {},
     sourcePrompt: String(request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload))),

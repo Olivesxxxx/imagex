@@ -398,7 +398,7 @@ export function ResultPanel({
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
-  settings: Pick<AppSettings, "protocol" | "baseUrl" | "privateBaseUrl" | "geminiBaseUrl" | "openaiProviders" | "activeOpenAIProviderId" | "requestConcurrency" | "requestIntervalSeconds">;
+  settings: Pick<AppSettings, "protocol" | "baseUrl" | "geminiBaseUrl" | "openaiProviders" | "activeOpenAIProviderId" | "requestConcurrency" | "requestIntervalSeconds">;
   connectionStatus: ConnectionStatus;
   testConnectionStatus: ConnectionStatus;
   onTestConnection: () => void | Promise<void>;
@@ -430,17 +430,23 @@ export function ResultPanel({
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId);
   const providerName = activeProvider?.name || (language === "en" ? "Provider" : "供应商");
-  const protocolLabel = settings.protocol === "private" ? (language === "en" ? "Private" : "私有协议") : settings.protocol === "gemini" ? "Gemini" : "OpenAI";
+  const protocolLabel = settings.protocol === "gemini" ? "Gemini" : "OpenAI";
   const appSettings = settings as AppSettings;
-  const apiUrl = (settings.protocol === "private" ? appSettings.privateBaseUrl : settings.protocol === "gemini" ? appSettings.geminiBaseUrl : settings.baseUrl).trim();
-  const apiKey = (settings.protocol === "private" ? appSettings.privateApiKey : settings.protocol === "gemini" ? appSettings.geminiApiKey : appSettings.apiKey).trim();
+  const apiUrl = (settings.protocol === "gemini" ? appSettings.geminiBaseUrl : settings.baseUrl).trim();
+  const apiKey = (settings.protocol === "gemini" ? appSettings.geminiApiKey : appSettings.apiKey).trim();
   const configurationIssue = settings.protocol === "openai" && !activeProvider
     ? (language === "en" ? "Provider" : "供应商")
     : !apiUrl
       ? copy.settings.apiUrl
       : !apiKey
-        ? (settings.protocol === "private" ? copy.settings.privateApiKey : settings.protocol === "gemini" ? copy.settings.geminiApiKey : copy.settings.apiKey)
-        : null;
+        ? (settings.protocol === "gemini" ? copy.settings.geminiApiKey : copy.settings.apiKey)
+        : settings.protocol === "gemini"
+          ? (!appSettings.geminiModel.trim() ? copy.settings.geminiModel : null)
+          : (!activeProvider?.generationsModel.trim()
+            ? copy.settings.generationsModel
+            : !activeProvider?.editsModel.trim()
+              ? copy.settings.editsModel
+              : null);
   const [latency, setLatency] = useState<number | null>(null);
   const [latencyState, setLatencyState] = useState<"idle" | "measuring" | "ready" | "unavailable">("idle");
   const [latencyCooldownUntil, setLatencyCooldownUntil] = useState(0);
