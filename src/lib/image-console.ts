@@ -21,6 +21,7 @@ export {
 } from "@/lib/prompt-history";
 
 export const STORAGE_KEY = "ImageX-settings";
+export const SETTINGS_BACKUP_KEY = "ImageX-settings-backup";
 export const REQUEST_CACHE_KEY = "ImageX-requests";
 export const LAST_PROMPT_KEY = "ImageX-last-prompt";
 export const PROMPT_HISTORY_KEY = "ImageX-prompt-history";
@@ -92,7 +93,7 @@ export type MultiImageFieldMode = (typeof MULTI_IMAGE_FIELD_MODES)[number];
  * cached request manifests can be read without crashing TypeScript clients. */
 export type ApiProtocol = "openai" | "gemini" | "private";
 export type ConsoleMode = "generate" | "edit";
-export type GeneratorModeTab = ConsoleMode | "workflow";
+export type GeneratorModeTab = ConsoleMode | "video" | "workflow";
 export type GenerationMethod = "gpt-image-2" | "image_generation" | "completions" | "edit";
 export interface OpenAIProvider {
   id: string;
@@ -102,6 +103,7 @@ export interface OpenAIProvider {
   apiKey: string;
   generationsModel: string;
   editsModel: string;
+  videoModel: string;
   responsesModel: string;
   completionsModel: string;
   privateBaseUrl: string;
@@ -114,13 +116,79 @@ export interface OpenAIProvider {
   multiImageField: MultiImageFieldMode;
   streamImages: boolean;
   streamPartialImages: number;
+  authHeaderName: string;
+  authPrefix: string;
+  asyncTaskEnabled: boolean;
+  asyncStatusUrl: string;
+  asyncTaskIdPath: string;
+  asyncStatusPath: string;
+  asyncResultPath: string;
+  asyncErrorPath: string;
+  asyncSuccessValues: string;
+  asyncFailureValues: string;
+  asyncPollIntervalSeconds: number;
+  asyncMaxPollAttempts: number;
 }
-export type OpenAIImageRequestOptions = Pick<OpenAIProvider, "imageResponseMode" | "multiImageField"> & Partial<Pick<OpenAIProvider, "streamImages" | "streamPartialImages">>;
+export type OpenAIImageRequestOptions = Pick<OpenAIProvider, "imageResponseMode" | "multiImageField"> & Partial<Pick<OpenAIProvider,
+  | "streamImages"
+  | "streamPartialImages"
+  | "authHeaderName"
+  | "authPrefix"
+  | "asyncTaskEnabled"
+  | "asyncStatusUrl"
+  | "asyncTaskIdPath"
+  | "asyncStatusPath"
+  | "asyncResultPath"
+  | "asyncErrorPath"
+  | "asyncSuccessValues"
+  | "asyncFailureValues"
+  | "asyncPollIntervalSeconds"
+  | "asyncMaxPollAttempts"
+>>;
+
+export const DEFAULT_PROVIDER_AUTH_HEADER = "Authorization";
+export const DEFAULT_PROVIDER_AUTH_PREFIX = "Bearer";
+export const DEFAULT_ASYNC_POLL_INTERVAL_SECONDS = 3;
+export const DEFAULT_ASYNC_MAX_POLL_ATTEMPTS = 100;
+
+function defaultProviderTransportConfig() {
+  return {
+    authHeaderName: DEFAULT_PROVIDER_AUTH_HEADER,
+    authPrefix: DEFAULT_PROVIDER_AUTH_PREFIX,
+    asyncTaskEnabled: false,
+    asyncStatusUrl: "",
+    asyncTaskIdPath: "task_id",
+    asyncStatusPath: "status",
+    asyncResultPath: "",
+    asyncErrorPath: "error.message",
+    asyncSuccessValues: "completed,complete,success,succeeded,done",
+    asyncFailureValues: "failed,error,canceled,cancelled",
+    asyncPollIntervalSeconds: DEFAULT_ASYNC_POLL_INTERVAL_SECONDS,
+    asyncMaxPollAttempts: DEFAULT_ASYNC_MAX_POLL_ATTEMPTS,
+    videoModel: "",
+  } satisfies Pick<OpenAIProvider,
+    | "authHeaderName"
+    | "authPrefix"
+    | "asyncTaskEnabled"
+    | "asyncStatusUrl"
+    | "asyncTaskIdPath"
+    | "asyncStatusPath"
+    | "asyncResultPath"
+    | "asyncErrorPath"
+    | "asyncSuccessValues"
+    | "asyncFailureValues"
+    | "asyncPollIntervalSeconds"
+    | "asyncMaxPollAttempts"
+    | "videoModel"
+  >;
+}
+
+const defaultProvider = (value: Omit<OpenAIProvider, "videoModel">): OpenAIProvider => ({ ...value, videoModel: "" });
 export const DEFAULT_OPENAI_PROVIDERS: OpenAIProvider[] = [
-  { id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
-  { id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
-  { id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
-  { id: "gemini", name: "Gemini", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2 },
+  defaultProvider({ id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "gemini", name: "Gemini", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
 ];
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
 export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
@@ -144,6 +212,7 @@ export interface AppSettings {
   developmentMode: boolean;
   generationsModel: string;
   editsModel: string;
+  videoModel: string;
   responsesModel: string;
   completionsModel: string;
   strictPromptText: string;
@@ -174,6 +243,7 @@ export type SharedSettings = Pick<
   | "developmentMode"
   | "generationsModel"
   | "editsModel"
+  | "videoModel"
   | "responsesModel"
   | "completionsModel"
   | "strictPromptText"
@@ -318,6 +388,7 @@ export const DEFAULTS: AppSettings = {
   developmentMode: false,
   generationsModel: "gpt-image-2.5",
   editsModel: "gpt-image-2.5",
+  videoModel: "",
   responsesModel: "gpt-5.4-mini",
   completionsModel: "gpt-5.4-mini",
   strictPromptText: "",
@@ -351,6 +422,7 @@ export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
   developmentMode: DEFAULTS.developmentMode,
   generationsModel: DEFAULTS.generationsModel,
   editsModel: DEFAULTS.editsModel,
+  videoModel: DEFAULTS.videoModel,
   responsesModel: DEFAULTS.responsesModel,
   completionsModel: DEFAULTS.completionsModel,
   strictPromptText: DEFAULTS.strictPromptText,
@@ -439,6 +511,7 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
   const currentGeminiModel = String(source.geminiModel || DEFAULTS.geminiModel).trim() || DEFAULTS.geminiModel;
   const currentGenerationsModel = String(source.generationsModel || source.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel;
   const currentEditsModel = String(source.editsModel || source.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel;
+  const currentVideoModel = String(source.videoModel || "").trim();
   const currentResponsesModel = String(source.responsesModel || source.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel;
   const currentCompletionsModel = String(source.completionsModel || source.llmModel || DEFAULTS.completionsModel).trim() || DEFAULTS.completionsModel;
   const openaiProviders = normalizeOpenAIProviders(source.openaiProviders, source);
@@ -467,6 +540,7 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
     developmentMode: DEVELOPMENT_FIXTURES_ENABLED && Boolean(source.developmentMode),
     generationsModel: activeProvider?.generationsModel || currentGenerationsModel,
     editsModel: activeProvider?.editsModel || currentEditsModel,
+    videoModel: activeProvider?.videoModel || currentVideoModel,
     responsesModel: activeProvider?.responsesModel || currentResponsesModel,
     completionsModel: activeProvider?.completionsModel || currentCompletionsModel,
     strictPromptText: normalizeStrictPromptText(source.strictPromptText),
@@ -670,6 +744,7 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
       apiKey: String(item.apiKey || "").trim(),
       generationsModel: String(item.generationsModel || fallback.generationsModel || fallback.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
       editsModel: String(item.editsModel || fallback.editsModel || fallback.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel,
+      videoModel: String(item.videoModel || "").trim(),
       responsesModel: String(item.responsesModel || fallback.responsesModel || fallback.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel,
       completionsModel: String(item.completionsModel || fallback.completionsModel || fallback.llmModel || DEFAULTS.completionsModel).trim() || DEFAULTS.completionsModel,
       privateBaseUrl: String(item.privateBaseUrl || fallback.privateBaseUrl || DEFAULTS.privateBaseUrl).trim() || DEFAULTS.privateBaseUrl,
@@ -682,6 +757,18 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
       multiImageField: optionFromValue(item.multiImageField, MULTI_IMAGE_FIELD_MODES, "auto"),
       streamImages: Boolean(item.streamImages),
       streamPartialImages: Math.min(5, Math.max(1, Number(item.streamPartialImages) || 2)),
+      authHeaderName: String(item.authHeaderName ?? "Authorization").trim() || "Authorization",
+      authPrefix: String(item.authPrefix ?? "Bearer").trim(),
+      asyncTaskEnabled: Boolean(item.asyncTaskEnabled),
+      asyncStatusUrl: String(item.asyncStatusUrl || "").trim(),
+      asyncTaskIdPath: String(item.asyncTaskIdPath ?? "task_id").trim() || "task_id",
+      asyncStatusPath: String(item.asyncStatusPath ?? "status").trim() || "status",
+      asyncResultPath: String(item.asyncResultPath || "").trim(),
+      asyncErrorPath: String(item.asyncErrorPath ?? "error.message").trim() || "error.message",
+      asyncSuccessValues: String(item.asyncSuccessValues ?? "completed,complete,success,succeeded,done").trim() || "completed,complete,success,succeeded,done",
+      asyncFailureValues: String(item.asyncFailureValues ?? "failed,error,canceled,cancelled").trim() || "failed,error,canceled,cancelled",
+      asyncPollIntervalSeconds: Math.min(60, Math.max(1, Number(item.asyncPollIntervalSeconds) || 3)),
+      asyncMaxPollAttempts: Math.min(1000, Math.max(1, Number(item.asyncMaxPollAttempts) || 100)),
     });
     return providers;
   }, []);
@@ -1827,6 +1914,24 @@ export function responseErrorMessage(status: number, body: unknown, language: Me
 
   if (status === 401 || searchable.includes("invalid api key")) {
     return copy.responseErrorInvalidApiKey;
+  }
+
+  if (status === 524) {
+    return language === "en"
+      ? "HTTP 524: The provider gateway timed out while waiting for its upstream service. The task may still have been charged; check the provider before retrying."
+      : "HTTP 524：供应商网关等待上游服务超时。任务可能已经扣费，重试前请先确认供应商状态。";
+  }
+
+  if (status === 408 || status === 504) {
+    return language === "en"
+      ? `HTTP ${status}: The provider or gateway took too long to reply.`
+      : `HTTP ${status}：供应商或网关等待响应超时。`;
+  }
+
+  if (status === 429) {
+    return language === "en"
+      ? "HTTP 429: The provider rate limit was reached. Reduce concurrency or wait before retrying."
+      : "HTTP 429：供应商触发限流。请降低并发或等待后重试。";
   }
 
   if (status >= 200 && status < 300 && responseBodyHasError(body)) {

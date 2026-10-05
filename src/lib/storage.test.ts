@@ -8,7 +8,7 @@ import {
   saveRequestDetails,
   saveSettings,
 } from "@/lib/storage";
-import { DEFAULT_STORED_SETTINGS, STORAGE_KEY, type ImageRequestRecord } from "@/lib/image-console";
+import { DEFAULT_STORED_SETTINGS, SETTINGS_BACKUP_KEY, STORAGE_KEY, type ImageRequestRecord } from "@/lib/image-console";
 import { createProductSuiteTask, deleteProductSuiteTask, loadProductSuiteTasks, renderProductSuitePrompt, saveProductSuiteTask } from "@/lib/product-suite";
 
 type FakeRequest<T = unknown> = IDBRequest<T> & {
@@ -225,6 +225,31 @@ describe("storage", () => {
     settings.shared.rememberKey = true;
     saveSettings(settings);
     expect(loadSettings().shared.openaiProviders[0]?.apiKey).toBe("provider-secret");
+  });
+
+  test("restores settings from the previous local backup when the active JSON is corrupt", () => {
+    const settings = structuredClone(DEFAULT_STORED_SETTINGS);
+    settings.shared.requestConcurrency = 7;
+    saveSettings(settings);
+    settings.shared.requestConcurrency = 8;
+    saveSettings(settings);
+    localStorage.setItem(STORAGE_KEY, "{broken");
+
+    expect(loadSettings().shared.requestConcurrency).toBe(7);
+    expect(localStorage.getItem(SETTINGS_BACKUP_KEY)).toContain("requestConcurrency");
+  });
+
+  test("removes old API keys from the backup when remember-key is disabled", () => {
+    const settings = structuredClone(DEFAULT_STORED_SETTINGS);
+    settings.shared.rememberKey = true;
+    settings.shared.openaiProviders[0].apiKey = "old-secret";
+    saveSettings(settings);
+    settings.shared.rememberKey = false;
+    settings.shared.openaiProviders[0].apiKey = "";
+    saveSettings(settings);
+
+    expect(localStorage.getItem(SETTINGS_BACKUP_KEY)).not.toContain("old-secret");
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain("old-secret");
   });
 
   test("persists product suite tasks in browser storage", async () => {

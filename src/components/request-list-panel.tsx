@@ -120,6 +120,9 @@ function RequestRow({
         ? `Delete ${request.title}`
         : `删除 ${request.title}`;
   const ActionIcon = isActive ? XIcon : isConfirmingDelete ? CheckIcon : Trash2Icon;
+  const displayTitle = productSuiteAssociation
+    ? request.title.split(" · ").slice(0, -2).join(" · ") || request.title
+    : request.title;
 
   return (
     <div
@@ -163,7 +166,7 @@ function RequestRow({
             <Badge variant={statusVariant(request.status)} className={statusBadgeClassName(request.status)}>
               {requestStatusDisplayLabel(copy.requestStatusLabels, request.status)}
             </Badge>
-            <strong className="min-w-0 truncate text-sm font-semibold">{request.title}</strong>
+            <strong className="min-w-0 truncate text-sm font-semibold">{displayTitle}</strong>
           </span>
           <span className="block min-w-0 truncate text-xs font-medium text-muted-foreground">{timing}</span>
           {productSuiteStatusText ? <span className="block min-w-0 truncate text-xs font-medium text-muted-foreground" title={productSuiteStatusText}>{productSuiteStatusText}</span> : null}
@@ -394,6 +397,8 @@ export function RequestListPanel({
           </SegmentedTabsList>
         </Tabs>
       </div>
+
+      <div id="video-task-list" className="standard-scrollbar max-h-[42%] overflow-y-auto overscroll-contain px-3 pb-2" />
 
       <div className="min-h-0 flex-1 py-3">
         <div className="standard-scrollbar request-list-scroll h-full overflow-y-auto overscroll-contain">

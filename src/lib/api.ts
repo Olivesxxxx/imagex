@@ -1,8 +1,12 @@
 import { normalizeModelsEndpoint } from "@/lib/endpoints";
-import { responseBodyHasError, responseErrorMessage } from "@/lib/image-console";
+import { extractImages, responseBodyHasError, responseErrorMessage } from "@/lib/image-console";
 import type { OpenAIImageRequestOptions } from "@/lib/image-console";
 
-export function authHeaders(apiKey: string, contentType: string | null = "application/json") {
+export function authHeaders(
+  apiKey: string,
+  contentType: string | null = "application/json",
+  options: Pick<OpenAIImageRequestOptions, "authHeaderName" | "authPrefix"> = {},
+) {
   const headers: Record<string, string> = {};
 
   if (contentType) {
@@ -10,7 +14,12 @@ export function authHeaders(apiKey: string, contentType: string | null = "applic
   }
 
   if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
+    const headerName = String(options.authHeaderName || "Authorization").trim() || "Authorization";
+    const prefix = String(options.authPrefix ?? "Bearer").trim();
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(headerName) || /[\r\n]/.test(prefix)) {
+      throw new Error("Invalid authentication header configuration.");
+    }
+    headers[headerName] = prefix ? `${prefix} ${apiKey}` : apiKey;
   }
 
   return headers;
@@ -79,6 +88,92 @@ function responseFormatErrorDetails(body: unknown) {
   };
 }
 
+function valueAtPath(value: unknown, path: string) {
+  const normalized = String(path || "").trim().replace(/^\$\.?/, "");
+  if (!normalized) return value;
+  return normalized.split(/[.[\]]+/).filter(Boolean).reduce<unknown>((current, key) => {
+    if (!current || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[key];
+  }, value);
+}
+
+function pathValueText(value: unknown, path: string) {
+  const found = valueAtPath(value, path);
+  return found == null ? "" : String(found).trim();
+}
+
+function csvValues(value: unknown) {
+  return new Set(String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+}
+
+function asyncResultBody(body: unknown, resultPath: string) {
+  if (!resultPath.trim()) return body;
+  const result = valueAtPath(body, resultPath);
+  if (result == null) return body;
+  if (typeof result === "string") {
+    const text = result.trim();
+    if (/^(?:https?:\/\/|data:image\/)/i.test(text)) return { data: [{ url: text }] };
+    return body;
+  }
+  return result;
+}
+
+function asyncTaskId(body: unknown, path: string) {
+  const value = valueAtPath(body, path);
+  if (typeof value === "string" || typeof value === "number") return String(value).trim();
+  return "";
+}
+
+async function resolveAsyncTask(
+  initialBody: unknown,
+  options: OpenAIImageRequestOptions,
+  apiKey: string,
+  signal: AbortSignal,
+  language: "zh" | "en",
+) {
+  if (!options.asyncTaskEnabled) return initialBody;
+  const taskId = asyncTaskId(initialBody, options.asyncTaskIdPath || "task_id");
+  const statusUrlTemplate = String(options.asyncStatusUrl || "").trim();
+  if (!taskId || !statusUrlTemplate) return initialBody;
+
+  const successValues = csvValues(options.asyncSuccessValues || "completed,complete,success,succeeded,done");
+  const failureValues = csvValues(options.asyncFailureValues || "failed,error,canceled,cancelled");
+  const attempts = Math.min(1000, Math.max(1, Number(options.asyncMaxPollAttempts) || 100));
+  const intervalMs = Math.min(60000, Math.max(1000, Number(options.asyncPollIntervalSeconds) * 1000 || 3000));
+  const url = statusUrlTemplate.replace(/\{(?:task_id|taskId|id)\}/gi, encodeURIComponent(taskId));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (signal.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+    if (attempt > 0) await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, intervalMs);
+      const onAbort = () => { window.clearTimeout(timer); reject(new DOMException("The operation was aborted.", "AbortError")); };
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const response = await fetch(url, {
+      method: "GET",
+      headers: authHeaders(apiKey, null, options),
+      signal,
+    });
+    const body = await parseResponseBody(response);
+    if (!response.ok || responseBodyHasError(body)) {
+      const error = new Error(responseErrorMessage(response.status, body, language)) as Error & { responseBody?: unknown; status?: number };
+      error.responseBody = body;
+      error.status = response.status;
+      throw error;
+    }
+
+    const result = asyncResultBody(body, options.asyncResultPath || "");
+    const status = pathValueText(body, options.asyncStatusPath || "status").toLowerCase();
+    if (extractImages(result).length > 0 || (status && successValues.has(status))) return result;
+    if (status && failureValues.has(status)) {
+      const detail = pathValueText(body, options.asyncErrorPath || "error.message");
+      throw new Error(detail || (language === "en" ? `Async image task failed (${status}).` : `异步图片任务失败（${status}）。`));
+    }
+  }
+
+  throw new Error(language === "en" ? "Async image task polling timed out." : "异步图片任务轮询超时。 ");
+}
+
 function responseFormatIsUnsupported(response: Response, body: unknown) {
   if (response.status !== 400 && response.status !== 422) return false;
   const { param, message } = responseFormatErrorDetails(body);
@@ -118,7 +213,7 @@ async function postJsonWithResponseFormatFallback(
 ) {
   const request = (body: unknown) => fetch(endpoint, {
     method: "POST",
-    headers: authHeaders(apiKey),
+    headers: authHeaders(apiKey, "application/json", options),
     body: JSON.stringify(body),
     signal,
   });
@@ -127,14 +222,14 @@ async function postJsonWithResponseFormatFallback(
   const response = await request({ ...withResponseFormat(payload, responseFormat) as Record<string, unknown>, ...(options.streamImages ? { stream: true, partial_images: options.streamPartialImages } : {}) });
   if (options.streamImages && response.ok && response.body && response.headers.get("content-type")?.includes("text/event-stream")) {
     const streamed = await parseEventStreamBody(response, signal);
-    return validateParsedResponseBody(new Response(JSON.stringify(streamed), { status: response.status }), streamed, language);
+    return resolveAsyncTask(validateParsedResponseBody(new Response(JSON.stringify(streamed), { status: response.status }), streamed, language), options, apiKey, signal, language);
   }
   const body = await parseResponseBody(response);
   if (options.imageResponseMode !== "auto" || !responseFormatIsUnsupported(response, body)) {
-    return validateParsedResponseBody(response, body, language);
+    return resolveAsyncTask(validateParsedResponseBody(response, body, language), options, apiKey, signal, language);
   }
 
-  return validatedResponseBody(await request(withoutResponseFormat(payload)), language);
+  return resolveAsyncTask(await validatedResponseBody(await request(withoutResponseFormat(payload)), language), options, apiKey, signal, language);
 }
 
 async function parseEventStreamBody(response: Response, signal?: AbortSignal): Promise<unknown> {
@@ -188,11 +283,11 @@ export async function postImageGeneration(
 
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: authHeaders(apiKey),
+    headers: authHeaders(apiKey, "application/json", options),
     body: JSON.stringify(payload),
     signal,
   });
-  return validatedResponseBody(response, language);
+  return resolveAsyncTask(await validatedResponseBody(response, language), options, apiKey, signal, language);
 }
 
 function buildImageEditFormData(
@@ -261,7 +356,7 @@ export async function postImageEdit(
   const alternateImageField: "image" | "image[]" = initialImageField === "image[]" ? "image" : "image[]";
   const request = (imageField: "image" | "image[]", responseFormat: "b64_json" | "url" | null) => fetch(endpoint, {
     method: "POST",
-    headers: authHeaders(apiKey, null),
+    headers: authHeaders(apiKey, null, options),
     body: buildImageEditFormData(payload, images, language, imageField, responseFormat, mask),
     signal,
   });
@@ -287,7 +382,7 @@ export async function postImageEdit(
       continue;
     }
 
-    return validateParsedResponseBody(response, body, language);
+    return resolveAsyncTask(validateParsedResponseBody(response, body, language), options, apiKey, signal, language);
   }
 }
 
@@ -360,11 +455,12 @@ export async function fetchModels(
   apiKey: string,
   language: "zh" | "en" = "zh",
   signal?: AbortSignal,
+  options: Pick<OpenAIImageRequestOptions, "authHeaderName" | "authPrefix"> = {},
 ) {
   const endpoint = normalizeModelsEndpoint(baseUrl);
   const response = await fetch(endpoint, {
     method: "GET",
-    headers: authHeaders(apiKey),
+    headers: authHeaders(apiKey, "application/json", options),
     signal,
   });
   return { endpoint, body: await validatedResponseBody(response, language) };

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { postImageEdit, postImageGeneration } from "@/lib/api";
+import { authHeaders, postImageEdit, postImageGeneration } from "@/lib/api";
 
 const endpoint = "https://images.example/v1/images/generations";
 const successBody = { data: [{ b64_json: "aW1hZ2U=" }] };
@@ -18,6 +18,49 @@ afterEach(() => {
 });
 
 describe("OpenAI-compatible image requests", () => {
+  test("supports a custom authentication header and empty prefix", () => {
+    expect(authHeaders("secret", "application/json", { authHeaderName: "x-api-key", authPrefix: "" })).toEqual({
+      "Content-Type": "application/json",
+      "x-api-key": "secret",
+    });
+  });
+
+  test("rejects invalid authentication header names", () => {
+    expect(() => authHeaders("secret", "application/json", { authHeaderName: "Bad Header" })).toThrow(/Invalid authentication header/);
+  });
+
+  test("polls an async task without submitting the image twice", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ task_id: "task-1", status: "queued" }))
+      .mockResolvedValueOnce(jsonResponse({ status: "completed", result: { data: [{ b64_json: "aW1hZ2U=" }] } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = postImageGeneration(
+      endpoint,
+      "test-key",
+      { model: "image-model", prompt: "a product" },
+      new AbortController().signal,
+      "zh",
+      {
+        imageResponseMode: "auto",
+        multiImageField: "auto",
+        asyncTaskEnabled: true,
+        asyncStatusUrl: "https://images.example/tasks/{task_id}",
+        asyncTaskIdPath: "task_id",
+        asyncStatusPath: "status",
+        asyncResultPath: "result",
+        asyncPollIntervalSeconds: 1,
+        asyncMaxPollAttempts: 2,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(pending).resolves.toEqual({ data: [{ b64_json: "aW1hZ2U=" }] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://images.example/tasks/task-1");
+    vi.useRealTimers();
+  });
   test("prefers base64 generation responses without retrying a successful request", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(successBody));
     vi.stubGlobal("fetch", fetchMock);

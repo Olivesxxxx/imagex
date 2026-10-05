@@ -1050,6 +1050,11 @@ describe("image console logic", () => {
     expect(responseErrorMessage(503, { error: "auth_unavailable" })).toMatch(/CLIProxyAPI 没有可用认证/);
   });
 
+  test("explains provider gateway timeout responses", () => {
+    expect(responseErrorMessage(524, null)).toMatch(/HTTP 524/);
+    expect(responseErrorMessage(524, null)).toMatch(/供应商网关/);
+  });
+
   test("treats successful HTTP responses with error bodies as failures", () => {
     const body = {
       error: {

@@ -16,6 +16,7 @@ import {
   REQUEST_DETAIL_STORE_NAME,
   REQUEST_RECORDS_STORE_NAME,
   restoreCachedRequest,
+  SETTINGS_BACKUP_KEY,
   STORAGE_KEY,
   type ConsoleMode,
   type CachedRequestRecord,
@@ -217,12 +218,49 @@ export function loadSettings(): StoredConsoleSettings {
   try {
     return normalizeStoredSettings(JSON.parse(stored));
   } catch {
-    return cloneDefaultStoredSettings();
+    try {
+      const backup = localStorageStore()?.getItem(SETTINGS_BACKUP_KEY);
+      return backup ? normalizeStoredSettings(JSON.parse(backup)) : cloneDefaultStoredSettings();
+    } catch {
+      return cloneDefaultStoredSettings();
+    }
   }
 }
 
 export function saveSettings(values: StoredConsoleSettings) {
   const normalized = normalizeStoredSettings(values);
+  const storage = localStorageStore();
+  const previous = storage?.getItem(STORAGE_KEY);
+  if (previous) {
+    try {
+      const previousRecord = JSON.parse(previous) as Record<string, unknown>;
+      if (!normalized.shared.rememberKey) {
+        const shared = previousRecord.shared && typeof previousRecord.shared === "object"
+          ? previousRecord.shared as Record<string, unknown>
+          : previousRecord;
+        shared.apiKey = "";
+        shared.privateApiKey = "";
+        shared.geminiApiKey = "";
+        const providerLists = [shared.openaiProviders, previousRecord.openaiProviders].filter(Array.isArray) as unknown[][];
+        for (const providers of providerLists) {
+          for (const provider of providers) {
+            if (!provider || typeof provider !== "object") continue;
+            const item = provider as Record<string, unknown>;
+            item.apiKey = "";
+            item.privateApiKey = "";
+            item.geminiApiKey = "";
+          }
+        }
+        previousRecord.apiKey = "";
+        previousRecord.privateApiKey = "";
+        previousRecord.geminiApiKey = "";
+        previousRecord.shared = shared;
+      }
+      storage?.setItem(SETTINGS_BACKUP_KEY, JSON.stringify(previousRecord));
+    } catch {
+      // A backup is best effort; saving the current settings remains primary.
+    }
+  }
   const persistedShared = {
     ...normalized.shared,
     apiKey: normalized.shared.rememberKey ? normalized.shared.apiKey : "",
@@ -248,6 +286,7 @@ export function saveSettings(values: StoredConsoleSettings) {
     geminiModel: normalized.shared.geminiModel,
     generationsModel: normalized.shared.generationsModel,
     editsModel: normalized.shared.editsModel,
+    videoModel: normalized.shared.videoModel,
     responsesModel: normalized.shared.responsesModel,
     completionsModel: normalized.shared.completionsModel,
     rememberKey: normalized.shared.rememberKey,
@@ -269,11 +308,12 @@ export function saveSettings(values: StoredConsoleSettings) {
     persisted.geminiApiKey = normalized.shared.geminiApiKey;
   }
 
-  localStorageStore()?.setItem(STORAGE_KEY, JSON.stringify(persisted));
+  storage?.setItem(STORAGE_KEY, JSON.stringify(persisted));
 }
 
 export function resetSettings() {
   localStorageStore()?.removeItem(STORAGE_KEY);
+  localStorageStore()?.removeItem(SETTINGS_BACKUP_KEY);
 }
 
 export function loadLastPrompt() {

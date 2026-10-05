@@ -23,6 +23,7 @@ export interface SettingsDialogProps {
   saveCurrentSettings: () => void;
   clearAllData: () => void;
   testConnection: () => void;
+  cancelConnectionTest: () => void;
 }
 
 export function SettingsDialog({
@@ -35,6 +36,7 @@ export function SettingsDialog({
   saveCurrentSettings,
   clearAllData,
   testConnection,
+  cancelConnectionTest,
 }: SettingsDialogProps) {
   const { copy } = useI18n();
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
@@ -65,6 +67,7 @@ export function SettingsDialog({
   function addProvider() {
     const id = `provider-${Date.now()}`;
     const providers: OpenAIProvider[] = [...settings.openaiProviders, {
+      ...DEFAULT_OPENAI_PROVIDERS[0],
       id,
       name: copy.settings.provider,
       protocol: "openai",
@@ -72,6 +75,7 @@ export function SettingsDialog({
       apiKey: "",
       generationsModel: DEFAULTS.generationsModel,
       editsModel: DEFAULTS.editsModel,
+      videoModel: "",
       responsesModel: DEFAULTS.responsesModel,
       completionsModel: DEFAULTS.completionsModel,
       privateBaseUrl: DEFAULTS.privateBaseUrl,
@@ -111,6 +115,7 @@ export function SettingsDialog({
       apiKey: "",
       generationsModel: DEFAULTS.generationsModel,
       editsModel: DEFAULTS.editsModel,
+      videoModel: "",
       responsesModel: DEFAULTS.responsesModel,
       completionsModel: DEFAULTS.completionsModel,
       privateBaseUrl: DEFAULTS.privateBaseUrl,
@@ -188,7 +193,8 @@ export function SettingsDialog({
                         <Field><FieldLabel htmlFor="apiKey">{copy.settings.apiKey}</FieldLabel><Input id="apiKey" type="password" spellCheck={false} autoComplete="off" placeholder="api-key" value={activeProvider.apiKey} onChange={(event) => updateProviderConfig({ apiKey: event.target.value })} /></Field>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <Field><FieldLabel htmlFor="generationsModel">{copy.settings.generationsModel}</FieldLabel><Input id="generationsModel" value={activeProvider.generationsModel} onChange={(event) => updateProviderConfig({ generationsModel: event.target.value })} /></Field>
-                          <Field><FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel><Input id="editsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} /></Field>
+                            <Field><FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel><Input id="editsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} /></Field>
+                            <Field><FieldLabel htmlFor="videoModel">{copy.settings.videoModel}</FieldLabel><Input id="videoModel" value={activeProvider.videoModel} onChange={(event) => updateProviderConfig({ videoModel: event.target.value })} placeholder={copy.settings.videoModelOptional} /></Field>
                         </div>
                         <Field orientation="horizontal" className="!items-center"><Checkbox id="streamImages" checked={activeProvider.streamImages} onCheckedChange={(checked) => updateProviderConfig({ streamImages: checked === true })} /><FieldContent><FieldLabel htmlFor="streamImages">流式生成中间图</FieldLabel><p className="text-xs text-muted-foreground">供应商支持时保持连接并接收 partial_images。</p></FieldContent></Field>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -203,12 +209,33 @@ export function SettingsDialog({
                             <p className="text-xs leading-relaxed text-muted-foreground">{copy.settings.multiImageFieldDescription}</p>
                           </Field>
                         </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <Field><FieldLabel htmlFor="authHeaderName">{copy.settings.authHeaderName}</FieldLabel><Input id="authHeaderName" value={activeProvider.authHeaderName} onChange={(event) => updateProviderConfig({ authHeaderName: event.target.value })} /></Field>
+                          <Field><FieldLabel htmlFor="authPrefix">{copy.settings.authPrefix}</FieldLabel><Input id="authPrefix" value={activeProvider.authPrefix} onChange={(event) => updateProviderConfig({ authPrefix: event.target.value })} /></Field>
+                        </div>
+                        <Field orientation="horizontal" className="!items-center"><Checkbox id="asyncTaskEnabled" checked={activeProvider.asyncTaskEnabled} onCheckedChange={(checked) => updateProviderConfig({ asyncTaskEnabled: checked === true })} /><FieldContent><FieldLabel htmlFor="asyncTaskEnabled">{copy.settings.asyncTaskEnabled}</FieldLabel><p className="text-xs text-muted-foreground">{copy.settings.asyncTaskDescription}</p></FieldContent></Field>
+                        {activeProvider.asyncTaskEnabled ? (
+                          <>
+                            <Field><FieldLabel htmlFor="asyncStatusUrl">{copy.settings.asyncStatusUrl}</FieldLabel><Input id="asyncStatusUrl" type="url" spellCheck={false} value={activeProvider.asyncStatusUrl} onChange={(event) => updateProviderConfig({ asyncStatusUrl: event.target.value })} placeholder="https://api.example.com/tasks/{task_id}" /></Field>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <Field><FieldLabel htmlFor="asyncTaskIdPath">{copy.settings.asyncTaskIdPath}</FieldLabel><Input id="asyncTaskIdPath" value={activeProvider.asyncTaskIdPath} onChange={(event) => updateProviderConfig({ asyncTaskIdPath: event.target.value })} /></Field>
+                              <Field><FieldLabel htmlFor="asyncStatusPath">{copy.settings.asyncStatusPath}</FieldLabel><Input id="asyncStatusPath" value={activeProvider.asyncStatusPath} onChange={(event) => updateProviderConfig({ asyncStatusPath: event.target.value })} /></Field>
+                              <Field><FieldLabel htmlFor="asyncResultPath">{copy.settings.asyncResultPath}</FieldLabel><Input id="asyncResultPath" value={activeProvider.asyncResultPath} onChange={(event) => updateProviderConfig({ asyncResultPath: event.target.value })} placeholder="result.images" /></Field>
+                              <Field><FieldLabel htmlFor="asyncErrorPath">{copy.settings.asyncErrorPath}</FieldLabel><Input id="asyncErrorPath" value={activeProvider.asyncErrorPath} onChange={(event) => updateProviderConfig({ asyncErrorPath: event.target.value })} /></Field>
+                              <Field><FieldLabel htmlFor="asyncSuccessValues">{copy.settings.asyncSuccessValues}</FieldLabel><Input id="asyncSuccessValues" value={activeProvider.asyncSuccessValues} onChange={(event) => updateProviderConfig({ asyncSuccessValues: event.target.value })} /></Field>
+                              <Field><FieldLabel htmlFor="asyncFailureValues">{copy.settings.asyncFailureValues}</FieldLabel><Input id="asyncFailureValues" value={activeProvider.asyncFailureValues} onChange={(event) => updateProviderConfig({ asyncFailureValues: event.target.value })} /></Field>
+                              <Field><FieldLabel htmlFor="asyncPollIntervalSeconds">{copy.settings.asyncPollIntervalSeconds}</FieldLabel><Input id="asyncPollIntervalSeconds" type="number" min={1} max={60} step={1} value={activeProvider.asyncPollIntervalSeconds} onChange={(event) => updateProviderConfig({ asyncPollIntervalSeconds: Number(event.target.value) })} /></Field>
+                              <Field><FieldLabel htmlFor="asyncMaxPollAttempts">{copy.settings.asyncMaxPollAttempts}</FieldLabel><Input id="asyncMaxPollAttempts" type="number" min={1} max={1000} step={1} value={activeProvider.asyncMaxPollAttempts} onChange={(event) => updateProviderConfig({ asyncMaxPollAttempts: Number(event.target.value) })} /></Field>
+                            </div>
+                          </>
+                        ) : null}
                       </>
                     ) : (
                       <>
                         <Field><FieldLabel htmlFor="geminiBaseUrl">{copy.settings.geminiBaseUrl}</FieldLabel><Input id="geminiBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.geminiBaseUrl} value={activeProvider.geminiBaseUrl} onChange={(event) => updateProviderConfig({ geminiBaseUrl: event.target.value })} /></Field>
                         <Field><FieldLabel htmlFor="geminiApiKey">{copy.settings.geminiApiKey}</FieldLabel><Input id="geminiApiKey" type="password" spellCheck={false} autoComplete="off" placeholder="AIza..." value={activeProvider.geminiApiKey} onChange={(event) => updateProviderConfig({ geminiApiKey: event.target.value })} /></Field>
                         <Field><FieldLabel htmlFor="geminiModel">{copy.settings.geminiModel}</FieldLabel><Input id="geminiModel" value={activeProvider.geminiModel} onChange={(event) => updateProviderConfig({ geminiModel: event.target.value })} /></Field>
+                        <Field><FieldLabel htmlFor="videoModel">{copy.settings.videoModel}</FieldLabel><Input id="videoModel" value={activeProvider.videoModel} onChange={(event) => updateProviderConfig({ videoModel: event.target.value })} placeholder={copy.settings.videoModelOptional} /></Field>
                       </>
                     )}
 
@@ -242,15 +269,15 @@ export function SettingsDialog({
                       : "outline"
                 }
                 className="w-28 justify-center"
-                disabled={!testConfigurationReady || testConnectionStatus.tone === "busy"}
-                onClick={() => void testConnection()}
+                disabled={!testConfigurationReady}
+                onClick={() => testConnectionStatus.tone === "busy" ? cancelConnectionTest() : void testConnection()}
               >
                 {testConnectionStatus.tone === "busy" ? (
                   <Loader2Icon data-icon="inline-start" className="animate-spin" />
                 ) : (
                   <CheckCircle2Icon data-icon="inline-start" />
                 )}
-                {testConnectionStatus.label}
+                {testConnectionStatus.tone === "busy" ? copy.tests.cancelConnectionTest : testConnectionStatus.label}
               </Button>
               <Button type="button" onClick={() => { saveCurrentSettings(); if (testConfigurationReady) window.setTimeout(() => void testConnection(), 0); }}>
                 {copy.settings.save}

@@ -7,6 +7,7 @@ import { MaskEditor, type MaskEditorImage } from "@/components/mask-editor";
 import { RequestListPanel } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { ProductSuitePanel } from "@/components/product-suite-panel";
+import type { VideoDuration, VideoSize } from "@/lib/video";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -189,6 +190,9 @@ export default function App() {
   const [clearCompletedDialogOpen, setClearCompletedDialogOpen] = useState(false);
   const [productSuiteOpen, setProductSuiteOpen] = useState(false);
   const [productSuiteHasDraft, setProductSuiteHasDraft] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
+  const [videoDuration, setVideoDuration] = useState<VideoDuration>("8");
+  const [videoSize, setVideoSize] = useState<VideoSize>("1280x720");
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [annotationTarget, setAnnotationTarget] = useState<{ image: AnnotationImageSource; originalPrompt: string } | null>(null);
   const [maskEditorTarget, setMaskEditorTarget] = useState<EditInputImage | null>(null);
@@ -288,6 +292,8 @@ export default function App() {
   }
 
   function handleModeChange(mode: ConsoleMode) {
+    setVideoOpen(false);
+    setProductSuiteOpen(false);
     const shouldFocusPrompt = consoleState.mode !== mode;
     consoleState.setMode(mode);
 
@@ -299,6 +305,11 @@ export default function App() {
   function handleEditImage(value: string) {
     handleModeChange("edit");
     void consoleState.addHistoricalEditImage(value);
+  }
+
+  function handleVideoOpen() {
+    setProductSuiteOpen(false);
+    setVideoOpen(true);
   }
 
   async function handleAnnotateImage(value: string) {
@@ -474,6 +485,7 @@ export default function App() {
                 open={productSuiteOpen}
                 onOpenChange={setProductSuiteOpen}
                 onModeChange={handleModeChange}
+                onOpenVideo={handleVideoOpen}
                 onDraftStateChange={setProductSuiteHasDraft}
                 settings={consoleState.settings}
                 updateSettings={consoleState.updateSettings}
@@ -521,8 +533,14 @@ export default function App() {
                   addHistoricalEditImage={consoleState.addHistoricalEditImage}
                   onModeChange={handleModeChange}
                   onOpenQuickStart={() => setQuickStartOpen(true)}
-                  onOpenProductSuite={() => setProductSuiteOpen(true)}
+                  onOpenProductSuite={() => { setVideoOpen(false); setProductSuiteOpen(true); }}
+                  onOpenVideo={handleVideoOpen}
                   workflowOpen={productSuiteOpen}
+                  videoOpen={videoOpen}
+                  videoDuration={videoDuration}
+                  setVideoDuration={setVideoDuration}
+                  videoSize={videoSize}
+                  setVideoSize={setVideoSize}
                   onOpenMaskEditor={(image) => setMaskEditorTarget(image)}
                 />
           </div>
@@ -566,6 +584,7 @@ export default function App() {
           consoleState.clearAllData();
         }}
         testConnection={consoleState.testConnection}
+        cancelConnectionTest={consoleState.cancelConnectionTest}
       />
       <QuickStartDialog open={quickStartOpen} onOpenChange={setQuickStartOpen} />
       <AnnotationWorkspace

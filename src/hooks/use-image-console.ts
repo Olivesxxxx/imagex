@@ -140,6 +140,7 @@ function normalizeSettings(values: AppSettings, defaultStrictPromptText: string)
     geminiModel: shared.geminiModel,
     generationsModel: shared.generationsModel,
     editsModel: shared.editsModel,
+    videoModel: shared.videoModel,
     responsesModel: shared.responsesModel,
     completionsModel: shared.completionsModel,
     rememberKey: Boolean(values.rememberKey),
@@ -216,6 +217,18 @@ function openAIImageOptionsFromSettings(settings: AppSettings) {
     multiImageField: provider?.multiImageField || "auto",
     streamImages: provider?.streamImages || false,
     streamPartialImages: provider?.streamPartialImages || 2,
+    authHeaderName: provider?.authHeaderName || "Authorization",
+    authPrefix: provider?.authPrefix ?? "Bearer",
+    asyncTaskEnabled: provider?.asyncTaskEnabled || false,
+    asyncStatusUrl: provider?.asyncStatusUrl || "",
+    asyncTaskIdPath: provider?.asyncTaskIdPath || "task_id",
+    asyncStatusPath: provider?.asyncStatusPath || "status",
+    asyncResultPath: provider?.asyncResultPath || "",
+    asyncErrorPath: provider?.asyncErrorPath || "error.message",
+    asyncSuccessValues: provider?.asyncSuccessValues || "completed,complete,success,succeeded,done",
+    asyncFailureValues: provider?.asyncFailureValues || "failed,error,canceled,cancelled",
+    asyncPollIntervalSeconds: provider?.asyncPollIntervalSeconds || 3,
+    asyncMaxPollAttempts: provider?.asyncMaxPollAttempts || 100,
   } as const;
 }
 
@@ -232,6 +245,7 @@ function sharedSettingsForProvider(shared: SharedSettings, provider?: OpenAIProv
     apiKey: provider.apiKey,
     generationsModel: provider.generationsModel,
     editsModel: provider.editsModel,
+    videoModel: provider.videoModel,
     responsesModel: provider.responsesModel,
     completionsModel: provider.completionsModel,
     privateBaseUrl: provider.privateBaseUrl,
@@ -561,9 +575,12 @@ export function useImageConsole() {
   const queueTimerRef = useRef<number | null>(null);
   const lastRequestStartedAtRef = useRef(0);
   const controllersRef = useRef(new Map<string, AbortController>());
+  const connectionTestControllerRef = useRef<AbortController | null>(null);
   const cancelRequestedRef = useRef(new Set<string>());
   const scheduleQueueRef = useRef<() => void>(() => undefined);
   const runRequestRef = useRef<(requestId: string) => void>(() => undefined);
+
+  useEffect(() => () => connectionTestControllerRef.current?.abort(), []);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -1392,6 +1409,7 @@ export function useImageConsole() {
         key === "developmentMode" ||
         key === "generationsModel" ||
         key === "editsModel" ||
+        key === "videoModel" ||
         key === "responsesModel" ||
         key === "completionsModel" ||
         key === "strictPromptText" ||
@@ -1482,9 +1500,11 @@ export function useImageConsole() {
       return;
     }
     const endpoint = normalizeModelsEndpoint(testUrl);
+    connectionTestControllerRef.current?.abort();
     setTestConnectionStatus({ label: copy.tests.connectionTesting, tone: "busy" });
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    connectionTestControllerRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort("timeout"), 12_000);
 
     try {
       await fetchModels(
@@ -1492,10 +1512,17 @@ export function useImageConsole() {
         testKey,
         language,
         controller.signal,
+        currentSettings.protocol === "openai" ? openAIImageOptionsFromSettings(currentSettings) : undefined,
       );
+      if (connectionTestControllerRef.current !== controller) return;
       toast.success(copy.tests.connectionNormal);
       setTestConnectionStatus({ label: copy.tests.connectionNormal, tone: "ok" });
     } catch (error) {
+      if (connectionTestControllerRef.current !== controller) return;
+      if (controller.signal.reason === "user") {
+        setTestConnectionStatus({ label: copy.tests.connectionCanceled, tone: "default" });
+        return;
+      }
       if (await isCrossOriginFetchFailure(endpoint, error)) {
         toast.error(copy.runtime.crossOriginRequestFailed);
       } else if (isBrowserNetworkFailure(error)) {
@@ -1504,8 +1531,16 @@ export function useImageConsole() {
       setTestConnectionStatus({ label: copy.tests.connectionFailed, tone: "error" });
     } finally {
       window.clearTimeout(timeout);
+      if (connectionTestControllerRef.current === controller) connectionTestControllerRef.current = null;
     }
   }, [copy, language]);
+
+  const cancelConnectionTest = useCallback(() => {
+    const controller = connectionTestControllerRef.current;
+    if (!controller) return;
+    controller.abort("user");
+    setTestConnectionStatus({ label: copy.tests.connectionCanceled, tone: "default" });
+  }, [copy]);
 
   const enqueueGeneration = useCallback(
     () => {
@@ -2094,6 +2129,7 @@ export function useImageConsole() {
     saveCurrentSettings,
     resetSettings,
     testConnection,
+    cancelConnectionTest,
     enqueueGeneration,
     enqueueEditGeneration,
     cancelRequest,

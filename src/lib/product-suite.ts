@@ -56,6 +56,13 @@ export interface ProductSuiteTask {
   updatedAt: number;
 }
 
+export interface ProductSuiteTemplate {
+  version: 1;
+  name: string;
+  info: ProductSuiteInfo;
+  slots: ProductSuiteSlot[];
+}
+
 const DEFAULT_SLOT_TEMPLATES_ZH: Record<ProductSuiteSlotKey, string> = {
   hero: "生成一张电商主图。突出 {{商品名}} 的主体和第一眼卖点：{{核心卖点}}。画面干净、有商业吸引力，适合 {{目标平台}} 首图展示。可合理使用可选商业标识素材，但不要遮挡产品。",
   whiteBackground: "生成一张白底图。背景为干净纯白或接近纯白，产品居中，轮廓清晰，颜色和比例准确，不添加多余道具、文字或装饰。",
@@ -206,6 +213,32 @@ export function createProductSuiteTask(now = Date.now(), language: ProductSuiteT
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function productSuiteTemplateFromTask(task: ProductSuiteTask): ProductSuiteTemplate {
+  return {
+    version: 1,
+    name: task.name,
+    info: structuredClone(task.info),
+    slots: structuredClone(task.slots),
+  };
+}
+
+export function productSuiteTemplateJson(task: ProductSuiteTask) {
+  return JSON.stringify(productSuiteTemplateFromTask(task), null, 2);
+}
+
+export function productSuiteTaskFromTemplate(value: unknown, now = Date.now(), language: ProductSuiteTemplateLanguage = "zh") {
+  if (!isRecord(value)) throw new Error(language === "en" ? "The template file is invalid." : "模板文件格式无效。 ");
+  const base = createProductSuiteTask(now, language);
+  const normalized = normalizeProductSuiteTask({
+    ...base,
+    name: String(value.name || "").trim(),
+    info: value.info,
+    slots: value.slots,
+  });
+  if (!normalized) throw new Error(language === "en" ? "The template file is invalid." : "模板文件格式无效。 ");
+  return normalized;
 }
 
 async function readBlobBytes(blob: Blob): Promise<Uint8Array> {

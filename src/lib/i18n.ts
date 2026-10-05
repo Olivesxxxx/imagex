@@ -303,6 +303,18 @@ type Copy = {
     generate: string;
     edit: string;
     workflow: string;
+    video: string;
+    videoPromptPlaceholder: string;
+    videoModelRequired: string;
+    imageModelRequired: string;
+    videoSubmit: string;
+    videoCancel: string;
+    videoDuration: string;
+    videoSize: string;
+    videoStatus: Record<"queued" | "running" | "completed" | "failed" | "canceled", string>;
+    videoDownload: string;
+    videoNoTasks: string;
+    videoProviderProtocol: string;
     settings: string;
     settingsTooltip: string;
     promptLabel: string;
@@ -457,7 +469,10 @@ type Copy = {
      productImageChangedDescription: string;
      continueCurrentBatch: string;
      startNewBatch: string;
-     cancelImageChange: string;
+      cancelImageChange: string;
+      importTemplate: string;
+      exportTemplate: string;
+      progressSummary: (completed: number, total: number) => string;
    };
   annotation: {
     title: string;
@@ -517,12 +532,27 @@ type Copy = {
     multiImageFieldDescription: string;
     multiImageFieldAuto: string;
     multiImageFieldRepeated: string;
-    multiImageFieldArray: string;
+     multiImageFieldArray: string;
+     authHeaderName: string;
+     authPrefix: string;
+     asyncTaskEnabled: string;
+     asyncTaskDescription: string;
+     asyncStatusUrl: string;
+     asyncTaskIdPath: string;
+     asyncStatusPath: string;
+     asyncResultPath: string;
+     asyncErrorPath: string;
+     asyncSuccessValues: string;
+     asyncFailureValues: string;
+     asyncPollIntervalSeconds: string;
+     asyncMaxPollAttempts: string;
     rememberKey: string;
     developmentMode: string;
     developmentModeDescription: string;
     generationsModel: string;
     editsModel: string;
+    videoModel: string;
+    videoModelOptional: string;
     responsesModel: string;
     completionsModel: string;
     privateBaseUrl: string;
@@ -586,6 +616,8 @@ type Copy = {
   tests: {
     test: string;
     connectionTesting: string;
+    cancelConnectionTest: string;
+    connectionCanceled: string;
     connectionNormal: string;
     connectionNormalDetail: string;
     connectionFailed: string;
@@ -744,6 +776,18 @@ const COPY: Record<Language, Copy> = {
       generate: "文生图",
       edit: "图生图",
       workflow: "工作流",
+      video: "生视频",
+      videoPromptPlaceholder: "描述你想生成的视频内容、动作、镜头和氛围",
+      videoModelRequired: "请先为当前供应商填写视频模型",
+      imageModelRequired: "请先为当前供应商填写图片模型",
+      videoSubmit: "生成视频",
+      videoCancel: "停止轮询",
+      videoDuration: "时长",
+      videoSize: "画面尺寸",
+      videoStatus: { queued: "排队中", running: "生成中", completed: "已完成", failed: "失败", canceled: "已停止" },
+      videoDownload: "下载视频",
+      videoNoTasks: "暂无视频任务",
+      videoProviderProtocol: "当前首版使用 OpenAI 兼容 /v1/videos 接口。取消仅停止本地轮询，不代表供应商已停止生成。",
       settings: "配置",
       settingsTooltip: "打开连接配置",
       promptLabel: "提示词",
@@ -915,6 +959,9 @@ const COPY: Record<Language, Copy> = {
        continueCurrentBatch: "继续当前批次",
        startNewBatch: "开始新产品批次",
        cancelImageChange: "取消更换",
+       importTemplate: "导入模板",
+       exportTemplate: "导出模板",
+       progressSummary: (completed, total) => `进度 ${completed}/${total}`,
     },
     annotation: {
       title: "做标记来重新生图",
@@ -974,12 +1021,27 @@ const COPY: Record<Language, Copy> = {
       multiImageFieldDescription: "只影响一次上传多张参考图时的字段写法。",
       multiImageFieldAuto: "自动兼容（优先 image[]）",
       multiImageFieldRepeated: "重复 image",
-      multiImageFieldArray: "image[]",
+       multiImageFieldArray: "image[]",
+       authHeaderName: "认证 Header 名称",
+       authPrefix: "Key 前缀（可留空）",
+       asyncTaskEnabled: "启用异步任务轮询",
+       asyncTaskDescription: "仅适用于供应商先返回 task_id、再通过状态接口取图的协议。URL 中可使用 {task_id}。",
+       asyncStatusUrl: "任务状态 URL",
+       asyncTaskIdPath: "任务 ID 路径",
+       asyncStatusPath: "状态路径",
+       asyncResultPath: "结果路径（可留空）",
+       asyncErrorPath: "错误路径",
+       asyncSuccessValues: "成功状态值（逗号分隔）",
+       asyncFailureValues: "失败状态值（逗号分隔）",
+       asyncPollIntervalSeconds: "轮询间隔（秒）",
+       asyncMaxPollAttempts: "最大轮询次数",
       rememberKey: "在本浏览器记住 API Key",
       developmentMode: "开发模式",
       developmentModeDescription: "显示本地占位任务和图片，用于测试图片选择、删除与导出流程。",
       generationsModel: "generations 模型",
       editsModel: "edits 模型",
+      videoModel: "视频模型",
+      videoModelOptional: "可选；需供应商支持 /v1/videos",
       responsesModel: "responses 模型",
       completionsModel: "completions 模型",
       privateBaseUrl: "私有服务地址",
@@ -1059,6 +1121,8 @@ const COPY: Record<Language, Copy> = {
     tests: {
       test: "测试",
       connectionTesting: "测试中",
+      cancelConnectionTest: "取消测试",
+      connectionCanceled: "测试已取消",
       connectionNormal: "连接正常",
       connectionNormalDetail: "模型列表接口已返回。",
       connectionFailed: "连接失败",
@@ -1226,6 +1290,18 @@ const COPY: Record<Language, Copy> = {
       generate: "Generate",
       edit: "Edit",
       workflow: "Workflow",
+      video: "Video",
+      videoPromptPlaceholder: "Describe the video, motion, camera, and mood you want to generate",
+      videoModelRequired: "Enter a video model for the current provider first",
+      imageModelRequired: "Enter an image model for the current provider first",
+      videoSubmit: "Generate video",
+      videoCancel: "Stop polling",
+      videoDuration: "Duration",
+      videoSize: "Frame size",
+      videoStatus: { queued: "Queued", running: "Generating", completed: "Completed", failed: "Failed", canceled: "Stopped" },
+      videoDownload: "Download video",
+      videoNoTasks: "No video tasks yet",
+      videoProviderProtocol: "This first version uses the OpenAI-compatible /v1/videos API. Cancel stops local polling; it may not stop generation at the provider.",
       settings: "Settings",
       settingsTooltip: "Open connection settings",
       promptLabel: "Prompt",
@@ -1397,6 +1473,9 @@ const COPY: Record<Language, Copy> = {
        continueCurrentBatch: "Continue current batch",
        startNewBatch: "Start new product batch",
        cancelImageChange: "Cancel change",
+       importTemplate: "Import template",
+       exportTemplate: "Export template",
+       progressSummary: (completed, total) => `Progress ${completed}/${total}`,
     },
     annotation: {
       title: "Mark up and regenerate",
@@ -1456,12 +1535,27 @@ const COPY: Record<Language, Copy> = {
       multiImageFieldDescription: "Only affects requests that upload multiple reference images.",
       multiImageFieldAuto: "Auto-compatible (prefer image[])",
       multiImageFieldRepeated: "Repeated image",
-      multiImageFieldArray: "image[]",
+       multiImageFieldArray: "image[]",
+       authHeaderName: "Auth header name",
+       authPrefix: "Key prefix (optional)",
+       asyncTaskEnabled: "Enable async task polling",
+       asyncTaskDescription: "For providers that return a task_id first and expose a status endpoint. Use {task_id} in the URL.",
+       asyncStatusUrl: "Task status URL",
+       asyncTaskIdPath: "Task ID path",
+       asyncStatusPath: "Status path",
+       asyncResultPath: "Result path (optional)",
+       asyncErrorPath: "Error path",
+       asyncSuccessValues: "Success values (comma-separated)",
+       asyncFailureValues: "Failure values (comma-separated)",
+       asyncPollIntervalSeconds: "Poll interval (seconds)",
+       asyncMaxPollAttempts: "Maximum poll attempts",
       rememberKey: "Remember API key in this browser",
       developmentMode: "Development mode",
       developmentModeDescription: "Show local placeholder requests and images for testing selection, deletion, and export workflows.",
       generationsModel: "Generations model",
       editsModel: "Edits model",
+      videoModel: "Video model",
+      videoModelOptional: "Optional; provider must support /v1/videos",
       responsesModel: "Responses model",
       completionsModel: "Completions model",
       privateBaseUrl: "Private service URL",
@@ -1541,6 +1635,8 @@ const COPY: Record<Language, Copy> = {
     tests: {
       test: "Test",
       connectionTesting: "Testing",
+      cancelConnectionTest: "Cancel test",
+      connectionCanceled: "Test canceled",
       connectionNormal: "Connected",
       connectionNormalDetail: "The models endpoint returned successfully.",
       connectionFailed: "Connection failed",

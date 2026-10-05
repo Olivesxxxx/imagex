@@ -117,6 +117,8 @@ describe("App", () => {
     expect(screen.getByPlaceholderText("一只半透明玻璃质感的机械水母，漂浮在清晨的城市天台上，产品摄影，细节清晰")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "文生图" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "图生图" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "生视频" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "工作流" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "说明" }));
     const helpDialog = screen.getByRole("dialog", { name: "说明" });
     expect(helpDialog).toHaveTextContent("这里用大白话介绍 ImageX");
@@ -179,10 +181,15 @@ describe("App", () => {
     await user.click(await screen.findByRole("tab", { name: "工作流" }));
 
     const dialog = await screen.findByRole("region", { name: "产品套图任务" });
+    expect(within(dialog).getByRole("tab", { name: "生视频" })).toBeInTheDocument();
     expect(within(dialog).getByText(/上传一次产品实拍图/)).toBeInTheDocument();
-    await user.click(within(dialog).getAllByRole("button", { name: "新建任务" })[0]);
-    await user.type(within(dialog).getByLabelText("商品名称"), "磁吸无线充电宝");
-    const productDropZone = within(dialog).getByRole("region", { name: "产品实拍参考图" });
+    await user.click(within(dialog).getByRole("tab", { name: "生视频" }));
+    expect(screen.getByLabelText("提示词")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "工作流" }));
+    const restoredSuite = await screen.findByRole("region", { name: "产品套图任务" });
+    await user.click(within(restoredSuite).getAllByRole("button", { name: "新建任务" })[0]);
+    await user.type(within(restoredSuite).getByLabelText("商品名称"), "磁吸无线充电宝");
+    const productDropZone = within(restoredSuite).getByRole("region", { name: "产品实拍参考图" });
     const droppedProduct = new File(["product"], "product.png", { type: "image/png" });
     const dataTransfer = { files: [droppedProduct], types: ["Files"], dropEffect: "none" };
     fireEvent.dragEnter(productDropZone, { dataTransfer });

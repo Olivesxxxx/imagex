@@ -39,6 +39,7 @@ import { SegmentedTabsList, SegmentedTabsTrigger } from "@/components/ui/segment
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { VideoGenerationPanel } from "@/components/video-generation-panel";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
 import { useTimedConfirmation } from "@/hooks/use-timed-confirmation";
 import {
@@ -57,6 +58,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { MAX_PROMPT_HISTORY, type PromptHistoryEntry } from "@/lib/prompt-history";
 import { cn } from "@/lib/utils";
+import type { VideoDuration, VideoSize } from "@/lib/video";
 
 const DELETE_CONFIRMATION_TIMEOUT_MS = 3000;
 const panelControlClassName = "!h-8 !min-h-8 !max-h-8 !py-1 w-full min-w-0 justify-center rounded-md border border-border px-3 text-xs font-medium";
@@ -101,7 +103,13 @@ export interface GeneratorPanelProps {
   onModeChange: (mode: ConsoleMode) => void;
   onOpenQuickStart: () => void;
   onOpenProductSuite: () => void;
+  onOpenVideo: () => void;
   workflowOpen: boolean;
+  videoOpen: boolean;
+  videoDuration: VideoDuration;
+  setVideoDuration: (value: VideoDuration) => void;
+  videoSize: VideoSize;
+  setVideoSize: (value: VideoSize) => void;
   onOpenMaskEditor: (image: EditInputImage) => void;
 }
 
@@ -455,7 +463,13 @@ export function GeneratorPanel({
   onModeChange,
   onOpenQuickStart,
   onOpenProductSuite,
+  onOpenVideo,
   workflowOpen,
+  videoOpen,
+  videoDuration,
+  setVideoDuration,
+  videoSize,
+  setVideoSize,
   onOpenMaskEditor,
 }: GeneratorPanelProps) {
   const { copy, toggleLanguage } = useI18n();
@@ -465,6 +479,11 @@ export function GeneratorPanel({
   const [editImageDragActive, setEditImageDragActive] = useState(false);
   const generationButtonFeedbackClassName = "transition-all duration-100 active:translate-y-px active:scale-[0.99] active:brightness-95";
   const editImageSelectionFull = editImages.length >= MAX_EDIT_INPUT_IMAGES;
+  const activeProvider = settings.openaiProviders.find((item) => item.id === settings.activeOpenAIProviderId);
+  const imageModel = settings.protocol === "gemini"
+    ? settings.geminiModel.trim()
+    : (mode === "edit" ? activeProvider?.editsModel : activeProvider?.generationsModel)?.trim() || "";
+  const imageModelMissing = !imageModel;
   const previewEditImage = previewEditImageIndex !== null ? editImages[previewEditImageIndex] ?? null : null;
 
   useEffect(() => {
@@ -583,6 +602,10 @@ export function GeneratorPanel({
       onOpenProductSuite();
       return;
     }
+    if (nextMode === "video") {
+      onOpenVideo();
+      return;
+    }
     onModeChange(nextMode);
   }
 
@@ -592,9 +615,9 @@ export function GeneratorPanel({
         <div className="flex min-w-0 flex-col gap-1">
           <span className={panelLabelClassName}>{copy.generator.mode}</span>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <Tabs value={workflowOpen ? "workflow" : mode} onValueChange={handleModeChange}>
+            <Tabs value={workflowOpen ? "workflow" : videoOpen ? "video" : mode} onValueChange={handleModeChange}>
               <SegmentedTabsList>
-                {([ ["generate", copy.generator.generate], ["edit", copy.generator.edit], ["workflow", copy.generator.workflow] ] as const).map(([value, label]) => (
+                {([ ["generate", copy.generator.generate], ["edit", copy.generator.edit], ["video", copy.generator.video], ["workflow", copy.generator.workflow] ] as const).map(([value, label]) => (
                   <SegmentedTabsTrigger
                     key={value}
                     value={value}
@@ -609,9 +632,29 @@ export function GeneratorPanel({
         </div>
 
         <HeaderUtilityButtons connectionStatus={connectionStatus} setSettingsOpen={setSettingsOpen} onOpenQuickStart={onOpenQuickStart} />
-        <HeaderParameterControls settings={settings} updateSettings={updateSettings} />
+        {videoOpen ? (
+          <div className={panelToolbarSelectGroupClassName}>
+            <OptionSelect
+              className="w-fit min-w-24 flex-none"
+              label={copy.generator.videoDuration}
+              value={videoDuration}
+              options={["4", "8", "12"]}
+              optionLabels={{ "4": "4 s", "8": "8 s", "12": "12 s" }}
+              onValueChange={(value) => setVideoDuration(value as VideoDuration)}
+            />
+            <OptionSelect
+              className="w-fit min-w-32 flex-none"
+              label={copy.generator.videoSize}
+              value={videoSize}
+              options={["1280x720", "720x1280", "1024x1024"]}
+              optionLabels={{ "1280x720": "16:9 · 720p", "720x1280": "9:16 · 720p", "1024x1024": "1:1 · 720p" }}
+              onValueChange={(value) => setVideoSize(value as VideoSize)}
+            />
+          </div>
+        ) : <HeaderParameterControls settings={settings} updateSettings={updateSettings} />}
       </div>
 
+      {!videoOpen ? <>
       <div
         className={cn(
           "min-h-0 flex-1",
@@ -710,19 +753,23 @@ export function GeneratorPanel({
             </Button>
           ) : null}
           {mode === "edit" ? (
-            <Button type="submit" size="sm" className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
+            <Button type="submit" size="sm" disabled={imageModelMissing} className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
               <ImagePlusIcon data-icon="inline-start" />
-              {copy.generator.edits}
+              {imageModelMissing ? copy.generator.imageModelRequired : copy.generator.edits}
             </Button>
           ) : (
             <>
-              <Button type="submit" size="sm" className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
+              <Button type="submit" size="sm" disabled={imageModelMissing} className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
                 <PlayIcon data-icon="inline-start" />
-                {copy.generator.generations}
+                {imageModelMissing ? copy.generator.imageModelRequired : copy.generator.generations}
               </Button>
             </>
           )}
         </div>
+      </div>
+      </> : null}
+      <div className={videoOpen ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+        <VideoGenerationPanel settings={settings} duration={videoDuration} size={videoSize} />
       </div>
       <DialogPrimitive.Root open={previewEditImageIndex !== null} onOpenChange={(open) => { if (!open) setPreviewEditImageIndex(null); }}>
         <DialogPrimitive.Portal>

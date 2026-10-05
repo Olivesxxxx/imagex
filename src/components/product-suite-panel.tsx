@@ -13,7 +13,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { WorkflowHeaderControls } from "@/components/generator-panel";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
 import { useI18n } from "@/lib/i18n";
-import { createDefaultProductSuiteSlots, createProductSuiteBatchId, createProductSuiteTask, deleteProductSuiteTask, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, hashProductSuiteImage, loadProductSuiteTasks, saveProductSuiteTask, type ProductSuiteAsset, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
+import { createDefaultProductSuiteSlots, createProductSuiteBatchId, createProductSuiteTask, deleteProductSuiteTask, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, hashProductSuiteImage, loadProductSuiteTasks, productSuiteTaskFromTemplate, productSuiteTemplateJson, saveProductSuiteTask, type ProductSuiteAsset, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
 import { MAX_EDIT_INPUT_IMAGES, type AppSettings, type ConsoleMode, type ImageRequestRecord } from "@/lib/image-console";
 import { cn } from "@/lib/utils";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -421,6 +421,7 @@ export function ProductSuitePanel({
   open,
   onOpenChange,
   onModeChange,
+  onOpenVideo,
   onDraftStateChange,
   settings,
   updateSettings,
@@ -441,6 +442,7 @@ export function ProductSuitePanel({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onModeChange: (mode: ConsoleMode) => void;
+  onOpenVideo: () => void;
   onDraftStateChange: (hasDraft: boolean) => void;
   settings: AppSettings;
   updateSettings: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
@@ -619,6 +621,35 @@ export function ProductSuitePanel({
     setTasks((current) => [next, ...current]);
     setActiveId(next.id);
     setDraft(next);
+  }
+
+  function exportTemplate() {
+    if (!draft) return;
+    const blob = new Blob([productSuiteTemplateJson(draft)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${(draft.name || "imagex-template").replace(/[^\w.-]+/g, "-")}.imagex-template.json`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function importTemplate() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      void file.text().then((text) => {
+        const imported = productSuiteTaskFromTemplate(JSON.parse(text), Date.now(), language === "en" ? "en" : "zh");
+        setTasks((current) => [imported, ...current]);
+        setActiveId(imported.id);
+        setDraft(imported);
+        toast.success(suiteCopy.saveTask);
+      }).catch((error) => toast.error((error as Error).message || suiteCopy.exportSuiteFailed));
+    };
+    input.click();
   }
 
   async function saveDraft() {
@@ -996,9 +1027,14 @@ export function ProductSuitePanel({
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">{suiteCopy.title}</span>
       </div>
-      <Button type="button" variant="outline" size="sm" className="h-8 w-full shrink-0 rounded-md px-3" onClick={createTask}>
-        <PlusIcon data-icon="inline-start" />{suiteCopy.newTask}
-      </Button>
+      <div className="grid grid-cols-2 gap-1">
+        <Button type="button" variant="outline" size="sm" className="h-8 w-full shrink-0 rounded-md px-3" onClick={createTask}>
+          <PlusIcon data-icon="inline-start" />{suiteCopy.newTask}
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 w-full shrink-0 rounded-md px-3" onClick={importTemplate}>
+          <UploadIcon data-icon="inline-start" />{suiteCopy.importTemplate}
+        </Button>
+      </div>
       <div className="standard-scrollbar -mr-3 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain pr-0">
         {tasks.map((task) => (
           <button key={task.id} type="button" className={`flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-sm ${activeId === task.id ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-muted"}`} onClick={() => selectTask(task)}>
@@ -1040,6 +1076,11 @@ export function ProductSuitePanel({
                 value="workflow"
                 onValueChange={(value) => {
                   if (value === "workflow") return;
+                  if (value === "video") {
+                    onOpenChange(false);
+                    onOpenVideo();
+                    return;
+                  }
                   onModeChange(value as ConsoleMode);
                   onOpenChange(false);
                 }}
@@ -1048,6 +1089,7 @@ export function ProductSuitePanel({
                 <SegmentedTabsList>
                   <SegmentedTabsTrigger value="generate" className="min-w-20">{copy.generator.generate}</SegmentedTabsTrigger>
                   <SegmentedTabsTrigger value="edit" className="min-w-20">{copy.generator.edit}</SegmentedTabsTrigger>
+                  <SegmentedTabsTrigger value="video" className="min-w-20">{copy.generator.video}</SegmentedTabsTrigger>
                   <SegmentedTabsTrigger value="workflow" className="min-w-20">{copy.generator.workflow}</SegmentedTabsTrigger>
                 </SegmentedTabsList>
               </Tabs>
@@ -1071,8 +1113,9 @@ export function ProductSuitePanel({
                 <div className="min-w-0">
                   <h3 className="truncate text-sm font-semibold">{suiteCopy.taskConfiguration}</h3>
                   <p className="truncate text-xs text-foreground/80">{draft.name || suiteCopy.untitled}</p>
-                  <p className="truncate text-xs text-muted-foreground">{suiteCopy.batchLabel(draft.productBatchNumber)}</p>
+                  <p className="truncate text-xs text-muted-foreground">{suiteCopy.batchLabel(draft.productBatchNumber)} · {suiteCopy.progressSummary(completedSlotCount, draft.slots.filter((slot) => slot.enabled).length)}</p>
                 </div>
+                <Button type="button" variant="ghost" size="icon" className="ml-auto shrink-0" onClick={exportTemplate} aria-label={suiteCopy.exportTemplate} title={suiteCopy.exportTemplate}><DownloadIcon /></Button>
               </div>
               <div className="grid min-w-0 gap-3">
                 <div className="grid gap-1.5">
