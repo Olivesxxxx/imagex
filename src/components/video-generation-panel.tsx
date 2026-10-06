@@ -1,20 +1,21 @@
-import { DownloadIcon, Loader2Icon, PlayIcon, SquareIcon } from "lucide-react";
+import { DownloadIcon, ImagePlusIcon, Loader2Icon, PlayIcon, RefreshCwIcon, SquareIcon, Trash2Icon, XIcon } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, delayVideoPoll, loadVideoBlob, pollVideoTask, saveVideoBlob, type VideoDuration, type VideoRequestOptions, type VideoSize, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, loadVideoBlob, loadVideoReferenceFiles, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoDuration, type VideoRequestOptions, type VideoSize, type VideoTask } from "@/lib/video";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 
-const VIDEO_TASKS_KEY = "ImageX-video-tasks";
 const POLL_INTERVAL_MS = 2500;
+const MAX_VIDEO_REFERENCE_IMAGES = 5;
+type VideoReferenceImage = { file: File; src: string; name: string };
 
 function readTasks(): VideoTask[] {
   try {
-    const value = JSON.parse(localStorage.getItem(VIDEO_TASKS_KEY) || "[]");
+    const value = JSON.parse(localStorage.getItem(VIDEO_TASKS_STORAGE_KEY) || "[]");
     return Array.isArray(value) ? value.filter((item) => item && typeof item.id === "string") : [];
   } catch {
     return [];
@@ -23,7 +24,7 @@ function readTasks(): VideoTask[] {
 
 function saveTasks(tasks: VideoTask[]) {
   try {
-    localStorage.setItem(VIDEO_TASKS_KEY, JSON.stringify(tasks));
+    localStorage.setItem(VIDEO_TASKS_STORAGE_KEY, JSON.stringify(tasks));
   } catch {
     toast.error("Unable to save video task history in this browser.");
   }
@@ -32,11 +33,14 @@ function saveTasks(tasks: VideoTask[]) {
 export function VideoGenerationPanel({ settings, duration, size }: { settings: AppSettings; duration: VideoDuration; size: VideoSize }) {
   const { copy, language } = useI18n();
   const [prompt, setPrompt] = useState("");
+  const [referenceImages, setReferenceImages] = useState<VideoReferenceImage[]>([]);
   const [tasks, setTasks] = useState<VideoTask[]>(readTasks);
   const [activeIds, setActiveIds] = useState<Set<string>>(() => new Set());
   const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({});
   const [taskListTarget, setTaskListTarget] = useState<HTMLElement | null>(null);
   const controllers = useRef(new Map<string, AbortController>());
+  const referenceInputRef = useRef<HTMLInputElement>(null);
+  const referenceImagesRef = useRef(referenceImages);
   const mediaUrlsRef = useRef(mediaUrls);
   const provider = settings.openaiProviders.find((item) => item.id === settings.activeOpenAIProviderId);
   const isOpenAI = settings.protocol === "openai";
@@ -55,11 +59,29 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
     saveTasks(tasks);
   }, [tasks]);
 
+  useEffect(() => {
+    referenceImagesRef.current = referenceImages;
+  }, [referenceImages]);
+
+  useEffect(() => {
+    function handleVideoDataCleared() {
+      controllers.current.forEach((controller) => controller.abort());
+      Object.values(mediaUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      referenceImagesRef.current.forEach((image) => URL.revokeObjectURL(image.src));
+      setTasks([]);
+      setMediaUrls({});
+      setReferenceImages([]);
+    }
+    window.addEventListener(VIDEO_DATA_CLEARED_EVENT, handleVideoDataCleared);
+    return () => window.removeEventListener(VIDEO_DATA_CLEARED_EVENT, handleVideoDataCleared);
+  }, []);
+
   useEffect(() => { mediaUrlsRef.current = mediaUrls; }, [mediaUrls]);
 
   useEffect(() => () => {
     for (const controller of controllers.current.values()) controller.abort();
     Object.values(mediaUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+    referenceImagesRef.current.forEach((image) => URL.revokeObjectURL(image.src));
   }, []);
 
   useEffect(() => {
@@ -146,16 +168,51 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
       prompt: prompt.trim(),
       duration,
       size,
+      referenceImages: referenceImages.map((image) => image.file),
       authHeaderName: provider?.authHeaderName,
       authPrefix: provider?.authPrefix,
     };
     try {
       const task = await createVideoTask(config, provider?.id);
       setTasks((items) => [task, ...items]);
+      try {
+        await saveVideoReferenceFiles(task.id, config.referenceImages || []);
+      } catch {
+        toast.error(language === "en" ? "Video started, but the reference images could not be cached for retry." : "视频已提交，但参考图未能缓存，之后可能无法用原图重试。");
+      }
       setPrompt("");
+      referenceImages.forEach((image) => URL.revokeObjectURL(image.src));
+      setReferenceImages([]);
     } catch (error) {
       toast.error((error as Error).message);
     }
+  }
+
+  function addReferenceFiles(files: File[]) {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length !== files.length) toast.error(language === "en" ? "Only image files can be used as video references." : "视频参考图只能选择图片文件。");
+    const remaining = Math.max(0, MAX_VIDEO_REFERENCE_IMAGES - referenceImages.length);
+    if (imageFiles.length > remaining) toast.error(language === "en" ? `Use up to ${MAX_VIDEO_REFERENCE_IMAGES} reference images.` : `视频最多使用 ${MAX_VIDEO_REFERENCE_IMAGES} 张参考图。`);
+    const next = imageFiles.slice(0, remaining).map((file) => ({ file, src: URL.createObjectURL(file), name: file.name }));
+    if (next.length) setReferenceImages((current) => [...current, ...next]);
+  }
+
+  function removeReferenceImage(index: number) {
+    setReferenceImages((current) => {
+      const target = current[index];
+      if (target) URL.revokeObjectURL(target.src);
+      return current.filter((_, currentIndex) => currentIndex !== index);
+    });
+  }
+
+  function handleReferencePaste(event: ClipboardEvent<HTMLDivElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (!files.length) return;
+    event.preventDefault();
+    addReferenceFiles(files);
   }
 
   useEffect(() => {
@@ -181,6 +238,58 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
     controllers.current.get(task.id)?.abort();
   }
 
+  async function remove(task: VideoTask) {
+    controllers.current.get(task.id)?.abort();
+    const url = mediaUrls[task.id];
+    if (url) URL.revokeObjectURL(url);
+    setMediaUrls((current) => {
+      const next = { ...current };
+      delete next[task.id];
+      return next;
+    });
+    setTasks((items) => items.filter((item) => item.id !== task.id));
+    try {
+      await deleteVideoBlob(task.id);
+      await deleteVideoReferenceFiles(task.id);
+    } catch {
+      // The task history is still removable when its cached media is unavailable.
+    }
+  }
+
+  async function retry(task: VideoTask) {
+    const taskProvider = settings.openaiProviders.find((item) => item.id === task.providerId);
+    if (!taskProvider?.apiKey || !taskProvider.baseUrl || taskProvider.protocol !== "openai") {
+      toast.error(language === "en" ? "The original provider is no longer configured." : "原供应商已不存在或配置不完整。");
+      return;
+    }
+    try {
+      const referenceFiles = task.referenceImageCount ? await loadVideoReferenceFiles(task.id).catch(() => []) : [];
+      if ((task.referenceImageCount || 0) > 0 && referenceFiles.length === 0) {
+        toast.error(language === "en" ? "The original reference images are no longer available." : "原任务的参考图已不可用，无法重新生成。");
+        return;
+      }
+      const nextTask = await createVideoTask({
+        baseUrl: taskProvider.baseUrl,
+        apiKey: taskProvider.apiKey,
+        model: task.model,
+        prompt: task.prompt,
+        duration: task.duration,
+        size: task.size,
+        referenceImages: referenceFiles,
+        authHeaderName: taskProvider.authHeaderName,
+        authPrefix: taskProvider.authPrefix,
+      }, task.providerId);
+      setTasks((items) => [nextTask, ...items]);
+      try {
+        await saveVideoReferenceFiles(nextTask.id, referenceFiles);
+      } catch {
+        toast.error(language === "en" ? "Video started, but its reference images could not be cached." : "视频已提交，但参考图未能缓存。");
+      }
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  }
+
   function download(task: VideoTask) {
     const url = mediaUrls[task.id] || task.url;
     if (!url) return;
@@ -198,6 +307,26 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
         {copy.generator.promptLabel}
         <Textarea id="videoPrompt" value={prompt} maxLength={16000} onChange={(event) => setPrompt(event.target.value)} placeholder={copy.generator.videoPromptPlaceholder} className="standard-scrollbar min-h-24 flex-1 resize-none overflow-y-auto" />
       </label>
+      <div
+        className="flex min-h-20 shrink-0 flex-col gap-2 rounded-md border border-dashed border-border bg-muted/10 p-2"
+        aria-label={language === "en" ? "Video reference images" : "视频参考图"}
+        tabIndex={0}
+        onPaste={handleReferencePaste}
+        onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+        onDrop={(event) => { event.preventDefault(); addReferenceFiles(Array.from(event.dataTransfer.files)); }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-muted-foreground">{language === "en" ? `Reference images (${referenceImages.length}/${MAX_VIDEO_REFERENCE_IMAGES})` : `视频参考图（${referenceImages.length}/${MAX_VIDEO_REFERENCE_IMAGES}）`}</span>
+          <Button type="button" variant="outline" size="sm" className="!h-7 !min-h-7 !max-h-7 px-2 text-xs" disabled={referenceImages.length >= MAX_VIDEO_REFERENCE_IMAGES} onClick={() => referenceInputRef.current?.click()}><ImagePlusIcon data-icon="inline-start" />{language === "en" ? "Add" : "添加"}</Button>
+          <input ref={referenceInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { addReferenceFiles(Array.from(event.currentTarget.files || [])); event.currentTarget.value = ""; }} />
+        </div>
+        {referenceImages.length ? <div className="grid grid-cols-5 gap-1.5">
+          {referenceImages.map((image, index) => <div key={`${image.name}-${index}`} className="relative aspect-square overflow-hidden rounded border border-border bg-background">
+            <img src={image.src} alt="" aria-hidden="true" className="h-full w-full object-cover" />
+            <Button type="button" variant="secondary" size="icon-xs" className="absolute right-0.5 top-0.5 rounded-full bg-background/90" aria-label={`${language === "en" ? "Remove reference image" : "移除参考图"} ${index + 1}`} onClick={() => removeReferenceImage(index)}><XIcon /></Button>
+          </div>)}
+        </div> : <span className="text-xs text-muted-foreground">{language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。"}</span>}
+      </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pt-1">
         <Button type="button" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void submit()} disabled={!canSubmit}><PlayIcon data-icon="inline-start" />{modelMissing ? copy.generator.videoModelRequired : copy.generator.videoSubmit}</Button>
       </div>
@@ -214,12 +343,16 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
             </div>
             <p className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-muted-foreground">{task.prompt}</p>
             <span className="truncate text-xs text-muted-foreground">{task.model}</span>
+            {task.referenceImageCount ? <span className="text-xs text-muted-foreground">{language === "en" ? `${task.referenceImageCount} reference image${task.referenceImageCount === 1 ? "" : "s"}` : `参考图 ${task.referenceImageCount} 张`}</span> : null}
             {task.error ? <p className="break-words text-xs text-destructive">{task.error}</p> : null}
             {task.status === "completed" && videoUrl ? <video className="mt-1 max-h-64 w-full rounded-md bg-black" src={videoUrl} controls playsInline preload="metadata" /> : null}
-            {active || task.status === "completed" && videoUrl ? <div className="flex justify-end gap-1">
+            {!active ? <div className="flex justify-end gap-1">
+              {task.status === "failed" || task.status === "canceled" ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void retry(task)}><RefreshCwIcon data-icon="inline-start" />{language === "en" ? "Retry" : "重新生成"}</Button> : null}
+              <Button type="button" variant="ghost" size="icon-sm" className="!h-8 !min-h-8 !max-h-8" aria-label={language === "en" ? "Delete video task" : "删除视频任务"} title={language === "en" ? "Delete video task" : "删除视频任务"} onClick={() => void remove(task)}><Trash2Icon /></Button>
+              {task.status === "completed" && videoUrl ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void download(task)}><DownloadIcon data-icon="inline-start" />{copy.generator.videoDownload}</Button> : null}
+            </div> : <div className="flex justify-end gap-1">
               {active ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => stop(task)}><SquareIcon data-icon="inline-start" />{copy.generator.videoCancel}</Button> : null}
-              {task.status === "completed" && videoUrl ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => download(task)}><DownloadIcon data-icon="inline-start" />{copy.generator.videoDownload}</Button> : null}
-            </div> : null}
+            </div>}
           </article>;
         })}
       </div>, taskListTarget) : null}

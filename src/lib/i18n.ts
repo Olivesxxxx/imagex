@@ -290,8 +290,6 @@ type Copy = {
   promptEditor: {
     title: string;
     description: string;
-    header: string;
-    footer: string;
     defaultText: string;
     bodyLabel: string;
     cancel: string;
@@ -342,6 +340,7 @@ type Copy = {
     };
     count: string;
     keepOriginalPrompt: string;
+    strictPromptEnabled: string;
     keep: string;
     language: string;
     editOriginalPrompt: string;
@@ -732,7 +731,7 @@ const COPY: Record<Language, Copy> = {
       latency: "延迟",
       interval: "间隔",
       refreshLatency: "刷新 API 延迟",
-      testConnection: "测试供应商连接",
+      testConnection: "检查供应商连接",
       latencyCooldown: (seconds) => `请等待 ${seconds}s 后再检测`,
       latencyMeasuring: "检测中...",
       latencyUnavailable: "不可用",
@@ -761,12 +760,10 @@ const COPY: Record<Language, Copy> = {
       refilled: "历史提示词已回填",
     },
     promptEditor: {
-      title: "编辑原始提示词",
-      description: "首尾两行固定不可修改，只编辑中间正文。开启此功能也不能保证完全保持原始提示词。",
-      header: "请把下面的原始提示词当作最终图像指令执行。",
-      footer: "原始提示词:",
+      title: "编辑严格提示词规则",
+      description: "这里只编辑发送前自动添加的规则，不需要把主面板里的生图提示词再复制一遍。",
       defaultText: DEFAULT_STRICT_PROMPT_TEXT,
-      bodyLabel: "原始提示词正文",
+      bodyLabel: "规则",
       cancel: "取消",
       restoreDefault: "恢复默认",
       confirm: "确定",
@@ -809,6 +806,7 @@ const COPY: Record<Language, Copy> = {
       qualityOptions: { auto: "自动", low: "低", medium: "中", high: "高" },
       count: "生图数量",
       keepOriginalPrompt: "保持原始提示词",
+      strictPromptEnabled: "启用严格提示词模式",
       keep: "保持",
       language: "语言",
       editOriginalPrompt: "编辑原始提示词文案",
@@ -1246,7 +1244,7 @@ const COPY: Record<Language, Copy> = {
       latency: "Latency",
       interval: "Interval",
       refreshLatency: "Refresh API latency",
-      testConnection: "Test provider connection",
+      testConnection: "Check provider connection",
       latencyCooldown: (seconds) => `Check again in ${seconds}s`,
       latencyMeasuring: "Checking...",
       latencyUnavailable: "Unavailable",
@@ -1275,12 +1273,10 @@ const COPY: Record<Language, Copy> = {
       refilled: "Prompt refilled",
     },
     promptEditor: {
-      title: "Edit strict prompt",
-      description: "The first and last lines are fixed. Only the middle body can be edited, and this feature cannot guarantee a fully preserved original prompt.",
-      header: "Please treat the following original Prompt as the final image instruction.",
-      footer: "Original Prompt:",
+      title: "Edit strict prompt rules",
+      description: "Edit only the rules added before sending. You do not need to copy the image prompt from the main panel here.",
       defaultText: DEFAULT_STRICT_PROMPT_TEXT_EN,
-      bodyLabel: "Strict prompt body",
+      bodyLabel: "Rules",
       cancel: "Cancel",
       restoreDefault: "Restore default",
       confirm: "Confirm",
@@ -1324,6 +1320,7 @@ const COPY: Record<Language, Copy> = {
       qualityOptions: { auto: "auto", low: "low", medium: "medium", high: "high" },
       count: "Image count",
       keepOriginalPrompt: "Keep original prompt",
+      strictPromptEnabled: "Enable strict prompt mode",
       keep: "Keep",
       language: "Language",
       editOriginalPrompt: "Edit strict prompt text",

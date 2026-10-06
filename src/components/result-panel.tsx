@@ -94,7 +94,7 @@ function latencyToneClass(state: "idle" | "measuring" | "ready" | "unavailable",
   return "text-rose-600 dark:text-rose-400";
 }
 
-const LATENCY_CHECK_INTERVAL_MS = 60_000;
+const HEALTH_CHECK_INTERVAL_MS = 60_000;
 
 async function downloadRequestImages(request: Pick<ImageRequestRecord, "images" | "payload" | "title" | "method">) {
   const images = request.images || [];
@@ -394,6 +394,7 @@ export function ResultPanel({
   previewTarget,
   connectionStatus,
   testConnectionStatus,
+  connectionLatency,
   onTestConnection,
 }: {
   selectedRequest: ImageRequestRecord | null;
@@ -401,7 +402,8 @@ export function ResultPanel({
   settings: Pick<AppSettings, "protocol" | "baseUrl" | "geminiBaseUrl" | "openaiProviders" | "activeOpenAIProviderId" | "requestConcurrency" | "requestIntervalSeconds">;
   connectionStatus: ConnectionStatus;
   testConnectionStatus: ConnectionStatus;
-  onTestConnection: () => void | Promise<void>;
+  connectionLatency: number | null;
+  onTestConnection: (options?: { silent?: boolean }) => void | Promise<void>;
   selectedRequestJson: string;
   setJsonDialogOpen: (open: boolean) => void;
   reusePrompt: (request: ImageRequestRecord) => void;
@@ -447,88 +449,29 @@ export function ResultPanel({
             : !activeProvider?.editsModel.trim()
               ? copy.settings.editsModel
               : null);
-  const [latency, setLatency] = useState<number | null>(null);
-  const [latencyState, setLatencyState] = useState<"idle" | "measuring" | "ready" | "unavailable">("idle");
-  const [latencyCooldownUntil, setLatencyCooldownUntil] = useState(0);
-  const [latencyCooldownSeconds, setLatencyCooldownSeconds] = useState(0);
-  const latencyAbortRef = useRef<AbortController | null>(null);
-  const latencyRequestRef = useRef(0);
-  const latencyLastCheckAtRef = useRef(0);
-
-  const refreshLatency = useCallback(async () => {
-    const now = Date.now();
-    if (now - latencyLastCheckAtRef.current < LATENCY_CHECK_INTERVAL_MS) return false;
-    const requestId = ++latencyRequestRef.current;
-    latencyAbortRef.current?.abort();
-    if (!apiUrl) {
-      setLatency(null);
-      setLatencyState("unavailable");
-      return false;
-    }
-    latencyLastCheckAtRef.current = now;
-    setLatencyCooldownUntil(now + LATENCY_CHECK_INTERVAL_MS);
-    const controller = new AbortController();
-    latencyAbortRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), 8000);
-    setLatency(null);
-    setLatencyState("measuring");
-    const startedAt = performance.now();
-    try {
-      const target = new URL(apiUrl, window.location.href).toString();
-      await fetch(target, { method: "HEAD", mode: "no-cors", cache: "no-store", signal: controller.signal });
-      if (requestId !== latencyRequestRef.current) return false;
-      setLatency(Math.max(1, Math.round(performance.now() - startedAt)));
-      setLatencyState("ready");
-      return true;
-    } catch {
-      if (requestId !== latencyRequestRef.current) return false;
-      setLatencyState("unavailable");
-      return false;
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
-  }, [apiUrl]);
-
-  useEffect(() => () => {
-    latencyRequestRef.current += 1;
-    latencyAbortRef.current?.abort();
-  }, []);
-
-  useEffect(() => {
-    latencyRequestRef.current += 1;
-    latencyAbortRef.current?.abort();
-    latencyLastCheckAtRef.current = 0;
-    setLatencyCooldownUntil(0);
-    setLatency(null);
-    setLatencyState("idle");
-  }, [apiUrl]);
-
-  useEffect(() => {
-    if (testConnectionStatus.tone === "ok") void refreshLatency();
-  }, [refreshLatency, testConnectionStatus.tone]);
-
-  useEffect(() => {
-    const updateCooldown = () => {
-      setLatencyCooldownSeconds(Math.max(0, Math.ceil((latencyCooldownUntil - Date.now()) / 1000)));
-    };
-    updateCooldown();
-    if (!latencyCooldownUntil) return;
-    const timer = window.setInterval(updateCooldown, 1000);
-    return () => window.clearInterval(timer);
-  }, [latencyCooldownUntil]);
+  const latencyState = testConnectionStatus.tone === "busy"
+    ? "measuring"
+    : connectionLatency !== null
+      ? "ready"
+      : testConnectionStatus.tone === "error"
+        ? "unavailable"
+        : "idle";
+  const latency = connectionLatency;
 
   useEffect(() => {
     if (configurationIssue) return;
     const runAutomaticCheck = () => {
-      if (document.visibilityState === "visible") void refreshLatency();
+      if (document.visibilityState === "visible" && testConnectionStatus.tone !== "busy") {
+        void onTestConnection({ silent: true });
+      }
     };
-    const timer = window.setInterval(runAutomaticCheck, LATENCY_CHECK_INTERVAL_MS);
+    const timer = window.setInterval(runAutomaticCheck, HEALTH_CHECK_INTERVAL_MS);
     document.addEventListener("visibilitychange", runAutomaticCheck);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", runAutomaticCheck);
     };
-  }, [configurationIssue, refreshLatency]);
+  }, [configurationIssue, onTestConnection, testConnectionStatus.tone]);
 
   const latencyLabel = latencyState === "idle"
     ? "-"
@@ -585,11 +528,11 @@ export function ResultPanel({
               </span>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" disabled={Boolean(configurationIssue) || latencyState === "measuring" || testConnectionStatus.tone === "busy" || latencyCooldownSeconds > 0} onClick={() => void onTestConnection()} aria-label={latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.testConnection}>
+                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" disabled={Boolean(configurationIssue) || latencyState === "measuring" || testConnectionStatus.tone === "busy"} onClick={() => void onTestConnection()} aria-label={copy.requestCardStatus.testConnection}>
                     <RefreshCwIcon className={latencyState === "measuring" ? "animate-spin" : undefined} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{latencyCooldownSeconds > 0 ? copy.requestCardStatus.latencyCooldown(latencyCooldownSeconds) : copy.requestCardStatus.testConnection}</TooltipContent>
+                <TooltipContent>{copy.requestCardStatus.testConnection}</TooltipContent>
               </Tooltip>
             </div>
           </div>

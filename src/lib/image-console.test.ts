@@ -113,7 +113,7 @@ describe("image console logic", () => {
       background: "auto",
       outputFormat: "png",
       n: 3,
-      strictPrompt: true,
+      strictPrompt: false,
     });
   });
 
@@ -289,10 +289,21 @@ describe("image console logic", () => {
     });
   });
 
-  test("adds strict prompt policy by default", () => {
+  test("keeps the raw prompt by default", () => {
     const payload = buildPayload({
       generationsModel: "gpt-image-2",
       prompt: "glass jellyfish",
+      n: 1,
+    });
+
+    expect(payload.prompt).toBe("glass jellyfish");
+  });
+
+  test("adds strict prompt policy when explicitly enabled", () => {
+    const payload = buildPayload({
+      generationsModel: "gpt-image-2",
+      prompt: "glass jellyfish",
+      strictPrompt: true,
       n: 1,
     });
 

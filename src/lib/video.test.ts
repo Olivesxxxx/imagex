@@ -39,6 +39,18 @@ describe("video API", () => {
     expect(task).toMatchObject({ id: "video-1", providerId: "provider-a", status: "queued" });
   });
 
+  test("uploads video reference images as repeated image[] fields", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: "video-ref", status: "queued" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const reference = new File(["reference"], "reference.png", { type: "image/png" });
+
+    await createVideoTask({ ...options, referenceImages: [reference, reference] }, "provider-a");
+    const form = fetchMock.mock.calls[0][1].body as FormData;
+
+    expect(form.getAll("image[]")).toHaveLength(2);
+    expect((form.getAll("image[]")[0] as File).name).toBe("reference.png");
+  });
+
   test("polls pending work and fetches content only after completion", async () => {
     const task: VideoTask = {
       id: "video-2", providerId: "provider-a", model: options.model, prompt: options.prompt,

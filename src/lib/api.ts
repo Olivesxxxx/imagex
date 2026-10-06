@@ -1,4 +1,4 @@
-import { normalizeModelsEndpoint } from "@/lib/endpoints";
+import { normalizeGeminiModelsEndpoint, normalizeModelsEndpoint } from "@/lib/endpoints";
 import { extractImages, responseBodyHasError, responseErrorMessage } from "@/lib/image-console";
 import type { OpenAIImageRequestOptions } from "@/lib/image-console";
 
@@ -464,4 +464,16 @@ export async function fetchModels(
     signal,
   });
   return { endpoint, body: await validatedResponseBody(response, language) };
+}
+
+export async function fetchGeminiModels(
+  baseUrl: string,
+  apiKey: string,
+  language: "zh" | "en" = "zh",
+  signal?: AbortSignal,
+) {
+  const url = new URL(normalizeGeminiModelsEndpoint(baseUrl));
+  if (apiKey) url.searchParams.set("key", apiKey);
+  const response = await fetch(url.toString(), { method: "GET", signal });
+  return { endpoint: url.toString(), body: await validatedResponseBody(response, language) };
 }

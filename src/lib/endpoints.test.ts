@@ -4,6 +4,8 @@ import {
   normalizeChatCompletionsEndpoint,
   normalizeImageEditsEndpoint,
   normalizeImageEndpoint,
+  normalizeGeminiModelsEndpoint,
+  normalizeGeminiImageEndpoint,
   normalizeModelsEndpoint,
   normalizePrivateImageEditsEndpoint,
   normalizePrivateImageEndpoint,
@@ -49,6 +51,18 @@ describe("endpoint normalization", () => {
     );
     expect(normalizeChatCompletionsEndpoint("https://proxy.example.com/openai/v1/")).toBe(
       "https://proxy.example.com/openai/v1/chat/completions",
+    );
+  });
+
+  test("normalizes Gemini base URLs without adding an OpenAI v1 segment", () => {
+    expect(normalizeGeminiModelsEndpoint("https://generativelanguage.googleapis.com/v1beta")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models",
+    );
+    expect(normalizeGeminiModelsEndpoint("https://generativelanguage.googleapis.com/v1beta/models")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models",
+    );
+    expect(normalizeGeminiImageEndpoint("https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash-image")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
     );
   });
 

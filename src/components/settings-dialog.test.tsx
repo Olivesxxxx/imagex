@@ -7,6 +7,36 @@ import { LanguageProvider } from "@/lib/i18n";
 import { DEFAULT_MODE_SETTINGS, DEFAULT_OPENAI_PROVIDERS, DEFAULT_SHARED_SETTINGS, mergeSettingsForMode } from "@/lib/image-console";
 
 describe("SettingsDialog", () => {
+  test("does not allow deleting the last provider", () => {
+    const provider = { ...DEFAULT_OPENAI_PROVIDERS[0], apiKey: "test-key" };
+    const settings = mergeSettingsForMode(
+      { ...DEFAULT_SHARED_SETTINGS, openaiProviders: [provider], activeOpenAIProviderId: provider.id },
+      DEFAULT_MODE_SETTINGS,
+    );
+
+    render(
+      <TooltipProvider>
+        <LanguageProvider initialLanguage="en">
+          <SettingsDialog
+            settings={settings}
+            settingsOpen
+            endpointPreview="https://provider.example/v1/models"
+            testConnectionStatus={{ label: "Test connection", tone: "default" }}
+            setSettingsOpen={vi.fn()}
+            updateSettings={vi.fn()}
+            saveCurrentSettings={vi.fn()}
+            discardSettingsChanges={vi.fn()}
+            clearAllData={vi.fn()}
+            testConnection={vi.fn()}
+            cancelConnectionTest={vi.fn()}
+          />
+        </LanguageProvider>
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "Delete provider" })).toBeDisabled();
+  });
+
   test("offers cancellation while a connection test is running", () => {
     const cancelConnectionTest = vi.fn();
     const providers = DEFAULT_OPENAI_PROVIDERS.map((provider) => ({ ...provider, apiKey: "test-key" }));
@@ -26,6 +56,7 @@ describe("SettingsDialog", () => {
             setSettingsOpen={vi.fn()}
             updateSettings={vi.fn()}
             saveCurrentSettings={vi.fn()}
+            discardSettingsChanges={vi.fn()}
             clearAllData={vi.fn()}
             testConnection={vi.fn()}
             cancelConnectionTest={cancelConnectionTest}

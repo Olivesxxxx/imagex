@@ -70,3 +70,9 @@ export function normalizeGeminiImageEndpoint(baseUrl: string, model: string) {
   if (/\/models\/[^/]+:generateContent$/i.test(input)) return input;
   return `${input}/models/${encodeURIComponent(normalizedModel)}:generateContent`;
 }
+
+export function normalizeGeminiModelsEndpoint(baseUrl: string) {
+  const input = trimTrailingSlash(baseUrl || "https://generativelanguage.googleapis.com/v1beta");
+  if (/\/models$/i.test(input)) return input;
+  return `${input}/models`;
+}

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { authHeaders, postImageEdit, postImageGeneration } from "@/lib/api";
+import { authHeaders, fetchGeminiModels, postImageEdit, postImageGeneration } from "@/lib/api";
 
 const endpoint = "https://images.example/v1/images/generations";
 const successBody = { data: [{ b64_json: "aW1hZ2U=" }] };
@@ -18,6 +18,19 @@ afterEach(() => {
 });
 
 describe("OpenAI-compatible image requests", () => {
+  test("tests Gemini connectivity through its models endpoint and query key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ models: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchGeminiModels("https://generativelanguage.googleapis.com/v1beta", "gemini-key", "en");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+  });
+
   test("supports a custom authentication header and empty prefix", () => {
     expect(authHeaders("secret", "application/json", { authHeaderName: "x-api-key", authPrefix: "" })).toEqual({
       "Content-Type": "application/json",

@@ -7,7 +7,7 @@ import { MaskEditor, type MaskEditorImage } from "@/components/mask-editor";
 import { RequestListPanel } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { ProductSuitePanel } from "@/components/product-suite-panel";
-import type { VideoDuration, VideoSize } from "@/lib/video";
+import { clearVideoData, type VideoDuration, type VideoSize } from "@/lib/video";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -465,6 +465,7 @@ export default function App() {
               settings={consoleState.settings}
               connectionStatus={consoleState.connectionStatus}
               testConnectionStatus={consoleState.testConnectionStatus}
+              connectionLatency={consoleState.connectionLatency}
               onTestConnection={consoleState.testConnection}
               selectedRequestJson={consoleState.selectedRequestJson}
               setJsonDialogOpen={consoleState.setJsonDialogOpen}
@@ -579,9 +580,11 @@ export default function App() {
         setSettingsOpen={consoleState.setSettingsOpen}
         updateSettings={consoleState.updateSettings}
         saveCurrentSettings={consoleState.saveCurrentSettings}
+        discardSettingsChanges={consoleState.discardSettingsChanges}
         clearAllData={() => {
           resetImageSelection();
           consoleState.clearAllData();
+          void clearVideoData();
         }}
         testConnection={consoleState.testConnection}
         cancelConnectionTest={consoleState.cancelConnectionTest}

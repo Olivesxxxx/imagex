@@ -21,6 +21,7 @@ export interface SettingsDialogProps {
   setSettingsOpen: (open: boolean) => void;
   updateSettings: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   saveCurrentSettings: () => void;
+  discardSettingsChanges: () => void;
   clearAllData: () => void;
   testConnection: () => void;
   cancelConnectionTest: () => void;
@@ -34,6 +35,7 @@ export function SettingsDialog({
   setSettingsOpen,
   updateSettings,
   saveCurrentSettings,
+  discardSettingsChanges,
   clearAllData,
   testConnection,
   cancelConnectionTest,
@@ -45,7 +47,7 @@ export function SettingsDialog({
   const testConfigurationReady = Boolean(
     activeProvider && (
       activeProvider.protocol === "openai"
-        ? activeProvider.baseUrl.trim() && activeProvider.apiKey.trim() && activeProvider.generationsModel.trim() && activeProvider.editsModel.trim()
+        ? activeProvider.baseUrl.trim() && activeProvider.apiKey.trim() && activeProvider.generationsModel.trim()
         : activeProvider.geminiBaseUrl.trim() && activeProvider.geminiApiKey.trim() && activeProvider.geminiModel.trim()
     ),
   );
@@ -95,6 +97,7 @@ export function SettingsDialog({
 
   function deleteProvider() {
     if (!activeProvider) return;
+    if (settings.openaiProviders.length <= 1) return;
     updateSettings("openaiProviders", settings.openaiProviders.filter((provider) => provider.id !== activeProvider.id));
     setProviderDeleteConfirmOpen(false);
   }
@@ -110,7 +113,7 @@ export function SettingsDialog({
     const builtIn = DEFAULT_OPENAI_PROVIDERS.find((provider) => provider.id === activeProvider.id);
     const fallback: OpenAIProvider = {
       ...activeProvider,
-      protocol: "openai",
+      protocol: activeProvider.protocol,
       baseUrl: "",
       apiKey: "",
       generationsModel: DEFAULTS.generationsModel,
@@ -134,6 +137,7 @@ export function SettingsDialog({
   }
 
   function handleSettingsOpenChange(open: boolean) {
+    if (!open) discardSettingsChanges();
     setSettingsOpen(open);
   }
 
@@ -175,7 +179,7 @@ export function SettingsDialog({
                       <div className="min-w-0 truncate text-sm font-medium">{activeProvider.name || copy.settings.provider}</div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={restoreProviderDefaults}><RotateCcwIcon data-icon="inline-start" />{copy.settings.restoreProviderDefaults}</Button>
-                        <Button type="button" variant="destructive" size="sm" onClick={() => setProviderDeleteConfirmOpen(true)}><Trash2Icon data-icon="inline-start" />{copy.settings.deleteProvider}</Button>
+                        <Button type="button" variant="destructive" size="sm" disabled={settings.openaiProviders.length <= 1} onClick={() => setProviderDeleteConfirmOpen(true)}><Trash2Icon data-icon="inline-start" />{copy.settings.deleteProvider}</Button>
                       </div>
                     </div>
                     <Field>

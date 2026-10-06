@@ -1107,12 +1107,12 @@ export function ProductSuitePanel({
         <div className={draft ? "min-w-0" : "flex min-h-0 flex-1 flex-col"}>
             <div className={draft ? "grid w-full min-w-0 max-w-full gap-1" : "flex min-h-0 flex-1 flex-col"}>
           {draft ? (
-            <section className="grid min-w-0 gap-3">
+            <section className="grid min-w-0 gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{suiteCopy.taskConfiguration}</span>
               <div className="flex min-w-0 items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2">
                 <PencilRulerIcon className="size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
-                  <h3 className="truncate text-sm font-semibold">{suiteCopy.taskConfiguration}</h3>
-                  <p className="truncate text-xs text-foreground/80">{draft.name || suiteCopy.untitled}</p>
+                  <p className="truncate text-sm font-medium text-foreground">{draft.name || suiteCopy.untitled}</p>
                   <p className="truncate text-xs text-muted-foreground">{suiteCopy.batchLabel(draft.productBatchNumber)} · {suiteCopy.progressSummary(completedSlotCount, draft.slots.filter((slot) => slot.enabled).length)}</p>
                 </div>
                 <Button type="button" variant="ghost" size="icon" className="ml-auto shrink-0" onClick={exportTemplate} aria-label={suiteCopy.exportTemplate} title={suiteCopy.exportTemplate}><DownloadIcon /></Button>

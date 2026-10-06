@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { fetchModels, postGeminiImageGeneration, postImageEdit, postImageGeneration } from "@/lib/api";
+import { fetchGeminiModels, fetchModels, postGeminiImageGeneration, postImageEdit, postImageGeneration } from "@/lib/api";
 import {
   normalizeChatCompletionsEndpoint,
   normalizeImageEditsEndpoint,
   normalizeImageEndpoint,
   normalizeModelsEndpoint,
   normalizeGeminiImageEndpoint,
+  normalizeGeminiModelsEndpoint,
   normalizeResponsesEndpoint,
 } from "@/lib/endpoints";
 import {
@@ -554,6 +555,7 @@ export function useImageConsole() {
     label: copy.tests.test,
     tone: "default",
   }));
+  const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
@@ -1460,6 +1462,7 @@ export function useImageConsole() {
     });
     if (key === "protocol" || key === "baseUrl" || key === "apiKey" || key === "openaiProviders" || key === "activeOpenAIProviderId" || key === "privateBaseUrl" || key === "privateApiKey" || key === "geminiBaseUrl" || key === "geminiApiKey" || key === "geminiModel" || key === "generationsModel" || key === "editsModel") {
       setTestConnectionStatus({ label: copy.tests.test, tone: "default" });
+      setConnectionLatency(null);
     }
   }, [copy]);
 
@@ -1476,6 +1479,17 @@ export function useImageConsole() {
     scheduleQueueRef.current();
   }, [clearQueueTimer, copy, strictPromptDefaultText]);
 
+  const discardSettingsChanges = useCallback(() => {
+    const persisted = syncStrictPromptDefaults(initialStoredSettings(), strictPromptDefaultText);
+    const normalized = persisted;
+    setStoredSettings(normalized);
+    storedSettingsRef.current = normalized;
+    settingsRef.current = mergeSettingsForMode(normalized.shared, normalized.modeSettingsByMode[modeRef.current]);
+    setTestConnectionStatus({ label: copy.tests.test, tone: "default" });
+    setConnectionLatency(null);
+    scheduleQueueRef.current();
+  }, [copy, strictPromptDefaultText]);
+
   const resetSettings = useCallback(() => {
     resetStoredSettings();
     const defaults = { ...DEFAULT_STORED_SETTINGS };
@@ -1484,9 +1498,11 @@ export function useImageConsole() {
     settingsRef.current = mergeSettingsForMode(defaults.shared, defaults.modeSettingsByMode[modeRef.current]);
     setConnectionStatus({ label: copy.tests.connectionReset, tone: "default" });
     setTestConnectionStatus({ label: copy.tests.test, tone: "default" });
+    setConnectionLatency(null);
   }, [copy]);
 
-  const testConnection = useCallback(async () => {
+  const testConnection = useCallback(async (options: { silent?: boolean } = {}) => {
+    const silent = options.silent === true;
     const currentSettings = settingsRef.current;
     const activeProvider = currentSettings.openaiProviders.find((provider) => provider.id === currentSettings.activeOpenAIProviderId);
     const testUrl = currentSettings.protocol === "gemini" ? currentSettings.geminiBaseUrl.trim() : currentSettings.baseUrl.trim();
@@ -1496,36 +1512,42 @@ export function useImageConsole() {
         : activeProvider?.generationsModel.trim() || currentSettings.generationsModel.trim();
     if ((currentSettings.protocol === "openai" && !activeProvider) || !testUrl || !testKey || !testModel) {
       setTestConnectionStatus({ label: copy.tests.connectionNotConfigured, tone: "error" });
-      toast.error(copy.tests.connectionNotConfigured);
+      setConnectionLatency(null);
+      if (!silent) toast.error(copy.tests.connectionNotConfigured);
       return;
     }
-    const endpoint = normalizeModelsEndpoint(testUrl);
+    const endpoint = currentSettings.protocol === "gemini"
+      ? normalizeGeminiModelsEndpoint(testUrl)
+      : normalizeModelsEndpoint(testUrl);
     connectionTestControllerRef.current?.abort();
     setTestConnectionStatus({ label: copy.tests.connectionTesting, tone: "busy" });
     const controller = new AbortController();
     connectionTestControllerRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort("timeout"), 12_000);
+    const startedAt = performance.now();
+    setConnectionLatency(null);
 
     try {
-      await fetchModels(
-        testUrl,
-        testKey,
-        language,
-        controller.signal,
-        currentSettings.protocol === "openai" ? openAIImageOptionsFromSettings(currentSettings) : undefined,
-      );
+      if (currentSettings.protocol === "gemini") {
+        await fetchGeminiModels(testUrl, testKey, language, controller.signal);
+      } else {
+        await fetchModels(testUrl, testKey, language, controller.signal, openAIImageOptionsFromSettings(currentSettings));
+      }
       if (connectionTestControllerRef.current !== controller) return;
-      toast.success(copy.tests.connectionNormal);
+      setConnectionLatency(Math.max(1, Math.round(performance.now() - startedAt)));
+      if (!silent) toast.success(copy.tests.connectionNormal);
       setTestConnectionStatus({ label: copy.tests.connectionNormal, tone: "ok" });
     } catch (error) {
       if (connectionTestControllerRef.current !== controller) return;
       if (controller.signal.reason === "user") {
+        setConnectionLatency(null);
         setTestConnectionStatus({ label: copy.tests.connectionCanceled, tone: "default" });
         return;
       }
-      if (await isCrossOriginFetchFailure(endpoint, error)) {
+      setConnectionLatency(null);
+      if (!silent && await isCrossOriginFetchFailure(endpoint, error)) {
         toast.error(copy.runtime.crossOriginRequestFailed);
-      } else if (isBrowserNetworkFailure(error)) {
+      } else if (!silent && isBrowserNetworkFailure(error)) {
         toast.error(copy.runtime.browserRequestFailed);
       }
       setTestConnectionStatus({ label: copy.tests.connectionFailed, tone: "error" });
@@ -1539,6 +1561,7 @@ export function useImageConsole() {
     const controller = connectionTestControllerRef.current;
     if (!controller) return;
     controller.abort("user");
+    setConnectionLatency(null);
     setTestConnectionStatus({ label: copy.tests.connectionCanceled, tone: "default" });
   }, [copy]);
 
@@ -2104,6 +2127,7 @@ export function useImageConsole() {
     requestCounts,
     connectionStatus,
     testConnectionStatus,
+    connectionLatency,
     selectedRequestDetailLoadingId,
     endpointPreview,
     settingsOpen,
@@ -2127,6 +2151,7 @@ export function useImageConsole() {
     setClearDialogOpen,
     setJsonDialogOpen,
     saveCurrentSettings,
+    discardSettingsChanges,
     resetSettings,
     testConnection,
     cancelConnectionTest,

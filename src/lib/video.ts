@@ -13,6 +13,7 @@ export interface VideoRequestOptions {
   size: VideoSize;
   authHeaderName?: string;
   authPrefix?: string;
+  referenceImages?: File[];
   signal?: AbortSignal;
 }
 
@@ -28,6 +29,7 @@ export interface VideoTask {
   updatedAt: number;
   error?: string;
   url?: string;
+  referenceImageCount?: number;
 }
 
 export interface VideoTaskResult {
@@ -38,14 +40,18 @@ export interface VideoTaskResult {
 }
 
 const VIDEO_DB_NAME = "ImageX-videos";
-const VIDEO_DB_VERSION = 1;
+const VIDEO_DB_VERSION = 2;
 const VIDEO_STORE_NAME = "video-blobs";
+const VIDEO_REFERENCE_STORE_NAME = "video-references";
+export const VIDEO_TASKS_STORAGE_KEY = "ImageX-video-tasks";
+export const VIDEO_DATA_CLEARED_EVENT = "imagex:video-data-cleared";
 
 function openVideoDb() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(VIDEO_DB_NAME, VIDEO_DB_VERSION);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(VIDEO_STORE_NAME)) request.result.createObjectStore(VIDEO_STORE_NAME);
+      if (!request.result.objectStoreNames.contains(VIDEO_REFERENCE_STORE_NAME)) request.result.createObjectStore(VIDEO_REFERENCE_STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("Unable to open video storage."));
@@ -80,6 +86,78 @@ export async function loadVideoBlob(id: string) {
   }
 }
 
+export async function deleteVideoBlob(id: string) {
+  const db = await openVideoDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(VIDEO_STORE_NAME, "readwrite");
+      transaction.objectStore(VIDEO_STORE_NAME).delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Unable to delete video."));
+      transaction.onabort = () => reject(transaction.error || new Error("Video deletion was canceled."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function saveVideoReferenceFiles(id: string, files: File[]) {
+  if (!files.length) return;
+  const db = await openVideoDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(VIDEO_REFERENCE_STORE_NAME, "readwrite");
+      transaction.objectStore(VIDEO_REFERENCE_STORE_NAME).put(files, id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Unable to save video references."));
+      transaction.onabort = () => reject(transaction.error || new Error("Video reference save was canceled."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function loadVideoReferenceFiles(id: string) {
+  const db = await openVideoDb();
+  try {
+    return await new Promise<File[]>((resolve, reject) => {
+      const request = db.transaction(VIDEO_REFERENCE_STORE_NAME, "readonly").objectStore(VIDEO_REFERENCE_STORE_NAME).get(id);
+      request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result.filter((item): item is File => item instanceof File) : []);
+      request.onerror = () => reject(request.error || new Error("Unable to load video references."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function deleteVideoReferenceFiles(id: string) {
+  const db = await openVideoDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(VIDEO_REFERENCE_STORE_NAME, "readwrite");
+      transaction.objectStore(VIDEO_REFERENCE_STORE_NAME).delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Unable to delete video references."));
+      transaction.onabort = () => reject(transaction.error || new Error("Video reference deletion was canceled."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function clearVideoData() {
+  localStorage.removeItem(VIDEO_TASKS_STORAGE_KEY);
+  if (typeof indexedDB !== "undefined") {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(VIDEO_DB_NAME);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error("Unable to clear video storage."));
+      request.onblocked = () => resolve();
+    });
+  }
+  window.dispatchEvent(new Event(VIDEO_DATA_CLEARED_EVENT));
+}
+
 function endpoint(baseUrl: string, path: string) {
   const base = String(baseUrl || "").trim().replace(/\/+$/, "");
   if (!base) throw new Error("Video API URL is not configured.");
@@ -106,7 +184,7 @@ function errorMessage(body: unknown, fallback: string) {
   return String(error.message || record.message || record.msg || fallback).trim() || fallback;
 }
 
-function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "size">): VideoTask {
+function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "size" | "referenceImages">): VideoTask {
   const root = readRecord(body);
   const data = readRecord(root.data);
   const id = String(root.id || data.id || root.task_id || data.task_id || "").trim();
@@ -120,6 +198,7 @@ function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" 
     prompt: options.prompt,
     duration: options.duration,
     size: options.size,
+    referenceImageCount: options.referenceImages?.length || 0,
     status: status === "completed" || status === "failed" || status === "canceled" || status === "running" ? status : "queued",
     createdAt: now,
     updatedAt: now,
@@ -136,6 +215,9 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
   body.append("prompt", prompt);
   body.append("seconds", options.duration);
   body.append("size", options.size);
+  for (const image of options.referenceImages || []) {
+    body.append("image[]", image, image.name || "reference.png");
+  }
   const response = await fetch(endpoint(options.baseUrl, "/videos"), {
     method: "POST",
     headers: authHeaders(options.apiKey, null, options),

@@ -21,8 +21,9 @@ import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, typ
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Dialog as DialogPrimitive } from "radix-ui";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -477,6 +478,8 @@ export function GeneratorPanel({
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [previewEditImageIndex, setPreviewEditImageIndex] = useState<number | null>(null);
   const [editImageDragActive, setEditImageDragActive] = useState(false);
+  const [strictPromptEditorOpen, setStrictPromptEditorOpen] = useState(false);
+  const [strictPromptDraft, setStrictPromptDraft] = useState("");
   const generationButtonFeedbackClassName = "transition-all duration-100 active:translate-y-px active:scale-[0.99] active:brightness-95";
   const editImageSelectionFull = editImages.length >= MAX_EDIT_INPUT_IMAGES;
   const activeProvider = settings.openaiProviders.find((item) => item.id === settings.activeOpenAIProviderId);
@@ -485,6 +488,11 @@ export function GeneratorPanel({
     : (mode === "edit" ? activeProvider?.editsModel : activeProvider?.generationsModel)?.trim() || "";
   const imageModelMissing = !imageModel;
   const previewEditImage = previewEditImageIndex !== null ? editImages[previewEditImageIndex] ?? null : null;
+
+  function openStrictPromptEditor() {
+    setStrictPromptDraft(settings.strictPromptText || copy.promptEditor.defaultText);
+    setStrictPromptEditorOpen(true);
+  }
 
   useEffect(() => {
     if (previewEditImageIndex !== null && !editImages[previewEditImageIndex]) {
@@ -659,20 +667,33 @@ export function GeneratorPanel({
         className={cn(
           "min-h-0 flex-1",
           mode === "edit"
-            ? "grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.44fr)]"
+            ? "grid gap-3 md:gap-y-1 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.44fr)] md:grid-rows-[auto_minmax(0,1fr)]"
             : "flex flex-col",
         )}
       >
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
-          <label htmlFor="prompt" className={panelLabelClassName}>{copy.generator.promptLabel}</label>
-          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className="standard-scrollbar min-h-32 flex-1 resize-none overflow-y-auto" />
+        <div className={cn("flex min-h-32 min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground", mode === "edit" && "md:contents")}>
+          <div className={cn("flex h-4 min-h-4 items-center justify-between gap-2 leading-4", mode === "edit" && "md:col-start-1 md:row-start-1")}>
+            <label htmlFor="prompt" className={panelLabelClassName}>{copy.generator.promptLabel}</label>
+            {mode === "generate" || mode === "edit" ? (
+              <div className="flex items-center gap-2">
+                <label htmlFor="strictPrompt" className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                  <Checkbox id="strictPrompt" checked={settings.strictPrompt} onCheckedChange={(checked) => updateSettings("strictPrompt", checked === true)} />
+                  {copy.generator.strictPromptEnabled}
+                </label>
+                <Button type="button" variant="ghost" size="icon-xs" aria-label={copy.generator.editOriginalPromptTooltip} title={copy.generator.editOriginalPromptTooltip} onClick={openStrictPromptEditor}>
+                  <PencilIcon />
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className={cn("standard-scrollbar min-h-24 flex-1 resize-none overflow-y-auto", mode === "edit" && "md:col-start-1 md:row-start-2")} />
         </div>
 
         {mode === "edit" ? (
-          <div className="flex min-h-0 min-w-0 flex-col gap-2">
+          <div className={cn("flex min-h-0 min-w-0 flex-col gap-2", "md:contents")}>
             <div
               className={cn(
-                "mt-5 flex min-h-24 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors",
+                "flex min-h-24 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors md:col-start-2 md:row-start-2",
                 editImageDragActive ? "border-foreground/50 bg-muted/50" : "bg-muted/10",
               )}
               role="region"
@@ -771,6 +792,23 @@ export function GeneratorPanel({
       <div className={videoOpen ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
         <VideoGenerationPanel settings={settings} duration={videoDuration} size={videoSize} />
       </div>
+      <Dialog open={strictPromptEditorOpen} onOpenChange={setStrictPromptEditorOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{copy.promptEditor.title}</DialogTitle>
+            <DialogDescription>{copy.promptEditor.description}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <label htmlFor="strictPromptText" className="text-sm font-medium">{copy.promptEditor.bodyLabel}</label>
+            <Textarea id="strictPromptText" rows={9} value={strictPromptDraft} onChange={(event) => setStrictPromptDraft(event.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setStrictPromptDraft(copy.promptEditor.defaultText)}>{copy.promptEditor.restoreDefault}</Button>
+            <Button type="button" variant="outline" onClick={() => setStrictPromptEditorOpen(false)}>{copy.promptEditor.cancel}</Button>
+            <Button type="button" onClick={() => { updateSettings("strictPromptText", strictPromptDraft); setStrictPromptEditorOpen(false); }}>{copy.promptEditor.confirm}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DialogPrimitive.Root open={previewEditImageIndex !== null} onOpenChange={(open) => { if (!open) setPreviewEditImageIndex(null); }}>
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
