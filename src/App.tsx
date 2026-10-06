@@ -4,10 +4,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { GeneratorPanel, PromptHistoryPanel, QuickStartDialog } from "@/components/generator-panel";
 import { AnnotationWorkspace, type AnnotationImageSource } from "@/components/annotation-workspace";
 import { MaskEditor, type MaskEditorImage } from "@/components/mask-editor";
-import { RequestListPanel } from "@/components/request-list-panel";
+import { RequestListPanel, type ResultMediaFilter } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { ProductSuitePanel } from "@/components/product-suite-panel";
-import { clearVideoData, type VideoDuration, type VideoSize } from "@/lib/video";
+import { clearVideoData, type VideoAspectRatio, type VideoDuration, type VideoQuality } from "@/lib/video";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -192,7 +192,9 @@ export default function App() {
   const [productSuiteHasDraft, setProductSuiteHasDraft] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [videoDuration, setVideoDuration] = useState<VideoDuration>("8");
-  const [videoSize, setVideoSize] = useState<VideoSize>("1280x720");
+  const [videoAspectRatio, setVideoAspectRatio] = useState<VideoAspectRatio>("16:9");
+  const [videoQuality, setVideoQuality] = useState<VideoQuality>("720p");
+  const [resultMediaFilter, setResultMediaFilter] = useState<ResultMediaFilter>("all");
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [annotationTarget, setAnnotationTarget] = useState<{ image: AnnotationImageSource; originalPrompt: string } | null>(null);
   const [maskEditorTarget, setMaskEditorTarget] = useState<EditInputImage | null>(null);
@@ -511,7 +513,7 @@ export default function App() {
                 requestRecords={consoleState.requestRecords}
               />
           </div>
-          <div className={productSuiteOpen ? "hidden" : videoOpen ? "flex min-w-0 flex-none flex-col" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
+          <div className={productSuiteOpen ? "hidden" : videoOpen ? "flex min-w-0 flex-none flex-col gap-3" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
                 <GeneratorPanel
                   mode={consoleState.mode}
                   editImages={consoleState.editImages}
@@ -540,8 +542,11 @@ export default function App() {
                   videoOpen={videoOpen}
                   videoDuration={videoDuration}
                   setVideoDuration={setVideoDuration}
-                  videoSize={videoSize}
-                  setVideoSize={setVideoSize}
+                  videoAspectRatio={videoAspectRatio}
+                  setVideoAspectRatio={setVideoAspectRatio}
+                  videoQuality={videoQuality}
+                  setVideoQuality={setVideoQuality}
+                  resultMediaFilter={resultMediaFilter}
                   onOpenMaskEditor={(image) => setMaskEditorTarget(image)}
                 />
           </div>
@@ -550,6 +555,7 @@ export default function App() {
           filteredRequests={consoleState.filteredRequests}
           selectedRequestId={consoleState.selectedRequestId}
           selectedRequestFilter={consoleState.selectedRequestFilter}
+          resultMediaFilter={resultMediaFilter}
           requestCounts={consoleState.requestCounts}
           now={consoleState.now}
           settingsOpen={consoleState.settingsOpen}
@@ -561,6 +567,7 @@ export default function App() {
           onExportRequest={handleExportRequest}
           onPreviewRequest={handlePreviewRequest}
           onFilterChange={consoleState.setSelectedRequestFilter}
+          onResultMediaFilterChange={setResultMediaFilter}
           onOpenClearFailed={() => setClearFailedDialogOpen(true)}
           onOpenExportZip={handleOpenImageExport}
           imageSelectionMode={imageSelectionMode}

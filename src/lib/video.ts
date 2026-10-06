@@ -1,6 +1,9 @@
 import { authHeaders } from "@/lib/api";
 
 export type VideoDuration = "4" | "8" | "12";
+export type VideoAspectRatio = "16:9" | "9:16" | "1:1";
+export type VideoQuality = "480p" | "720p" | "1080p";
+/** @deprecated Kept for consumers that still import the old video size type. */
 export type VideoSize = "1280x720" | "720x1280" | "1024x1024";
 export type VideoTaskStatus = "queued" | "running" | "completed" | "failed" | "canceled";
 
@@ -10,7 +13,8 @@ export interface VideoRequestOptions {
   model: string;
   prompt: string;
   duration: VideoDuration;
-  size: VideoSize;
+  aspectRatio: VideoAspectRatio;
+  quality: VideoQuality;
   authHeaderName?: string;
   authPrefix?: string;
   referenceImages?: File[];
@@ -23,7 +27,8 @@ export interface VideoTask {
   model: string;
   prompt: string;
   duration: VideoDuration;
-  size: VideoSize;
+  aspectRatio: VideoAspectRatio;
+  quality: VideoQuality;
   status: VideoTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -37,6 +42,36 @@ export interface VideoTaskResult {
   url?: string;
   blob?: Blob;
   error?: string;
+}
+
+export function normalizeVideoTask(value: unknown): VideoTask | null {
+  const record = readRecord(value);
+  const id = String(record.id || "").trim();
+  if (!id) return null;
+  const legacySize = String(record.size || "");
+  const aspectRatio = record.aspectRatio === "16:9" || record.aspectRatio === "9:16" || record.aspectRatio === "1:1"
+    ? record.aspectRatio
+    : legacySize === "720x1280" ? "9:16" : legacySize === "1024x1024" ? "1:1" : "16:9";
+  const quality = record.quality === "480p" || record.quality === "720p" || record.quality === "1080p" ? record.quality : "720p";
+  const duration = record.duration === "4" || record.duration === "8" || record.duration === "12" ? record.duration : "8";
+  const status = record.status === "queued" || record.status === "running" || record.status === "completed" || record.status === "failed" || record.status === "canceled"
+    ? record.status
+    : "queued";
+  return {
+    id,
+    providerId: String(record.providerId || ""),
+    model: String(record.model || ""),
+    prompt: String(record.prompt || ""),
+    duration,
+    aspectRatio,
+    quality,
+    status,
+    createdAt: Number(record.createdAt) || Date.now(),
+    updatedAt: Number(record.updatedAt) || Date.now(),
+    ...(typeof record.error === "string" ? { error: record.error } : {}),
+    ...(typeof record.url === "string" ? { url: record.url } : {}),
+    ...(Number.isFinite(Number(record.referenceImageCount)) ? { referenceImageCount: Number(record.referenceImageCount) } : {}),
+  };
 }
 
 export function isAuttytVideoProvider(baseUrl: string) {
@@ -201,7 +236,7 @@ function errorMessage(body: unknown, fallback: string) {
   return String(error.message || record.message || record.msg || fallback).trim() || fallback;
 }
 
-function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "size" | "referenceImages">): VideoTask {
+function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "aspectRatio" | "quality" | "referenceImages">): VideoTask {
   const root = readRecord(body);
   const data = readRecord(root.data);
   const id = String(root.id || data.id || root.task_id || data.task_id || "").trim();
@@ -223,7 +258,8 @@ function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" 
     model: options.model,
     prompt: options.prompt,
     duration: options.duration,
-    size: options.size,
+    aspectRatio: options.aspectRatio,
+    quality: options.quality,
     referenceImageCount: options.referenceImages?.length || 0,
     status: normalizedStatus,
     createdAt: now,
@@ -244,7 +280,7 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
       form.append("model", model);
       form.append("prompt", prompt);
       form.append("seconds", options.duration);
-      form.append("size", options.size);
+      form.append("size", videoPixelSize(options.aspectRatio, options.quality));
       for (const image of options.referenceImages || []) form.append("image[]", image, image.name || "reference.png");
       return form;
     })();
@@ -259,10 +295,13 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
   return { ...taskFromBody(payload, options), providerId };
 }
 
-function videoRatio(size: VideoSize) {
-  if (size === "720x1280") return "9:16";
-  if (size === "1024x1024") return "1:1";
-  return "16:9";
+function videoPixelSize(aspectRatio: VideoAspectRatio, quality: VideoQuality) {
+  const sizes: Record<VideoQuality, Record<VideoAspectRatio, string>> = {
+    "480p": { "16:9": "854x480", "9:16": "480x854", "1:1": "480x480" },
+    "720p": { "16:9": "1280x720", "9:16": "720x1280", "1:1": "1024x1024" },
+    "1080p": { "16:9": "1920x1080", "9:16": "1080x1920", "1:1": "1080x1080" },
+  };
+  return sizes[quality][aspectRatio];
 }
 
 async function fileToDataUri(file: File) {
@@ -281,8 +320,8 @@ async function auttytVideoBody(options: VideoRequestOptions) {
   const body: Record<string, unknown> = {
     model,
     prompt: options.prompt.trim(),
-    ratio: videoRatio(options.size),
-    resolution: "720p",
+    ratio: options.aspectRatio,
+    resolution: options.quality,
   };
   if (references.length === 1) body.image = references[0];
   if (references.length > 1) body.images = references;
@@ -293,9 +332,31 @@ async function auttytVideoBody(options: VideoRequestOptions) {
 function resultUrl(body: unknown) {
   const root = readRecord(body);
   const data = readRecord(root.data);
+  const nestedVideo = readRecord(data.video);
   const content = readRecord(root.content);
-  return [root.url, root.video_url, root.result_url, data.url, data.video_url, data.result_url, content.url, content.video_url]
+  return [root.url, root.video_url, root.result_url, data.url, data.video_url, data.result_url, nestedVideo.url, nestedVideo.video_url, content.url, content.video_url]
     .find((value) => typeof value === "string" && value.trim()) as string | undefined;
+}
+
+function resolveVideoUrl(baseUrl: string, value: string) {
+  try {
+    return new URL(value, `${String(baseUrl || "").trim().replace(/\/+$/, "")}/`).toString();
+  } catch {
+    return value;
+  }
+}
+
+async function fetchVideoBlob(url: string, options: Pick<VideoRequestOptions, "apiKey" | "authHeaderName" | "authPrefix" | "signal">) {
+  const response = await fetch(url, {
+    headers: authHeaders(options.apiKey, null, options),
+    signal: options.signal,
+  });
+  if (!response.ok) throw new Error(`Video content download failed (HTTP ${response.status}).`);
+  const blob = await response.blob();
+  if (blob.type === "text/html" || blob.type === "application/json") {
+    throw new Error("Video content download returned an invalid response.");
+  }
+  return blob;
 }
 
 export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestOptions, "baseUrl" | "apiKey" | "authHeaderName" | "authPrefix" | "signal">): Promise<VideoTaskResult> {
@@ -318,16 +379,16 @@ export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestO
           ? "running"
           : "queued";
   const url = resultUrl(payload);
-  if (url) return { status: "completed", url };
+  if (url) {
+    const resolvedUrl = resolveVideoUrl(options.baseUrl, url);
+    if (/^https?:\/\//i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?\//i.test(url)) return { status: "completed", url: resolvedUrl };
+    return { status: "completed", blob: await fetchVideoBlob(resolvedUrl, options) };
+  }
   if (status === "failed" || status === "canceled") return { status, error: errorMessage(payload, `Video task ${status}.`) };
   if (status !== "completed") return { status };
 
-  const content = await fetch(videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}/content`), {
-    headers: authHeaders(options.apiKey, null, options),
-    signal: options.signal,
-  });
-  if (!content.ok) throw new Error(`Video content download failed (HTTP ${content.status}).`);
-  return { status: "completed", blob: await content.blob() };
+  const contentUrl = videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}/content`);
+  return { status: "completed", blob: await fetchVideoBlob(contentUrl, options) };
 }
 
 export function delayVideoPoll(milliseconds: number, signal?: AbortSignal) {

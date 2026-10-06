@@ -59,7 +59,8 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { MAX_PROMPT_HISTORY, type PromptHistoryEntry } from "@/lib/prompt-history";
 import { cn } from "@/lib/utils";
-import type { VideoDuration, VideoSize } from "@/lib/video";
+import type { VideoAspectRatio, VideoDuration, VideoQuality } from "@/lib/video";
+import type { ResultMediaFilter } from "@/components/request-list-panel";
 
 const DELETE_CONFIRMATION_TIMEOUT_MS = 3000;
 const panelControlClassName = "!h-8 !min-h-8 !max-h-8 !py-1 w-full min-w-0 justify-center rounded-md border border-border px-3 text-xs font-medium";
@@ -109,8 +110,11 @@ export interface GeneratorPanelProps {
   videoOpen: boolean;
   videoDuration: VideoDuration;
   setVideoDuration: (value: VideoDuration) => void;
-  videoSize: VideoSize;
-  setVideoSize: (value: VideoSize) => void;
+  videoAspectRatio: VideoAspectRatio;
+  setVideoAspectRatio: (value: VideoAspectRatio) => void;
+  videoQuality: VideoQuality;
+  setVideoQuality: (value: VideoQuality) => void;
+  resultMediaFilter: ResultMediaFilter;
   onOpenMaskEditor: (image: EditInputImage) => void;
 }
 
@@ -469,8 +473,11 @@ export function GeneratorPanel({
   videoOpen,
   videoDuration,
   setVideoDuration,
-  videoSize,
-  setVideoSize,
+  videoAspectRatio,
+  setVideoAspectRatio,
+  videoQuality,
+  setVideoQuality,
+  resultMediaFilter,
   onOpenMaskEditor,
 }: GeneratorPanelProps) {
   const { copy, toggleLanguage } = useI18n();
@@ -480,6 +487,8 @@ export function GeneratorPanel({
   const [editImageDragActive, setEditImageDragActive] = useState(false);
   const [strictPromptEditorOpen, setStrictPromptEditorOpen] = useState(false);
   const [strictPromptDraft, setStrictPromptDraft] = useState("");
+  const [videoCanSubmit, setVideoCanSubmit] = useState(false);
+  const videoSubmitRef = useRef<(() => void) | null>(null);
   const generationButtonFeedbackClassName = "transition-all duration-100 active:translate-y-px active:scale-[0.99] active:brightness-95";
   const editImageSelectionFull = editImages.length >= MAX_EDIT_INPUT_IMAGES;
   const activeProvider = settings.openaiProviders.find((item) => item.id === settings.activeOpenAIProviderId);
@@ -487,6 +496,7 @@ export function GeneratorPanel({
     ? settings.geminiModel.trim()
     : (mode === "edit" ? activeProvider?.editsModel : activeProvider?.generationsModel)?.trim() || "";
   const imageModelMissing = !imageModel;
+  const videoModelMissing = !activeProvider?.videoModel.trim();
   const previewEditImage = previewEditImageIndex !== null ? editImages[previewEditImageIndex] ?? null : null;
 
   function openStrictPromptEditor() {
@@ -618,11 +628,12 @@ export function GeneratorPanel({
   }
 
   return (
+    <>
     <form noValidate onSubmit={submitGeneration} className={cn(
       "flex min-w-0 flex-col gap-3",
-      videoOpen ? "flex-none" : "h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none",
+      videoOpen ? "flex-none overflow-visible rounded-2xl border border-border bg-card p-3 shadow-none" : "h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none",
     )}>
-      <div className={cn(panelToolbarClassName, videoOpen && "rounded-2xl border border-border bg-card p-3 shadow-none")}>
+      <div className={panelToolbarClassName}>
         <div className="flex min-w-0 flex-col gap-1">
           <span className={panelLabelClassName}>{copy.generator.mode}</span>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -647,20 +658,28 @@ export function GeneratorPanel({
           <div className={panelToolbarSelectGroupClassName}>
             <OptionSelect
               className="w-fit min-w-24 flex-none"
-              label={copy.generator.videoDuration}
-              value={videoDuration}
-              options={["4", "8", "12"]}
-              optionLabels={{ "4": "4 s", "8": "8 s", "12": "12 s" }}
-              onValueChange={(value) => setVideoDuration(value as VideoDuration)}
-            />
-            <OptionSelect
-              className="w-fit min-w-32 flex-none"
-              label={copy.generator.videoSize}
-              value={videoSize}
-              options={["1280x720", "720x1280", "1024x1024"]}
-              optionLabels={{ "1280x720": "16:9 · 720p", "720x1280": "9:16 · 720p", "1024x1024": "1:1 · 720p" }}
-              onValueChange={(value) => setVideoSize(value as VideoSize)}
-            />
+               label={copy.generator.videoSize}
+               value={videoAspectRatio}
+               options={["16:9", "9:16", "1:1"]}
+               optionLabels={{ "16:9": "16:9", "9:16": "9:16", "1:1": "1:1" }}
+               onValueChange={(value) => setVideoAspectRatio(value as VideoAspectRatio)}
+             />
+             <OptionSelect
+               className="w-fit min-w-32 flex-none"
+               label={copy.generator.videoQuality}
+               value={videoQuality}
+               options={["480p", "720p", "1080p"]}
+               optionLabels={{ "480p": "480p", "720p": "720p", "1080p": "1080p" }}
+               onValueChange={(value) => setVideoQuality(value as VideoQuality)}
+             />
+             <OptionSelect
+               className="w-fit min-w-24 flex-none"
+               label={copy.generator.videoDuration}
+               value={videoDuration}
+               options={["4", "8", "12"]}
+               optionLabels={{ "4": "4 s", "8": "8 s", "12": "12 s" }}
+               onValueChange={(value) => setVideoDuration(value as VideoDuration)}
+             />
           </div>
         ) : <HeaderParameterControls settings={settings} updateSettings={updateSettings} />}
       </div>
@@ -792,9 +811,18 @@ export function GeneratorPanel({
         </div>
       </div>
       </> : null}
-      <div className={videoOpen ? "flex min-w-0 flex-none flex-col" : "hidden"}>
-        <VideoGenerationPanel settings={settings} duration={videoDuration} size={videoSize} />
-      </div>
+       <div className={videoOpen ? "flex min-w-0 flex-col" : "hidden"}>
+         <VideoGenerationPanel settings={settings} duration={videoDuration} aspectRatio={videoAspectRatio} quality={videoQuality} resultMediaFilter={resultMediaFilter} onActionStateChange={(submit, canSubmit) => { videoSubmitRef.current = submit; setVideoCanSubmit(canSubmit); }} />
+       </div>
+     </form>
+     {videoOpen ? (
+       <section className="sticky bottom-0 z-20 flex min-w-0 items-center justify-end gap-2 rounded-2xl border border-border bg-card p-3 shadow-none" aria-label={copy.generator.videoSubmit}>
+         <Button type="button" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => videoSubmitRef.current?.()} disabled={!videoCanSubmit}>
+           <PlayIcon data-icon="inline-start" />
+           {videoModelMissing ? copy.generator.videoModelRequired : copy.generator.videoSubmit}
+         </Button>
+       </section>
+     ) : null}
       <Dialog open={strictPromptEditorOpen} onOpenChange={setStrictPromptEditorOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
@@ -867,6 +895,6 @@ export function GeneratorPanel({
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
-    </form>
+      </>
   );
 }

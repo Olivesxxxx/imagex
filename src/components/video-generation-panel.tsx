@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, loadVideoBlob, loadVideoReferenceFiles, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoPollIntervalMs, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoDuration, type VideoRequestOptions, type VideoSize, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoPollIntervalMs, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoRequestOptions, type VideoTask } from "@/lib/video";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
+import type { ResultMediaFilter } from "@/components/request-list-panel";
 
 const MAX_VIDEO_REFERENCE_IMAGES = 5;
 type VideoReferenceImage = { file: File; src: string; name: string };
@@ -15,7 +16,7 @@ type VideoReferenceImage = { file: File; src: string; name: string };
 function readTasks(): VideoTask[] {
   try {
     const value = JSON.parse(localStorage.getItem(VIDEO_TASKS_STORAGE_KEY) || "[]");
-    return Array.isArray(value) ? value.filter((item) => item && typeof item.id === "string") : [];
+    return Array.isArray(value) ? value.map(normalizeVideoTask).filter((item): item is VideoTask => Boolean(item)) : [];
   } catch {
     return [];
   }
@@ -29,7 +30,7 @@ function saveTasks(tasks: VideoTask[]) {
   }
 }
 
-export function VideoGenerationPanel({ settings, duration, size }: { settings: AppSettings; duration: VideoDuration; size: VideoSize }) {
+export function VideoGenerationPanel({ settings, duration, aspectRatio, quality, resultMediaFilter = "all", onActionStateChange }: { settings: AppSettings; duration: VideoDuration; aspectRatio: VideoAspectRatio; quality: VideoQuality; resultMediaFilter?: ResultMediaFilter; onActionStateChange?: (submit: () => void, canSubmit: boolean) => void }) {
   const { copy, language } = useI18n();
   const [prompt, setPrompt] = useState("");
   const [referenceImages, setReferenceImages] = useState<VideoReferenceImage[]>([]);
@@ -47,8 +48,11 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
   const apiKey = settings.apiKey;
   const model = provider?.videoModel.trim() || "";
   const canSubmit = Boolean(prompt.trim() && model && apiKey && baseUrl && isOpenAI);
-  const modelMissing = !model;
   const orderedTasks = useMemo(() => [...tasks].sort((a, b) => b.createdAt - a.createdAt), [tasks]);
+
+  useEffect(() => {
+    onActionStateChange?.(() => { void submit(); }, canSubmit);
+  }, [canSubmit, onActionStateChange, prompt]);
 
   useEffect(() => {
     setTaskListTarget(document.getElementById("video-task-list"));
@@ -166,7 +170,8 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
       model,
       prompt: prompt.trim(),
       duration,
-      size,
+        aspectRatio,
+        quality,
       referenceImages: referenceImages.map((image) => image.file),
       authHeaderName: provider?.authHeaderName,
       authPrefix: provider?.authPrefix,
@@ -225,7 +230,8 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
         model: task.model,
         prompt: task.prompt,
         duration: task.duration,
-        size: task.size,
+        aspectRatio: task.aspectRatio,
+        quality: task.quality,
         authHeaderName: taskProvider.authHeaderName,
         authPrefix: taskProvider.authPrefix,
       };
@@ -273,7 +279,8 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
         model: task.model,
         prompt: task.prompt,
         duration: task.duration,
-        size: task.size,
+        aspectRatio: task.aspectRatio,
+        quality: task.quality,
         referenceImages: referenceFiles,
         authHeaderName: taskProvider.authHeaderName,
         authPrefix: taskProvider.authPrefix,
@@ -302,7 +309,7 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-none" aria-label={language === "en" ? "Video settings" : "视频设置"}>
+      <section className="flex min-w-0 flex-col gap-3" aria-label={language === "en" ? "Video settings" : "视频设置"}>
         <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="videoPrompt">
           {copy.generator.promptLabel}
           <Textarea id="videoPrompt" value={prompt} maxLength={16000} onChange={(event) => setPrompt(event.target.value)} placeholder={copy.generator.videoPromptPlaceholder} className="standard-scrollbar min-h-40 resize-y overflow-y-auto" />
@@ -328,19 +335,16 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
           </div> : <span className="text-xs text-muted-foreground">{language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。"}</span>}
         </div>
       </section>
-      <section className="sticky bottom-0 z-20 flex min-w-0 items-center justify-end gap-2 rounded-2xl border border-border bg-card p-3 shadow-none" aria-label={language === "en" ? "Video actions" : "视频操作"}>
-        <Button type="button" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void submit()} disabled={!canSubmit}><PlayIcon data-icon="inline-start" />{modelMissing ? copy.generator.videoModelRequired : copy.generator.videoSubmit}</Button>
-      </section>
-      {taskListTarget ? createPortal(<div className="flex min-w-0 flex-col gap-1">
+      {taskListTarget && resultMediaFilter !== "images" ? createPortal(<div className="contents">
         {!orderedTasks.length ? <p className="px-1 py-1.5 text-xs text-muted-foreground">{copy.generator.videoNoTasks}</p> : null}
         {orderedTasks.map((task) => {
           const videoUrl = mediaUrls[task.id] || task.url;
           const active = activeIds.has(task.id);
-          return <article key={task.id} className="flex min-w-0 flex-col gap-1.5 rounded-md border border-border bg-background px-2.5 py-2 text-left">
+          return <article key={task.id} className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-card px-2.5 py-2 text-left">
             <div className="flex min-w-0 items-center gap-2">
               <strong className="min-w-0 truncate text-sm">{copy.generator.videoStatus[task.status]}</strong>
               {active ? <Loader2Icon className="size-3.5 shrink-0 animate-spin" /> : null}
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{task.duration}s · {task.size}</span>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{task.aspectRatio} · {task.quality} · {task.duration}s</span>
             </div>
             <p className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-muted-foreground">{task.prompt}</p>
             <span className="truncate text-xs text-muted-foreground">{task.model}</span>

@@ -20,12 +20,11 @@ describe("VideoGenerationPanel", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TooltipProvider><LanguageProvider initialLanguage="zh"><VideoGenerationPanel settings={settings} duration="8" size="1280x720" /></LanguageProvider></TooltipProvider>);
+    let canSubmit = true;
+    render(<TooltipProvider><LanguageProvider initialLanguage="zh"><VideoGenerationPanel settings={settings} duration="8" aspectRatio="16:9" quality="720p" onActionStateChange={(_, nextCanSubmit) => { canSubmit = nextCanSubmit; }} /></LanguageProvider></TooltipProvider>);
 
     fireEvent.change(screen.getByLabelText("提示词"), { target: { value: "A mountain lake at sunrise" } });
-    const submitButton = screen.getByRole("button", { name: "请先为当前供应商填写视频模型" });
-    expect(submitButton).toBeDisabled();
-    fireEvent.click(submitButton);
+    expect(canSubmit).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -38,7 +37,8 @@ describe("VideoGenerationPanel", () => {
       model: "video-model",
       prompt: "A failed task",
       duration: "8",
-      size: "1280x720",
+      aspectRatio: "16:9",
+      quality: "720p",
       status: "failed",
       createdAt: 1,
       updatedAt: 2,
@@ -48,7 +48,7 @@ describe("VideoGenerationPanel", () => {
     taskList.id = "video-task-list";
     document.body.appendChild(taskList);
 
-    render(<TooltipProvider><LanguageProvider initialLanguage="zh"><VideoGenerationPanel settings={settings} duration="8" size="1280x720" /></LanguageProvider></TooltipProvider>);
+    render(<TooltipProvider><LanguageProvider initialLanguage="zh"><VideoGenerationPanel settings={settings} duration="8" aspectRatio="16:9" quality="720p" /></LanguageProvider></TooltipProvider>);
 
     const deleteButton = await screen.findByRole("button", { name: "删除视频任务" });
     fireEvent.click(deleteButton);

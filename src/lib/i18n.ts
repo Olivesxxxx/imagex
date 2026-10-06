@@ -309,6 +309,7 @@ type Copy = {
     videoCancel: string;
     videoDuration: string;
     videoSize: string;
+    videoQuality: string;
     videoStatus: Record<"queued" | "running" | "completed" | "failed" | "canceled", string>;
     videoDownload: string;
     videoNoTasks: string;
@@ -781,7 +782,8 @@ const COPY: Record<Language, Copy> = {
       videoSubmit: "生成视频",
       videoCancel: "停止轮询",
       videoDuration: "时长",
-      videoSize: "画面尺寸",
+      videoSize: "尺寸",
+      videoQuality: "质量",
       videoStatus: { queued: "排队中", running: "生成中", completed: "已完成", failed: "失败", canceled: "已停止" },
       videoDownload: "下载视频",
       videoNoTasks: "暂无视频任务",
@@ -1295,7 +1297,8 @@ const COPY: Record<Language, Copy> = {
       videoSubmit: "Generate video",
       videoCancel: "Stop polling",
       videoDuration: "Duration",
-      videoSize: "Frame size",
+      videoSize: "Size",
+      videoQuality: "Quality",
       videoStatus: { queued: "Queued", running: "Generating", completed: "Completed", failed: "Failed", canceled: "Stopped" },
       videoDownload: "Download video",
       videoNoTasks: "No video tasks yet",

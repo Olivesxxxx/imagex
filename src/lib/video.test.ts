@@ -17,7 +17,8 @@ const options = {
   model: "video-model",
   prompt: "A paper boat sailing across a quiet pond",
   duration: "8" as const,
-  size: "1280x720" as const,
+  aspectRatio: "16:9" as const,
+  quality: "720p" as const,
   authHeaderName: "x-api-key",
   authPrefix: "",
 };
@@ -52,7 +53,7 @@ describe("video API", () => {
     vi.stubGlobal("fetch", fetchMock);
     const task: VideoTask = {
       id: "auttyt-2", providerId: "auttyt", model: "video-v1-5s", prompt: options.prompt,
-      duration: options.duration, size: options.size, status: "queued", createdAt: 1, updatedAt: 1,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "queued", createdAt: 1, updatedAt: 1,
     };
     const auttytOptions = { ...options, baseUrl: "https://www.auttyt.top/v1" };
     await expect(pollVideoTask(task, auttytOptions)).resolves.toEqual({ status: "running" });
@@ -94,7 +95,7 @@ describe("video API", () => {
   test("polls pending work and fetches content only after completion", async () => {
     const task: VideoTask = {
       id: "video-2", providerId: "provider-a", model: options.model, prompt: options.prompt,
-      duration: options.duration, size: options.size, status: "running", createdAt: 1, updatedAt: 1,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "running", createdAt: 1, updatedAt: 1,
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ status: "processing" }))
@@ -115,9 +116,35 @@ describe("video API", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ status: "completed", data: { video_url: "https://cdn.example/video.mp4" } })));
     const task: VideoTask = {
       id: "video-3", providerId: "provider-a", model: options.model, prompt: options.prompt,
-      duration: options.duration, size: options.size, status: "running", createdAt: 1, updatedAt: 1,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "running", createdAt: 1, updatedAt: 1,
     };
 
     await expect(pollVideoTask(task, options)).resolves.toEqual({ status: "completed", url: "https://cdn.example/video.mp4" });
+  });
+
+  test("resolves Auttyt relative result URLs and downloads the authenticated video blob", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        code: "success",
+        data: {
+          status: "SUCCESS",
+          result_url: "/v1/videos/result-1/content",
+          video: { duration: 8, url: "/v1/videos/result-1/content" },
+        },
+      }))
+      .mockResolvedValueOnce(new Response(new Blob(["valid-video"], { type: "video/mp4" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const task: VideoTask = {
+      id: "auttyt-result", providerId: "auttyt", model: options.model, prompt: options.prompt,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "running", createdAt: 1, updatedAt: 1,
+    };
+
+    const result = await pollVideoTask(task, { ...options, baseUrl: "https://www.auttyt.top/v1" });
+    expect(result.status).toBe("completed");
+    expect(result.blob).toBeInstanceOf(Blob);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://www.auttyt.top/v1/video/generations/auttyt-result",
+      "https://www.auttyt.top/v1/videos/result-1/content",
+    ]);
   });
 });

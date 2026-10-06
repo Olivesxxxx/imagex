@@ -30,9 +30,9 @@ describe("mode navigation", () => {
 
     await user.click(within(workflow).getByRole("tab", { name: "生视频" }));
     expect(screen.getByLabelText("提示词")).toBeInTheDocument();
+    expect(screen.getByText("尺寸")).toBeInTheDocument();
+    expect(screen.getByText("质量")).toBeInTheDocument();
     expect(screen.getByText("时长")).toBeInTheDocument();
-    expect(screen.getByText("画面尺寸")).toBeInTheDocument();
-    expect(screen.queryByText("质量")).not.toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByRole("tab", { name: "生视频" })).toHaveAttribute("aria-selected", "true"));
   });

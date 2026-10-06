@@ -33,6 +33,7 @@ import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const DELETE_CONFIRMATION_TIMEOUT_MS = 3000;
+export type ResultMediaFilter = "all" | "images" | "videos";
 
 function statusVariant(status: string) {
   if (status === "error" || status === "canceled") return "destructive" as const;
@@ -152,8 +153,8 @@ function RequestRow({
               className="block h-full w-full object-cover object-center"
             />
           ) : (
-            <ImageIcon aria-hidden="true" className="size-6 text-muted-foreground" />
-          )}
+             <ImageIcon aria-hidden="true" className="size-6 text-muted-foreground" />
+           )}
         </button>
         <button
           type="button"
@@ -251,6 +252,7 @@ export function RequestListPanel({
   filteredRequests,
   selectedRequestId,
   selectedRequestFilter,
+  resultMediaFilter,
   requestCounts,
   now,
   settingsOpen,
@@ -263,6 +265,7 @@ export function RequestListPanel({
   onExportRequest,
   onPreviewRequest,
   onFilterChange,
+  onResultMediaFilterChange,
   onOpenClearFailed,
   onOpenExportZip,
   imageSelectionMode,
@@ -274,6 +277,7 @@ export function RequestListPanel({
   filteredRequests: ImageRequestRecord[];
   selectedRequestId: string | null;
   selectedRequestFilter: RequestFilter;
+  resultMediaFilter: ResultMediaFilter;
   requestCounts: Record<RequestFilter, number>;
   now: number;
   settingsOpen: boolean;
@@ -286,6 +290,7 @@ export function RequestListPanel({
   onExportRequest: (id: string) => void;
   onPreviewRequest: (id: string) => void;
   onFilterChange: (filter: RequestFilter) => void;
+  onResultMediaFilterChange: (filter: ResultMediaFilter) => void;
   onOpenClearFailed: () => void;
   onOpenExportZip: () => void;
   imageSelectionMode: boolean;
@@ -385,6 +390,15 @@ export function RequestListPanel({
         </div>
       </div>
 
+      <div className="px-3 pt-2">
+        <Tabs value={resultMediaFilter} onValueChange={(value) => onResultMediaFilterChange(value as ResultMediaFilter)}>
+          <SegmentedTabsList className="w-full">
+            {([["all", language === "en" ? "All" : "全部"], ["images", language === "en" ? "Images" : "图片"], ["videos", language === "en" ? "Videos" : "视频"]] as const).map(([filter, label]) => (
+              <SegmentedTabsTrigger key={filter} value={filter} className="px-1.5">{label}</SegmentedTabsTrigger>
+            ))}
+          </SegmentedTabsList>
+        </Tabs>
+      </div>
       <div className="px-3 py-2">
         <Tabs value={selectedRequestFilter} onValueChange={(value) => onFilterChange(value as RequestFilter)}>
           <SegmentedTabsList className="w-full">
@@ -398,12 +412,11 @@ export function RequestListPanel({
         </Tabs>
       </div>
 
-      <div id="video-task-list" className="standard-scrollbar max-h-[42%] overflow-y-auto overscroll-contain px-3 pb-2" />
-
       <div className="min-h-0 flex-1 py-3">
         <div className="standard-scrollbar request-list-scroll h-full overflow-y-auto overscroll-contain">
           <div className={cn("grid gap-2 pl-3 pr-0", imageSelectionMode && selectedImageCount > 0 && "pb-24")}>
-          {!hasRequests ? (
+          <div id="video-task-list" className="contents" />
+          {resultMediaFilter !== "videos" && !hasRequests ? (
             <Empty className="min-h-40 border">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -412,7 +425,7 @@ export function RequestListPanel({
                 <EmptyTitle>{copy.filterEmptyText.all}</EmptyTitle>
               </EmptyHeader>
             </Empty>
-          ) : filteredRequests.length ? (
+          ) : resultMediaFilter !== "videos" && filteredRequests.length ? (
             filteredRequests.map((request) => (
               <RequestRow
                 key={request.id}
@@ -439,7 +452,7 @@ export function RequestListPanel({
                 onToggleImageSelection={onToggleImageSelection}
               />
             ))
-          ) : (
+          ) : resultMediaFilter !== "videos" ? (
             <Empty className="min-h-40 border">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -447,9 +460,9 @@ export function RequestListPanel({
                 </EmptyMedia>
                 <EmptyTitle>{copy.filterEmptyText[selectedRequestFilter]}</EmptyTitle>
               </EmptyHeader>
-            </Empty>
-          )}
-          </div>
+             </Empty>
+           ) : null}
+           </div>
         </div>
       </div>
 
