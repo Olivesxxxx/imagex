@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
-import { DEFAULTS, DEFAULT_OPENAI_PROVIDERS, DEVELOPMENT_FIXTURES_ENABLED, IMAGE_RESPONSE_MODES, MULTI_IMAGE_FIELD_MODES, type AppSettings, type OpenAIProvider } from "@/lib/image-console";
+import { DEFAULTS, DEFAULT_OPENAI_PROVIDERS, DEVELOPMENT_FIXTURES_ENABLED, IMAGE_RESPONSE_MODES, isBuiltInProvider, MULTI_IMAGE_FIELD_MODES, type AppSettings, type OpenAIProvider } from "@/lib/image-console";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
 
@@ -97,7 +97,7 @@ export function SettingsDialog({
 
   function deleteProvider() {
     if (!activeProvider) return;
-    if (settings.openaiProviders.length <= 1) return;
+    if (settings.openaiProviders.length <= 1 || isBuiltInProvider(activeProvider)) return;
     updateSettings("openaiProviders", settings.openaiProviders.filter((provider) => provider.id !== activeProvider.id));
     setProviderDeleteConfirmOpen(false);
   }
@@ -179,7 +179,7 @@ export function SettingsDialog({
                       <div className="min-w-0 truncate text-sm font-medium">{activeProvider.name || copy.settings.provider}</div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={restoreProviderDefaults}><RotateCcwIcon data-icon="inline-start" />{copy.settings.restoreProviderDefaults}</Button>
-                        <Button type="button" variant="destructive" size="sm" disabled={settings.openaiProviders.length <= 1} onClick={() => setProviderDeleteConfirmOpen(true)}><Trash2Icon data-icon="inline-start" />{copy.settings.deleteProvider}</Button>
+                        <Button type="button" variant="destructive" size="sm" disabled={settings.openaiProviders.length <= 1 || isBuiltInProvider(activeProvider)} title={isBuiltInProvider(activeProvider) ? copy.settings.builtInProviderDescription : undefined} onClick={() => setProviderDeleteConfirmOpen(true)}><Trash2Icon data-icon="inline-start" />{copy.settings.deleteProvider}</Button>
                       </div>
                     </div>
                     <Field>

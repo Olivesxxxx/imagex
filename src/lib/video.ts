@@ -39,6 +39,19 @@ export interface VideoTaskResult {
   error?: string;
 }
 
+export function isAuttytVideoProvider(baseUrl: string) {
+  try {
+    const hostname = new URL(String(baseUrl || "").trim()).hostname.toLowerCase();
+    return hostname === "auttyt.top" || hostname.endsWith(".auttyt.top");
+  } catch {
+    return false;
+  }
+}
+
+export function videoPollIntervalMs(baseUrl: string) {
+  return isAuttytVideoProvider(baseUrl) ? 15000 : 2500;
+}
+
 const VIDEO_DB_NAME = "ImageX-videos";
 const VIDEO_DB_VERSION = 2;
 const VIDEO_STORE_NAME = "video-blobs";
@@ -164,6 +177,10 @@ function endpoint(baseUrl: string, path: string) {
   return `${base}${base.endsWith("/v1") ? "" : "/v1"}${path}`;
 }
 
+function videoEndpoint(baseUrl: string, path: string) {
+  return endpoint(baseUrl, isAuttytVideoProvider(baseUrl) ? `/video/generations${path}` : `/videos${path}`);
+}
+
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -190,6 +207,15 @@ function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" 
   const id = String(root.id || data.id || root.task_id || data.task_id || "").trim();
   if (!id) throw new Error(errorMessage(body, "Video API did not return a task ID."));
   const status = String(root.status || data.status || "queued").toLowerCase();
+  const normalizedStatus: VideoTaskStatus = status === "completed" || status === "success" || status === "succeeded" || status === "done"
+    ? "completed"
+    : status === "failed" || status === "failure" || status === "error"
+      ? "failed"
+      : status === "canceled" || status === "cancelled"
+        ? "canceled"
+        : status === "running" || status === "processing" || status === "in_progress" || status === "generating"
+          ? "running"
+          : "queued";
   const now = Date.now();
   return {
     id,
@@ -199,7 +225,7 @@ function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" 
     duration: options.duration,
     size: options.size,
     referenceImageCount: options.referenceImages?.length || 0,
-    status: status === "completed" || status === "failed" || status === "canceled" || status === "running" ? status : "queued",
+    status: normalizedStatus,
     createdAt: now,
     updatedAt: now,
   };
@@ -210,23 +236,58 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
   const prompt = String(options.prompt || "").trim();
   if (!model) throw new Error("Video model is not configured for this provider.");
   if (!prompt) throw new Error("Video prompt is required.");
-  const body = new FormData();
-  body.append("model", model);
-  body.append("prompt", prompt);
-  body.append("seconds", options.duration);
-  body.append("size", options.size);
-  for (const image of options.referenceImages || []) {
-    body.append("image[]", image, image.name || "reference.png");
-  }
-  const response = await fetch(endpoint(options.baseUrl, "/videos"), {
+  const auttyt = isAuttytVideoProvider(options.baseUrl);
+  const body = auttyt
+    ? await auttytVideoBody(options)
+    : (() => {
+      const form = new FormData();
+      form.append("model", model);
+      form.append("prompt", prompt);
+      form.append("seconds", options.duration);
+      form.append("size", options.size);
+      for (const image of options.referenceImages || []) form.append("image[]", image, image.name || "reference.png");
+      return form;
+    })();
+  const response = await fetch(auttyt ? videoEndpoint(options.baseUrl, "") : endpoint(options.baseUrl, "/videos"), {
     method: "POST",
-    headers: authHeaders(options.apiKey, null, options),
+    headers: authHeaders(options.apiKey, auttyt ? "application/json" : null, options),
     body,
     signal: options.signal,
   });
   const payload = await responseBody(response);
   if (!response.ok) throw new Error(`Video task creation failed (HTTP ${response.status}): ${errorMessage(payload, response.statusText || "request failed")}`);
   return { ...taskFromBody(payload, options), providerId };
+}
+
+function videoRatio(size: VideoSize) {
+  if (size === "720x1280") return "9:16";
+  if (size === "1024x1024") return "1:1";
+  return "16:9";
+}
+
+async function fileToDataUri(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return `data:${file.type || "application/octet-stream"};base64,${btoa(binary)}`;
+}
+
+async function auttytVideoBody(options: VideoRequestOptions) {
+  const references = await Promise.all((options.referenceImages || []).map(fileToDataUri));
+  const model = options.model.trim();
+  const body: Record<string, unknown> = {
+    model,
+    prompt: options.prompt.trim(),
+    ratio: videoRatio(options.size),
+    resolution: "720p",
+  };
+  if (references.length === 1) body.image = references[0];
+  if (references.length > 1) body.images = references;
+  if (/seedance/i.test(model)) body.duration = Number(options.duration);
+  return JSON.stringify(body);
 }
 
 function resultUrl(body: unknown) {
@@ -238,7 +299,7 @@ function resultUrl(body: unknown) {
 }
 
 export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestOptions, "baseUrl" | "apiKey" | "authHeaderName" | "authPrefix" | "signal">): Promise<VideoTaskResult> {
-  const response = await fetch(endpoint(options.baseUrl, `/videos/${encodeURIComponent(task.id)}`), {
+  const response = await fetch(videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}`), {
     headers: authHeaders(options.apiKey, null, options),
     signal: options.signal,
   });
@@ -247,13 +308,13 @@ export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestO
   const root = readRecord(payload);
   const data = readRecord(root.data);
   const statusValue = String(root.status || data.status || "queued").toLowerCase();
-  const status: VideoTaskStatus = statusValue === "completed" || statusValue === "succeeded" || statusValue === "done"
+  const status: VideoTaskStatus = statusValue === "completed" || statusValue === "succeeded" || statusValue === "success" || statusValue === "done"
     ? "completed"
     : statusValue === "failed" || statusValue === "error"
       ? "failed"
       : statusValue === "canceled" || statusValue === "cancelled"
         ? "canceled"
-        : statusValue === "running" || statusValue === "processing"
+        : statusValue === "running" || statusValue === "processing" || statusValue === "in_progress" || statusValue === "generating"
           ? "running"
           : "queued";
   const url = resultUrl(payload);
@@ -261,7 +322,7 @@ export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestO
   if (status === "failed" || status === "canceled") return { status, error: errorMessage(payload, `Video task ${status}.`) };
   if (status !== "completed") return { status };
 
-  const content = await fetch(endpoint(options.baseUrl, `/videos/${encodeURIComponent(task.id)}/content`), {
+  const content = await fetch(videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}/content`), {
     headers: authHeaders(options.apiKey, null, options),
     signal: options.signal,
   });

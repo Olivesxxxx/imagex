@@ -516,6 +516,7 @@ type Copy = {
     restoreProviderDefaults: string;
     addProvider: string;
     deleteProvider: string;
+    builtInProviderDescription: string;
     deleteProviderTitle: string;
     deleteProviderDescription: string;
     confirmDeleteProvider: string;
@@ -1004,6 +1005,7 @@ const COPY: Record<Language, Copy> = {
       restoreProviderDefaults: "恢复默认参数",
       addProvider: "新增供应商",
       deleteProvider: "删除供应商",
+      builtInProviderDescription: "内置供应商不可删除，只能恢复默认参数或修改配置。",
       deleteProviderTitle: "删除供应商？",
       deleteProviderDescription: "删除后不会影响已有任务，只会移除这条本地供应商配置。",
       confirmDeleteProvider: "确认删除",
@@ -1517,6 +1519,7 @@ const COPY: Record<Language, Copy> = {
       restoreProviderDefaults: "Restore defaults",
       addProvider: "Add provider",
       deleteProvider: "Delete provider",
+      builtInProviderDescription: "Built-in providers cannot be deleted. You can restore defaults or edit their configuration.",
       deleteProviderTitle: "Delete provider?",
       deleteProviderDescription: "Existing tasks are not affected. Only this local provider configuration will be removed.",
       confirmDeleteProvider: "Delete provider",

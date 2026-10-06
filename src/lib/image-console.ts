@@ -130,6 +130,10 @@ export interface OpenAIProvider {
   asyncPollIntervalSeconds: number;
   asyncMaxPollAttempts: number;
 }
+export const BUILT_IN_PROVIDER_IDS = ["lingsu", "auttyt", "mhoo", "gemini"] as const;
+export function isBuiltInProvider(provider: Pick<OpenAIProvider, "id"> | null | undefined) {
+  return Boolean(provider && BUILT_IN_PROVIDER_IDS.includes(provider.id as (typeof BUILT_IN_PROVIDER_IDS)[number]));
+}
 export type OpenAIImageRequestOptions = Pick<OpenAIProvider, "imageResponseMode" | "multiImageField"> & Partial<Pick<OpenAIProvider,
   | "streamImages"
   | "streamPartialImages"

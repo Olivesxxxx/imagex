@@ -4,12 +4,11 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, loadVideoBlob, loadVideoReferenceFiles, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoDuration, type VideoRequestOptions, type VideoSize, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, loadVideoBlob, loadVideoReferenceFiles, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoPollIntervalMs, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoDuration, type VideoRequestOptions, type VideoSize, type VideoTask } from "@/lib/video";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 
-const POLL_INTERVAL_MS = 2500;
 const MAX_VIDEO_REFERENCE_IMAGES = 5;
 type VideoReferenceImage = { file: File; src: string; name: string };
 
@@ -130,7 +129,7 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
         }
         current = { ...current, status: result.status, updatedAt };
         setTasks((items) => items.map((item) => item.id === task.id ? current : item));
-        await delayVideoPoll(POLL_INTERVAL_MS, controller.signal);
+        await delayVideoPoll(videoPollIntervalMs(options.baseUrl), controller.signal);
       }
       throw new Error(language === "en" ? "Video task polling timed out." : "视频任务轮询超时。");
     } catch (error) {
