@@ -301,34 +301,36 @@ export function VideoGenerationPanel({ settings, duration, size }: { settings: A
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <label className="flex min-h-32 min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="videoPrompt">
-        {copy.generator.promptLabel}
-        <Textarea id="videoPrompt" value={prompt} maxLength={16000} onChange={(event) => setPrompt(event.target.value)} placeholder={copy.generator.videoPromptPlaceholder} className="standard-scrollbar min-h-24 flex-1 resize-none overflow-y-auto" />
-      </label>
-      <div
-        className="flex min-h-20 shrink-0 flex-col gap-2 rounded-md border border-dashed border-border bg-muted/10 p-2"
-        aria-label={language === "en" ? "Video reference images" : "视频参考图"}
-        tabIndex={0}
-        onPaste={handleReferencePaste}
-        onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
-        onDrop={(event) => { event.preventDefault(); addReferenceFiles(Array.from(event.dataTransfer.files)); }}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-muted-foreground">{language === "en" ? `Reference images (${referenceImages.length}/${MAX_VIDEO_REFERENCE_IMAGES})` : `视频参考图（${referenceImages.length}/${MAX_VIDEO_REFERENCE_IMAGES}）`}</span>
-          <Button type="button" variant="outline" size="sm" className="!h-7 !min-h-7 !max-h-7 px-2 text-xs" disabled={referenceImages.length >= MAX_VIDEO_REFERENCE_IMAGES} onClick={() => referenceInputRef.current?.click()}><ImagePlusIcon data-icon="inline-start" />{language === "en" ? "Add" : "添加"}</Button>
-          <input ref={referenceInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { addReferenceFiles(Array.from(event.currentTarget.files || [])); event.currentTarget.value = ""; }} />
+    <div className="flex min-w-0 flex-col gap-3">
+      <section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-none" aria-label={language === "en" ? "Video settings" : "视频设置"}>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="videoPrompt">
+          {copy.generator.promptLabel}
+          <Textarea id="videoPrompt" value={prompt} maxLength={16000} onChange={(event) => setPrompt(event.target.value)} placeholder={copy.generator.videoPromptPlaceholder} className="standard-scrollbar min-h-40 resize-y overflow-y-auto" />
+        </label>
+        <div
+          className="flex min-h-20 shrink-0 flex-col gap-2 rounded-md border border-dashed border-border bg-muted/10 p-2"
+          aria-label={language === "en" ? "Video reference images" : "视频参考图"}
+          tabIndex={0}
+          onPaste={handleReferencePaste}
+          onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+          onDrop={(event) => { event.preventDefault(); addReferenceFiles(Array.from(event.dataTransfer.files)); }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{language === "en" ? `Reference images (${referenceImages.length}/${MAX_VIDEO_REFERENCE_IMAGES})` : `视频参考图（${referenceImages.length}/${MAX_VIDEO_REFERENCE_IMAGES}）`}</span>
+            <Button type="button" variant="outline" size="sm" className="!h-7 !min-h-7 !max-h-7 px-2 text-xs" disabled={referenceImages.length >= MAX_VIDEO_REFERENCE_IMAGES} onClick={() => referenceInputRef.current?.click()}><ImagePlusIcon data-icon="inline-start" />{language === "en" ? "Add" : "添加"}</Button>
+            <input ref={referenceInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { addReferenceFiles(Array.from(event.currentTarget.files || [])); event.currentTarget.value = ""; }} />
+          </div>
+          {referenceImages.length ? <div className="grid grid-cols-5 gap-1.5">
+            {referenceImages.map((image, index) => <div key={`${image.name}-${index}`} className="relative aspect-square overflow-hidden rounded border border-border bg-background">
+              <img src={image.src} alt="" aria-hidden="true" className="h-full w-full object-cover" />
+              <Button type="button" variant="secondary" size="icon-xs" className="absolute right-0.5 top-0.5 rounded-full bg-background/90" aria-label={`${language === "en" ? "Remove reference image" : "移除参考图"} ${index + 1}`} onClick={() => removeReferenceImage(index)}><XIcon /></Button>
+            </div>)}
+          </div> : <span className="text-xs text-muted-foreground">{language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。"}</span>}
         </div>
-        {referenceImages.length ? <div className="grid grid-cols-5 gap-1.5">
-          {referenceImages.map((image, index) => <div key={`${image.name}-${index}`} className="relative aspect-square overflow-hidden rounded border border-border bg-background">
-            <img src={image.src} alt="" aria-hidden="true" className="h-full w-full object-cover" />
-            <Button type="button" variant="secondary" size="icon-xs" className="absolute right-0.5 top-0.5 rounded-full bg-background/90" aria-label={`${language === "en" ? "Remove reference image" : "移除参考图"} ${index + 1}`} onClick={() => removeReferenceImage(index)}><XIcon /></Button>
-          </div>)}
-        </div> : <span className="text-xs text-muted-foreground">{language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。"}</span>}
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pt-1">
+      </section>
+      <section className="sticky bottom-0 z-20 flex min-w-0 items-center justify-end gap-2 rounded-2xl border border-border bg-card p-3 shadow-none" aria-label={language === "en" ? "Video actions" : "视频操作"}>
         <Button type="button" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void submit()} disabled={!canSubmit}><PlayIcon data-icon="inline-start" />{modelMissing ? copy.generator.videoModelRequired : copy.generator.videoSubmit}</Button>
-      </div>
+      </section>
       {taskListTarget ? createPortal(<div className="flex min-w-0 flex-col gap-1">
         {!orderedTasks.length ? <p className="px-1 py-1.5 text-xs text-muted-foreground">{copy.generator.videoNoTasks}</p> : null}
         {orderedTasks.map((task) => {

@@ -511,7 +511,7 @@ export default function App() {
                 requestRecords={consoleState.requestRecords}
               />
           </div>
-          <div className={productSuiteOpen ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
+          <div className={productSuiteOpen ? "hidden" : videoOpen ? "flex min-w-0 flex-none flex-col" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
                 <GeneratorPanel
                   mode={consoleState.mode}
                   editImages={consoleState.editImages}

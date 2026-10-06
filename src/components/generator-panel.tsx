@@ -618,8 +618,11 @@ export function GeneratorPanel({
   }
 
   return (
-    <form noValidate onSubmit={submitGeneration} className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none">
-      <div className={panelToolbarClassName}>
+    <form noValidate onSubmit={submitGeneration} className={cn(
+      "flex min-w-0 flex-col gap-3",
+      videoOpen ? "flex-none" : "h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none",
+    )}>
+      <div className={cn(panelToolbarClassName, videoOpen && "rounded-2xl border border-border bg-card p-3 shadow-none")}>
         <div className="flex min-w-0 flex-col gap-1">
           <span className={panelLabelClassName}>{copy.generator.mode}</span>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -789,7 +792,7 @@ export function GeneratorPanel({
         </div>
       </div>
       </> : null}
-      <div className={videoOpen ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+      <div className={videoOpen ? "flex min-w-0 flex-none flex-col" : "hidden"}>
         <VideoGenerationPanel settings={settings} duration={videoDuration} size={videoSize} />
       </div>
       <Dialog open={strictPromptEditorOpen} onOpenChange={setStrictPromptEditorOpen}>
