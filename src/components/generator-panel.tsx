@@ -631,7 +631,7 @@ export function GeneratorPanel({
     <>
     <form noValidate onSubmit={submitGeneration} className={cn(
       "flex min-w-0 flex-col gap-3",
-      videoOpen ? "flex-none overflow-visible rounded-2xl border border-border bg-card p-3 shadow-none" : "h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none",
+      videoOpen ? "min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none" : "h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none",
     )}>
       <div className={panelToolbarClassName}>
         <div className="flex min-w-0 flex-col gap-1">

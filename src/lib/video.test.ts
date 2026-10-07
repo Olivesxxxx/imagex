@@ -147,4 +147,24 @@ describe("video API", () => {
       "https://www.auttyt.top/v1/videos/result-1/content",
     ]);
   });
+
+  test("falls back to the Auttyt task content endpoint when its result URL is unavailable", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ status: "SUCCESS", result_url: "/v1/videos/result-2/content" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "Task not found" } }, 404))
+      .mockResolvedValueOnce(new Response(new Blob(["valid-video"], { type: "video/mp4" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const task: VideoTask = {
+      id: "auttyt-task", providerId: "auttyt", model: options.model, prompt: options.prompt,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "running", createdAt: 1, updatedAt: 1,
+    };
+
+    const result = await pollVideoTask(task, { ...options, baseUrl: "https://www.auttyt.top/v1" });
+    expect(result).toMatchObject({ status: "completed", blob: expect.any(Blob) });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://www.auttyt.top/v1/video/generations/auttyt-task",
+      "https://www.auttyt.top/v1/videos/result-2/content",
+      "https://www.auttyt.top/v1/video/generations/auttyt-task/content",
+    ]);
+  });
 });

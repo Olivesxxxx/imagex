@@ -382,7 +382,18 @@ export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestO
   if (url) {
     const resolvedUrl = resolveVideoUrl(options.baseUrl, url);
     if (/^https?:\/\//i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?\//i.test(url)) return { status: "completed", url: resolvedUrl };
-    return { status: "completed", blob: await fetchVideoBlob(resolvedUrl, options) };
+    try {
+      return { status: "completed", blob: await fetchVideoBlob(resolvedUrl, options) };
+    } catch (error) {
+      // Auttyt sometimes returns a result_url under /v1/videos that responds
+      // with 404 even though the generation task is complete. Its task content
+      // endpoint is the reliable fallback for that response shape.
+      if (options.signal?.aborted) throw error;
+      if (!isAuttytVideoProvider(options.baseUrl)) throw error;
+      const taskContentUrl = videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}/content`);
+      if (taskContentUrl === resolvedUrl) throw error;
+      return { status: "completed", blob: await fetchVideoBlob(taskContentUrl, options) };
+    }
   }
   if (status === "failed" || status === "canceled") return { status, error: errorMessage(payload, `Video task ${status}.`) };
   if (status !== "completed") return { status };
