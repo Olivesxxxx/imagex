@@ -1566,8 +1566,9 @@ export function useImageConsole() {
   }, [copy]);
 
   const enqueueGeneration = useCallback(
-    () => {
-      if (!String(prompt || "").trim()) {
+    (overrides?: { prompt?: string }) => {
+      const effectivePrompt = overrides?.prompt ?? prompt;
+      if (!String(effectivePrompt || "").trim()) {
         toast.error(copy.generator.promptRequired);
         return false;
       }
@@ -1579,15 +1580,15 @@ export function useImageConsole() {
       }
 
       const currentSettings = normalizeSettings(settingsRef.current, strictPromptDefaultText);
-      const values = { ...currentSettings, prompt };
-      saveLastPrompt(prompt, modeRef.current);
+      const values = { ...currentSettings, prompt: effectivePrompt };
+      saveLastPrompt(effectivePrompt, modeRef.current);
 
       let requestPayloads;
       let endpoint: string;
       let method: GenerationMethod;
       try {
         if (currentSettings.protocol === "gemini") {
-          const payload = { model: currentSettings.geminiModel, prompt: applyPromptPolicy(prompt, currentSettings.strictPrompt, currentSettings.strictPromptText) };
+          const payload = { model: currentSettings.geminiModel, prompt: applyPromptPolicy(effectivePrompt, currentSettings.strictPrompt, currentSettings.strictPromptText) };
           requestPayloads = buildGenerationRequests(payload);
           endpoint = normalizeGeminiImageEndpoint(currentSettings.geminiBaseUrl, currentSettings.geminiModel);
           method = "gpt-image-2";
@@ -1611,7 +1612,7 @@ export function useImageConsole() {
       setStoredSettings(nextStoredSettings);
       storedSettingsRef.current = nextStoredSettings;
       saveSettings(nextStoredSettings);
-      updatePromptHistory((history) => addPromptToHistory(history, prompt));
+      updatePromptHistory((history) => addPromptToHistory(history, effectivePrompt));
 
       const now = performance.now();
       const date = new Date();

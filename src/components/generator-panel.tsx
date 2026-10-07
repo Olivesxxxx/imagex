@@ -59,7 +59,8 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { MAX_PROMPT_HISTORY, type PromptHistoryEntry } from "@/lib/prompt-history";
 import { cn } from "@/lib/utils";
-import type { VideoAspectRatio, VideoDuration, VideoQuality } from "@/lib/video";
+import type { VideoAspectRatio, VideoDuration, VideoQuality, VideoTask } from "@/lib/video";
+import type { VideoTaskActions } from "@/components/video-generation-panel";
 import type { ResultMediaFilter } from "@/components/request-list-panel";
 
 const DELETE_CONFIRMATION_TIMEOUT_MS = 3000;
@@ -97,7 +98,7 @@ export interface GeneratorPanelProps {
   setEditMask: Dispatch<SetStateAction<EditInputImage | undefined>>;
   updateSettings: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   setSettingsOpen: (open: boolean) => void;
-  enqueueGeneration: () => boolean;
+  enqueueGeneration: (overrides?: { prompt?: string }) => boolean;
   enqueueEditGeneration: () => boolean;
   isGenerating: boolean;
   onCancelGeneration: () => void;
@@ -115,6 +116,16 @@ export interface GeneratorPanelProps {
   videoQuality: VideoQuality;
   setVideoQuality: (value: VideoQuality) => void;
   resultMediaFilter: ResultMediaFilter;
+  onVideoResultChange: (task: VideoTask | null, url?: string) => void;
+  onVideoTaskCountChange: (count: number) => void;
+  onVideoSubmitted: () => void;
+  onVideoTaskSelect: (task: VideoTask) => void;
+  videoPromptPrefill: { value: string; signal: number };
+  videoSelectionMode: boolean;
+  selectedVideoTaskIds: ReadonlySet<string>;
+  onToggleVideoTaskSelection: (id: string) => void;
+  onVideoTaskFailedCountChange: (count: number) => void;
+  onRegisterVideoTaskActions: (actions: VideoTaskActions) => void;
   onOpenMaskEditor: (image: EditInputImage) => void;
 }
 
@@ -478,6 +489,16 @@ export function GeneratorPanel({
   videoQuality,
   setVideoQuality,
   resultMediaFilter,
+  onVideoResultChange,
+  onVideoTaskCountChange,
+  onVideoSubmitted,
+  onVideoTaskSelect,
+  videoPromptPrefill,
+  videoSelectionMode,
+  selectedVideoTaskIds,
+  onToggleVideoTaskSelection,
+  onVideoTaskFailedCountChange,
+  onRegisterVideoTaskActions,
   onOpenMaskEditor,
 }: GeneratorPanelProps) {
   const { copy, toggleLanguage } = useI18n();
@@ -812,7 +833,7 @@ export function GeneratorPanel({
       </div>
       </> : null}
        <div className={videoOpen ? "flex min-w-0 flex-col" : "hidden"}>
-         <VideoGenerationPanel settings={settings} duration={videoDuration} aspectRatio={videoAspectRatio} quality={videoQuality} resultMediaFilter={resultMediaFilter} onActionStateChange={(submit, canSubmit) => { videoSubmitRef.current = submit; setVideoCanSubmit(canSubmit); }} />
+         <VideoGenerationPanel settings={settings} duration={videoDuration} aspectRatio={videoAspectRatio} quality={videoQuality} resultMediaFilter={resultMediaFilter} videoPromptPrefill={videoPromptPrefill} onActionStateChange={(submit, canSubmit) => { videoSubmitRef.current = submit; setVideoCanSubmit(canSubmit); }} onResultChange={onVideoResultChange} onTaskCountChange={onVideoTaskCountChange} onSubmitted={onVideoSubmitted} onTaskSelect={onVideoTaskSelect} selectionMode={videoSelectionMode} selectedTaskIds={selectedVideoTaskIds} onToggleTaskSelection={onToggleVideoTaskSelection} onTaskFailedCountChange={onVideoTaskFailedCountChange} onRegisterActions={onRegisterVideoTaskActions} />
        </div>
      </form>
      {videoOpen ? (

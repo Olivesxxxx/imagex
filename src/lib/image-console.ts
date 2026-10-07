@@ -639,6 +639,11 @@ export function payloadSize(payload: RequestPayload | undefined | null) {
   return payload?.size || tool?.size || DEFAULTS.size;
 }
 
+export function payloadQuality(payload: RequestPayload | undefined | null) {
+  const tool = payloadImageTool(payload);
+  return payload?.quality || tool?.quality || DEFAULTS.quality;
+}
+
 export function reusablePromptForRequest(request: Pick<ImageRequestRecord, "payload" | "sourcePrompt">) {
   return String(request.sourcePrompt || stripPromptPolicy(payloadPrompt(request.payload))).trim();
 }

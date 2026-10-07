@@ -1,22 +1,36 @@
-import { DownloadIcon, ImagePlusIcon, Loader2Icon, PlayIcon, RefreshCwIcon, SquareIcon, Trash2Icon, XIcon } from "lucide-react";
+import { DownloadIcon, ImagePlusIcon, Loader2Icon, PlayIcon, RefreshCwIcon, SquareIcon, Trash2Icon, VideoIcon, XIcon } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoPollIntervalMs, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoRequestOptions, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoRequestOptions, type VideoTask } from "@/lib/video";
+import { formatCompletionTime } from "@/lib/image-console";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 import type { ResultMediaFilter } from "@/components/request-list-panel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const MAX_VIDEO_REFERENCE_IMAGES = 5;
 type VideoReferenceImage = { file: File; src: string; name: string };
 
+export interface VideoTaskActions {
+  clearFailed: () => void;
+  deleteTasks: (ids: readonly string[]) => void;
+}
+
 function readTasks(): VideoTask[] {
   try {
     const value = JSON.parse(localStorage.getItem(VIDEO_TASKS_STORAGE_KEY) || "[]");
-    return Array.isArray(value) ? value.map(normalizeVideoTask).filter((item): item is VideoTask => Boolean(item)) : [];
+    if (!Array.isArray(value)) return [];
+    const normalized = value.map(normalizeVideoTask).filter((item): item is VideoTask => Boolean(item));
+    return normalized.reduce<VideoTask[]>((result, task) => {
+      result.push(task.title ? task : { ...task, title: nextVideoTaskTitle(task.createdAt, result) });
+      return result;
+    }, []);
   } catch {
     return [];
   }
@@ -30,7 +44,17 @@ function saveTasks(tasks: VideoTask[]) {
   }
 }
 
-export function VideoGenerationPanel({ settings, duration, aspectRatio, quality, resultMediaFilter = "all", onActionStateChange }: { settings: AppSettings; duration: VideoDuration; aspectRatio: VideoAspectRatio; quality: VideoQuality; resultMediaFilter?: ResultMediaFilter; onActionStateChange?: (submit: () => void, canSubmit: boolean) => void }) {
+function nextVideoTaskTitle(createdAt: number, tasks: VideoTask[]) {
+  const prefix = videoTaskBatchPrefix(createdAt);
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+  const nextIndex = tasks.reduce((next, task) => {
+    const match = pattern.exec(videoTaskTitle(task));
+    return match ? Math.max(next, Number(match[1]) + 1) : next;
+  }, 1);
+  return `${prefix}-${nextIndex}`;
+}
+
+export function VideoGenerationPanel({ settings, duration, aspectRatio, quality, resultMediaFilter = "all", videoPromptPrefill, onActionStateChange, onResultChange, onTaskCountChange, onSubmitted, onTaskSelect, selectionMode = false, selectedTaskIds, onToggleTaskSelection, onTaskFailedCountChange, onRegisterActions }: { settings: AppSettings; duration: VideoDuration; aspectRatio: VideoAspectRatio; quality: VideoQuality; resultMediaFilter?: ResultMediaFilter; videoPromptPrefill?: { value: string; signal: number }; onActionStateChange?: (submit: () => void, canSubmit: boolean) => void; onResultChange?: (task: VideoTask | null, url?: string) => void; onTaskCountChange?: (count: number) => void; onSubmitted?: () => void; onTaskSelect?: (task: VideoTask) => void; selectionMode?: boolean; selectedTaskIds?: ReadonlySet<string>; onToggleTaskSelection?: (id: string) => void; onTaskFailedCountChange?: (count: number) => void; onRegisterActions?: (actions: VideoTaskActions) => void }) {
   const { copy, language } = useI18n();
   const [prompt, setPrompt] = useState("");
   const [referenceImages, setReferenceImages] = useState<VideoReferenceImage[]>([]);
@@ -38,7 +62,10 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   const [activeIds, setActiveIds] = useState<Set<string>>(() => new Set());
   const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({});
   const [taskListTarget, setTaskListTarget] = useState<HTMLElement | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const controllers = useRef(new Map<string, AbortController>());
+  const lastResultKeyRef = useRef("");
+  const lastTaskCountRef = useRef<number | null>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referenceImagesRef = useRef(referenceImages);
   const mediaUrlsRef = useRef(mediaUrls);
@@ -49,6 +76,35 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   const model = provider?.videoModel.trim() || "";
   const canSubmit = Boolean(prompt.trim() && model && apiKey && baseUrl && isOpenAI);
   const orderedTasks = useMemo(() => [...tasks].sort((a, b) => b.createdAt - a.createdAt), [tasks]);
+  const selectedTask = orderedTasks.find((task) => task.id === selectedTaskId) || orderedTasks[0] || null;
+
+  useEffect(() => {
+    if (videoPromptPrefill?.signal) setPrompt(videoPromptPrefill.value);
+  }, [videoPromptPrefill?.signal, videoPromptPrefill?.value]);
+
+  useEffect(() => {
+    if (selectedTaskId && !tasks.some((task) => task.id === selectedTaskId)) setSelectedTaskId(null);
+  }, [selectedTaskId, tasks]);
+
+  useEffect(() => {
+    const url = selectedTask ? mediaUrls[selectedTask.id] || selectedTask.url : undefined;
+    const resultKey = selectedTask ? `${selectedTask.id}:${selectedTask.status}:${url || ""}` : "";
+    if (resultKey === lastResultKeyRef.current) return;
+    lastResultKeyRef.current = resultKey;
+    onResultChange?.(selectedTask, url);
+  }, [mediaUrls, onResultChange, selectedTask]);
+
+  useEffect(() => {
+    if (lastTaskCountRef.current === tasks.length) return;
+    lastTaskCountRef.current = tasks.length;
+    onTaskCountChange?.(tasks.length);
+  }, [onTaskCountChange, tasks.length]);
+
+  const failedTasks = tasks.filter((task) => task.status === "failed" || task.status === "canceled");
+
+  useEffect(() => {
+    onTaskFailedCountChange?.(failedTasks.length);
+  }, [failedTasks.length, onTaskFailedCountChange]);
 
   useEffect(() => {
     onActionStateChange?.(() => { void submit(); }, canSubmit);
@@ -57,6 +113,32 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   useEffect(() => {
     setTaskListTarget(document.getElementById("video-task-list"));
   }, []);
+
+  function clearFailedTasks() {
+    failedTasks.forEach((task) => {
+      const url = mediaUrlsRef.current[task.id];
+      if (url) URL.revokeObjectURL(url);
+      void deleteVideoBlob(task.id).catch(() => undefined);
+      void deleteVideoReferenceFiles(task.id).catch(() => undefined);
+    });
+    if (!failedTasks.length) return;
+    const failedIds = new Set(failedTasks.map((task) => task.id));
+    setTasks((items) => items.filter((task) => !failedIds.has(task.id)));
+    setMediaUrls((current) => {
+      const next = { ...current };
+      failedIds.forEach((id) => delete next[id]);
+      return next;
+    });
+  }
+
+  function deleteTasks(ids: readonly string[]) {
+    const selectedIds = new Set(ids);
+    tasks.filter((task) => selectedIds.has(task.id)).forEach((task) => void remove(task));
+  }
+
+  useEffect(() => {
+    onRegisterActions?.({ clearFailed: clearFailedTasks, deleteTasks });
+  });
 
   useEffect(() => {
     saveTasks(tasks);
@@ -110,7 +192,9 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
     const controller = new AbortController();
     controllers.current.set(task.id, controller);
     setActiveIds((current) => new Set(current).add(task.id));
-    let current = task;
+    const startedAt = task.startedAt || Date.now();
+    let current = task.startedAt ? task : { ...task, startedAt };
+    if (!task.startedAt) setTasks((items) => items.map((item) => item.id === task.id ? current : item));
     try {
       for (let attempt = 0; attempt < 120; attempt += 1) {
         const result = await pollVideoTask(current, { ...options, signal: controller.signal });
@@ -177,16 +261,16 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
       authPrefix: provider?.authPrefix,
     };
     try {
-      const task = await createVideoTask(config, provider?.id);
+      const createdTask = await createVideoTask(config, provider?.id);
+      const task = { ...createdTask, title: nextVideoTaskTitle(createdTask.createdAt, tasks) };
       setTasks((items) => [task, ...items]);
+      setSelectedTaskId(task.id);
+      onSubmitted?.();
       try {
         await saveVideoReferenceFiles(task.id, config.referenceImages || []);
       } catch {
         toast.error(language === "en" ? "Video started, but the reference images could not be cached for retry." : "视频已提交，但参考图未能缓存，之后可能无法用原图重试。");
       }
-      setPrompt("");
-      referenceImages.forEach((image) => URL.revokeObjectURL(image.src));
-      setReferenceImages([]);
     } catch (error) {
       toast.error((error as Error).message);
     }
@@ -273,7 +357,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
         toast.error(language === "en" ? "The original reference images are no longer available." : "原任务的参考图已不可用，无法重新生成。");
         return;
       }
-      const nextTask = await createVideoTask({
+      const createdTask = await createVideoTask({
         baseUrl: taskProvider.baseUrl,
         apiKey: taskProvider.apiKey,
         model: task.model,
@@ -285,6 +369,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
         authHeaderName: taskProvider.authHeaderName,
         authPrefix: taskProvider.authPrefix,
       }, task.providerId);
+      const nextTask = { ...createdTask, title: nextVideoTaskTitle(createdTask.createdAt, tasks) };
       setTasks((items) => [nextTask, ...items]);
       try {
         await saveVideoReferenceFiles(nextTask.id, referenceFiles);
@@ -301,7 +386,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
     if (!url) return;
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `imagex-video-${task.id}.mp4`;
+    anchor.download = videoDownloadName(task);
     anchor.target = "_blank";
     anchor.rel = "noreferrer";
     anchor.click();
@@ -340,24 +425,34 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
         {orderedTasks.map((task) => {
           const videoUrl = mediaUrls[task.id] || task.url;
           const active = activeIds.has(task.id);
-          return <article key={task.id} className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-card px-2.5 py-2 text-left">
-            <div className="flex min-w-0 items-center gap-2">
-              <strong className="min-w-0 truncate text-sm">{copy.generator.videoStatus[task.status]}</strong>
-              {active ? <Loader2Icon className="size-3.5 shrink-0 animate-spin" /> : null}
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{task.aspectRatio} · {task.quality} · {task.duration}s</span>
+          const canSelect = task.status !== "queued" && task.status !== "running";
+          const selected = Boolean(selectedTaskIds?.has(task.id));
+          const selectTask = () => {
+            setSelectedTaskId(task.id);
+            onTaskSelect?.(task);
+          };
+          return <article key={task.id} className={`relative grid min-h-22 w-full grid-cols-1 items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow] hover:border-foreground/15 hover:bg-muted/40 ${selected ? "border-foreground/20 bg-[oklch(0.985_0.006_255)]" : ""}`} onClick={selectTask}>
+            <div className="grid w-full min-w-0 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3">
+              <div className="relative size-24 shrink-0">
+                <button type="button" className="flex size-24 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-border bg-black text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); selectTask(); }} aria-label={`${language === "en" ? "View video result" : "查看视频结果"} ${task.id}`}>
+                {task.status === "completed" && videoUrl ? <video className="h-full w-full object-cover" src={videoUrl} muted playsInline preload="metadata" /> : active ? <Loader2Icon className="size-6 animate-spin text-muted-foreground" /> : <VideoIcon className="size-6 text-muted-foreground" />}
+                </button>
+                {selectionMode && canSelect ? <label className="absolute left-2 top-2 z-20 flex cursor-pointer items-center" onClick={(event) => event.stopPropagation()}>
+                  <Checkbox checked={selected} className="bg-background data-[state=checked]:bg-primary" onCheckedChange={() => onToggleTaskSelection?.(task.id)} aria-label={`${language === "en" ? "Select video entry" : "选择视频条目"} ${task.id}`} />
+                </label> : null}
+              </div>
+              <button type="button" className="flex min-w-0 flex-col gap-1 overflow-hidden py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={selectTask} aria-label={`${language === "en" ? "View video result" : "查看视频结果"} ${task.id}`}>
+                <span className="flex min-w-0 items-center gap-2"><Badge variant={task.status === "failed" || task.status === "canceled" ? "destructive" : "default"} className={task.status === "completed" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : task.status === "queued" ? "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300" : task.status === "running" ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ""}>{copy.generator.videoStatus[task.status]}</Badge><strong className="min-w-0 truncate text-sm font-semibold">{videoTaskTitle(task)}</strong>{active ? <Loader2Icon className="size-3.5 shrink-0 animate-spin" /> : null}</span>
+                <span className="block min-w-0 truncate text-xs font-medium text-muted-foreground">{formatVideoTaskTiming(task, Date.now(), language === "en" ? "en" : "zh")}</span>
+                <span className="block min-w-0 truncate text-xs text-muted-foreground" title={`${task.aspectRatio} · ${task.quality} · ${task.duration}s`}>{task.aspectRatio} · {task.quality} · {task.duration}s</span>
+                <span className="block min-w-0 truncate text-xs text-muted-foreground" title={task.error || task.prompt}>{task.status === "completed" ? formatCompletionTime(task.updatedAt, language === "en" ? "en" : "zh") : task.error || task.prompt}</span>
+              </button>
+              <span className="flex h-full shrink-0 flex-col items-end justify-between gap-2 pt-0.5">
+                <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={active ? copy.generator.videoCancel : (language === "en" ? "Delete video task" : "删除视频任务")} onClick={(event) => { event.stopPropagation(); active ? stop(task) : void remove(task); }}>{active ? <SquareIcon data-icon="inline-start" /> : <Trash2Icon data-icon="inline-start" />}</Button></TooltipTrigger><TooltipContent>{active ? copy.generator.videoCancel : (language === "en" ? "Delete video task" : "删除视频任务")}</TooltipContent></Tooltip>
+                {!active && (task.status === "failed" || task.status === "canceled") ? <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={language === "en" ? "Retry video task" : "重新生成视频"} onClick={(event) => { event.stopPropagation(); void retry(task); }}><RefreshCwIcon data-icon="inline-start" /></Button></TooltipTrigger><TooltipContent>{language === "en" ? "Retry video task" : "重新生成视频"}</TooltipContent></Tooltip> : null}
+                {!active && task.status === "completed" && videoUrl ? <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={copy.generator.videoDownload} onClick={(event) => { event.stopPropagation(); void download(task); }}><DownloadIcon data-icon="inline-start" /></Button></TooltipTrigger><TooltipContent>{copy.generator.videoDownload}</TooltipContent></Tooltip> : null}
+              </span>
             </div>
-            <p className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-muted-foreground">{task.prompt}</p>
-            <span className="truncate text-xs text-muted-foreground">{task.model}</span>
-            {task.referenceImageCount ? <span className="text-xs text-muted-foreground">{language === "en" ? `${task.referenceImageCount} reference image${task.referenceImageCount === 1 ? "" : "s"}` : `参考图 ${task.referenceImageCount} 张`}</span> : null}
-            {task.error ? <p className="break-words text-xs text-destructive">{task.error}</p> : null}
-            {task.status === "completed" && videoUrl ? <video className="mt-1 max-h-64 w-full rounded-md bg-black" src={videoUrl} controls playsInline preload="metadata" /> : null}
-            {!active ? <div className="flex justify-end gap-1">
-              {task.status === "failed" || task.status === "canceled" ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void retry(task)}><RefreshCwIcon data-icon="inline-start" />{language === "en" ? "Retry" : "重新生成"}</Button> : null}
-              <Button type="button" variant="ghost" size="icon-sm" className="!h-8 !min-h-8 !max-h-8" aria-label={language === "en" ? "Delete video task" : "删除视频任务"} title={language === "en" ? "Delete video task" : "删除视频任务"} onClick={() => void remove(task)}><Trash2Icon /></Button>
-              {task.status === "completed" && videoUrl ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => void download(task)}><DownloadIcon data-icon="inline-start" />{copy.generator.videoDownload}</Button> : null}
-            </div> : <div className="flex justify-end gap-1">
-              {active ? <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 rounded-md px-3 text-xs" onClick={() => stop(task)}><SquareIcon data-icon="inline-start" />{copy.generator.videoCancel}</Button> : null}
-            </div>}
           </article>;
         })}
       </div>, taskListTarget) : null}

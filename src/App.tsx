@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { GeneratorPanel, PromptHistoryPanel, QuickStartDialog } from "@/components/generator-panel";
@@ -7,7 +7,8 @@ import { MaskEditor, type MaskEditorImage } from "@/components/mask-editor";
 import { RequestListPanel, type ResultMediaFilter } from "@/components/request-list-panel";
 import { ResultPanel } from "@/components/result-panel";
 import { ProductSuitePanel } from "@/components/product-suite-panel";
-import { clearVideoData, type VideoAspectRatio, type VideoDuration, type VideoQuality } from "@/lib/video";
+import { clearVideoData, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoTask } from "@/lib/video";
+import type { VideoTaskActions } from "@/components/video-generation-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -195,6 +196,10 @@ export default function App() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<VideoAspectRatio>("16:9");
   const [videoQuality, setVideoQuality] = useState<VideoQuality>("720p");
   const [resultMediaFilter, setResultMediaFilter] = useState<ResultMediaFilter>("all");
+  const [videoResult, setVideoResult] = useState<{ task: VideoTask | null; url?: string }>({ task: null });
+  const [videoPromptPrefill, setVideoPromptPrefill] = useState<{ value: string; signal: number }>({ value: "", signal: 0 });
+  const [videoTaskCount, setVideoTaskCount] = useState(0);
+  const [videoFailedCount, setVideoFailedCount] = useState(0);
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [annotationTarget, setAnnotationTarget] = useState<{ image: AnnotationImageSource; originalPrompt: string } | null>(null);
   const [maskEditorTarget, setMaskEditorTarget] = useState<EditInputImage | null>(null);
@@ -203,6 +208,8 @@ export default function App() {
   const [exportZipProgress, setExportZipProgress] = useState<ExportZipProgress>({ current: 0, total: 0 });
   const [imageSelectionMode, setImageSelectionMode] = useState(false);
   const [selectedImageKeys, setSelectedImageKeys] = useState<Set<string>>(new Set());
+  const [selectedVideoTaskIds, setSelectedVideoTaskIds] = useState<Set<string>>(new Set());
+  const videoTaskActionsRef = useRef<VideoTaskActions>({ clearFailed: () => undefined, deleteTasks: () => undefined });
   const [previewTarget, setPreviewTarget] = useState<{ requestId: string; imageIndex: number; signal: number } | null>(null);
   const extraModalOpen =
     cancelRequestsDialogOpen ||
@@ -251,6 +258,20 @@ export default function App() {
     void runImageExport(imageKeys);
   }
 
+  function handleRetryRequest(requestId: string) {
+    const request = consoleState.requestRecords.find((item) => item.id === requestId);
+    if (!request || request.status === "queued" || request.status === "running" || request.status === "done") return;
+    const prompt = request.sourcePrompt.trim();
+    if (!prompt) return;
+    if (request.method === "edit" && request.editImages?.length) {
+      handleModeChange("edit");
+      consoleState.enqueueEditGeneration({ prompt, editImages: request.editImages, mask: request.editMask, silent: true });
+      return;
+    }
+    handleModeChange("generate");
+    consoleState.enqueueGeneration({ prompt });
+  }
+
   function scrollToResultPanel() {
     window.requestAnimationFrame(() => {
       document.getElementById("result-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -258,11 +279,13 @@ export default function App() {
   }
 
   function handleSelectRequest(requestId: string) {
+    setVideoOpen(false);
     consoleState.setSelectedRequestId(requestId);
     scrollToResultPanel();
   }
 
   function handlePreviewRequest(requestId: string, imageIndex = 0) {
+    setVideoOpen(false);
     consoleState.setSelectedRequestId(requestId);
     setPreviewTarget({ requestId, imageIndex, signal: Date.now() + Math.random() });
   }
@@ -274,7 +297,10 @@ export default function App() {
 
   function toggleImageSelectionMode() {
     setImageSelectionMode((current) => {
-      if (current) setSelectedImageKeys(new Set());
+      if (current) {
+        setSelectedImageKeys(new Set());
+        setSelectedVideoTaskIds(new Set());
+      }
       return !current;
     });
   }
@@ -288,9 +314,24 @@ export default function App() {
     });
   }
 
+  function toggleVideoTaskSelection(id: string) {
+    setSelectedVideoTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function deleteSelectedVideoTasks(ids: readonly string[]) {
+    if (ids.length) videoTaskActionsRef.current.deleteTasks(ids);
+    setSelectedVideoTaskIds(new Set());
+  }
+
   function resetImageSelection() {
     setImageSelectionMode(false);
     setSelectedImageKeys(new Set());
+    setSelectedVideoTaskIds(new Set());
   }
 
   function handleModeChange(mode: ConsoleMode) {
@@ -475,6 +516,12 @@ export default function App() {
               onEditImage={handleEditImage}
               onAnnotateImage={handleAnnotateImage}
               previewTarget={previewTarget}
+              videoOpen={videoOpen}
+              videoResult={videoResult}
+              onReuseVideoPrompt={(prompt) => {
+                setVideoOpen(true);
+                setVideoPromptPrefill({ value: prompt, signal: Date.now() });
+              }}
             />
           </div>
           <div
@@ -547,6 +594,16 @@ export default function App() {
                   videoQuality={videoQuality}
                   setVideoQuality={setVideoQuality}
                   resultMediaFilter={resultMediaFilter}
+                  videoPromptPrefill={videoPromptPrefill}
+                  onVideoResultChange={(task, url) => setVideoResult({ task, url })}
+                  onVideoTaskCountChange={setVideoTaskCount}
+                  onVideoTaskFailedCountChange={setVideoFailedCount}
+                  onVideoSubmitted={() => setVideoOpen(true)}
+                  onVideoTaskSelect={() => setVideoOpen(true)}
+                  videoSelectionMode={imageSelectionMode}
+                  selectedVideoTaskIds={selectedVideoTaskIds}
+                  onToggleVideoTaskSelection={toggleVideoTaskSelection}
+                  onRegisterVideoTaskActions={(actions) => { videoTaskActionsRef.current = actions; }}
                   onOpenMaskEditor={(image) => setMaskEditorTarget(image)}
                 />
           </div>
@@ -556,6 +613,8 @@ export default function App() {
           selectedRequestId={consoleState.selectedRequestId}
           selectedRequestFilter={consoleState.selectedRequestFilter}
           resultMediaFilter={resultMediaFilter}
+          videoTaskCount={videoTaskCount}
+          videoFailedCount={videoFailedCount}
           requestCounts={consoleState.requestCounts}
           now={consoleState.now}
           settingsOpen={consoleState.settingsOpen}
@@ -564,6 +623,7 @@ export default function App() {
           onSelectRequest={handleSelectRequest}
           onCancelRequest={consoleState.cancelRequest}
           onDeleteRequest={consoleState.deleteRequest}
+          onRetryRequest={handleRetryRequest}
           onExportRequest={handleExportRequest}
           onPreviewRequest={handlePreviewRequest}
           onFilterChange={consoleState.setSelectedRequestFilter}
@@ -572,9 +632,12 @@ export default function App() {
           onOpenExportZip={handleOpenImageExport}
           imageSelectionMode={imageSelectionMode}
           selectedImageCount={selectedImageKeys.size}
+          selectedVideoCount={selectedVideoTaskIds.size}
+          selectedVideoTaskIds={selectedVideoTaskIds}
            selectedImageKeys={selectedImageKeys}
            onToggleImageSelectionMode={toggleImageSelectionMode}
            onToggleImageSelection={toggleImageSelection}
+           onDeleteSelectedVideoTasks={deleteSelectedVideoTasks}
            extraModalOpen={extraModalOpen}
         />
       </main>
@@ -658,6 +721,7 @@ export default function App() {
           setClearFailedDialogOpen(false);
           resetImageSelection();
           consoleState.clearFailedRequests();
+          videoTaskActionsRef.current.clearFailed();
         }}
       />
       <ClearRequestsDialog

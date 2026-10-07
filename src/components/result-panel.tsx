@@ -10,6 +10,7 @@ import {
   QuoteIcon,
   RefreshCwIcon,
   RotateCcwIcon,
+  VideoIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -20,8 +21,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   imageDownloadName,
   imageBlobFromDataUrl,
+  payloadOutputFormat,
+  payloadQuality,
   payloadSize,
-  requestStatusDisplayLabel,
   revisedPromptForResponse,
   reusablePromptForRequest,
   type AppSettings,
@@ -32,6 +34,7 @@ import { getCopy, useI18n, type Language } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { createZipBlob, type ZipFileEntry } from "@/lib/zip";
 import type { ConnectionStatus } from "@/hooks/use-image-console";
+import { videoDownloadName, type VideoTask } from "@/lib/video";
 
 const REQUEST_ERROR_PREVIEW_LIMIT = 240;
 
@@ -50,6 +53,15 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+function downloadVideoResult(task: VideoTask, url: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = videoDownloadName(task);
+  anchor.target = "_blank";
+  anchor.rel = "noreferrer";
+  anchor.click();
 }
 
 async function generatedImageBlob(image: GeneratedImage) {
@@ -144,19 +156,6 @@ function selectedRequestEmptyText(request: ImageRequestRecord | null, loading = 
   if (loading) return copy.requestCardEmpty.loading;
   if (request.detailsMissing) return copy.requestCardEmpty.restored;
   return copy.requestCardEmpty.missing;
-}
-
-function selectedRequestImageResolution(request: ImageRequestRecord | null) {
-  if (request?.imageResolution) return request.imageResolution;
-  const image = request?.images?.[0];
-  if (!image?.width || !image.height) return "";
-  return `${image.width}x${image.height}`;
-}
-
-function selectedRequestImageSize(request: ImageRequestRecord | null) {
-  const bytes = Number(request?.imageSizeBytes || 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "";
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
 function ActionSlot({
@@ -382,6 +381,18 @@ function Gallery({
   );
 }
 
+function VideoGallery({ task, url }: { task: VideoTask | null; url?: string }) {
+  const { copy, language } = useI18n();
+  if (!task) {
+    return <Empty className="min-h-0 w-full max-w-full overflow-hidden border"><EmptyHeader><EmptyMedia variant="icon"><VideoIcon /></EmptyMedia><EmptyTitle>{language === "en" ? "No video result selected" : "暂无视频结果"}</EmptyTitle></EmptyHeader></Empty>;
+  }
+  return (
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-center justify-center gap-3 overflow-hidden rounded-lg border border-border bg-black/5 p-3">
+      {task.status === "completed" && url ? <video className="block max-h-full min-h-0 max-w-full rounded-md bg-black object-contain" src={url} controls playsInline preload="metadata" /> : <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-muted-foreground"><VideoIcon className="size-8" /> <span>{copy.generator.videoStatus[task.status]}</span></div>}
+    </div>
+  );
+}
+
 export function ResultPanel({
   selectedRequest,
   selectedRequestDetailLoadingId,
@@ -396,6 +407,9 @@ export function ResultPanel({
   testConnectionStatus,
   connectionLatency,
   onTestConnection,
+  videoOpen,
+  videoResult,
+  onReuseVideoPrompt,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
@@ -410,24 +424,23 @@ export function ResultPanel({
   onEditImage: (value: string) => void;
   onAnnotateImage: (value: string) => void;
   previewTarget: { requestId: string; imageIndex: number; signal: number } | null;
+  videoOpen: boolean;
+  videoResult: { task: VideoTask | null; url?: string };
+  onReuseVideoPrompt: (prompt: string) => void;
 }) {
   const { copy, language } = useI18n();
   const canDownload = selectedRequest?.status === "done";
+  const showingVideo = videoOpen;
   const canReuse = Boolean(selectedRequest && reusablePromptForRequest(selectedRequest));
   const canShowResponseJson = Boolean(selectedRequest && selectedRequest.status !== "queued" && selectedRequest.status !== "running");
   const responseJsonDisabled = !selectedRequestJson;
   const selectedRequestDetailLoading = selectedRequestDetailLoadingId === selectedRequest?.id;
-  const selectedRequestResolution = selectedRequestImageResolution(selectedRequest);
-  const selectedRequestSize = selectedRequestImageSize(selectedRequest);
-  const selectedRequestStatusText = selectedRequest
-    ? `${requestStatusDisplayLabel(copy.requestStatusLabels, selectedRequest.status)}${selectedRequestResolution ? ` · ${selectedRequestResolution}` : ""}${selectedRequestSize ? ` · ${selectedRequestSize}` : ""}`
-    : copy.requestCardStatus.unselectedSubtitle;
-  const selectedProductSuiteAssociation = selectedRequest?.productSuiteSlotKey && selectedRequest.productSuiteVersion
-    ? `${selectedRequest.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(selectedRequest.productSuiteBatchNumber)} · ` : ""}${selectedRequest.productSuiteSlotLabel || copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
+  const selectedProductSuiteSlotVersion = selectedRequest?.productSuiteSlotKey && selectedRequest.productSuiteVersion
+    ? `${selectedRequest.productSuiteSlotLabel || copy.productSuite.slotLabels[selectedRequest.productSuiteSlotKey] || selectedRequest.productSuiteSlotKey} · v${selectedRequest.productSuiteVersion}`
     : "";
-  const selectedRequestMetaText = selectedProductSuiteAssociation
-    ? `${selectedProductSuiteAssociation} · ${selectedRequestStatusText}`
-    : selectedRequestStatusText;
+  const selectedRequestConfiguration = selectedRequest
+    ? `${payloadSize(selectedRequest.payload)} · ${payloadQuality(selectedRequest.payload)} · ${payloadOutputFormat(selectedRequest.payload)}${selectedProductSuiteSlotVersion ? ` · ${selectedProductSuiteSlotVersion}` : ""}`
+    : copy.requestCardStatus.unselectedSubtitle;
   const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId);
@@ -444,11 +457,13 @@ export function ResultPanel({
         ? (settings.protocol === "gemini" ? copy.settings.geminiApiKey : copy.settings.apiKey)
         : settings.protocol === "gemini"
           ? (!appSettings.geminiModel.trim() ? copy.settings.geminiModel : null)
-          : (!activeProvider?.generationsModel.trim()
-            ? copy.settings.generationsModel
-            : !activeProvider?.editsModel.trim()
-              ? copy.settings.editsModel
-              : null);
+          : showingVideo
+            ? (!activeProvider?.videoModel.trim() ? copy.generator.videoModelRequired : null)
+            : !activeProvider?.generationsModel.trim()
+              ? copy.settings.generationsModel
+              : !activeProvider?.editsModel.trim()
+                ? copy.settings.editsModel
+                : null;
   const latencyState = testConnectionStatus.tone === "busy"
     ? "measuring"
     : connectionLatency !== null
@@ -511,9 +526,9 @@ export function ResultPanel({
         <div className="flex min-h-16 flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-1">
           <div className="flex min-w-0 flex-1 flex-col gap-2 self-start">
             <strong className="block min-w-0 truncate text-sm font-semibold leading-normal">
-              {selectedRequest?.title || copy.requestCardStatus.unselectedTitle}
+              {showingVideo ? (videoResult.task ? `${copy.generator.video} · ${copy.generator.videoStatus[videoResult.task.status]}` : copy.generator.video) : (selectedRequest?.title || copy.requestCardStatus.unselectedTitle)}
             </strong>
-            <span className="block min-w-0 truncate text-xs font-medium leading-normal text-muted-foreground" title={selectedRequestMetaText}>{selectedRequestMetaText}</span>
+            <span className="block min-w-0 truncate text-xs font-medium leading-normal text-muted-foreground" title={showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}>{showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}</span>
           </div>
           <div className="flex min-w-0 flex-col items-end gap-2 self-start">
             <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 text-sm font-semibold leading-normal">
@@ -539,15 +554,27 @@ export function ResultPanel({
           </div>
 
         <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden px-3 pt-1 pb-3">
-          <Gallery
-            request={selectedRequest}
-            loading={selectedRequestDetailLoading}
-            onEditImage={onEditImage}
-            onAnnotateImage={onAnnotateImage}
-            previewTarget={previewTarget}
-          />
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-3">
+           {showingVideo ? <VideoGallery task={videoResult.task} url={videoResult.url} /> : <Gallery request={selectedRequest} loading={selectedRequestDetailLoading} onEditImage={onEditImage} onAnnotateImage={onAnnotateImage} previewTarget={previewTarget} />}
+         </div>
+         {showingVideo ? <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-3">
+          <ActionSlot visible={Boolean(videoResult.task?.status === "completed" && videoResult.url)} label={copy.generator.videoDownload}>
+            <Button type="button" variant="outline" size="sm" className="h-8 rounded-md" disabled={!videoResult.task || !videoResult.url} onClick={() => { if (videoResult.task && videoResult.url) downloadVideoResult(videoResult.task, videoResult.url); }}>
+              <DownloadIcon data-icon="inline-start" />
+              {copy.generator.videoDownload}
+            </Button>
+          </ActionSlot>
+          <ActionSlot visible={Boolean(videoResult.task?.prompt.trim())} label={copy.requestCardStatus.reusePrompt}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="h-8 rounded-md" disabled={!videoResult.task?.prompt.trim()} onClick={() => { if (videoResult.task?.prompt.trim()) onReuseVideoPrompt(videoResult.task.prompt); }}>
+                  <CopyIcon data-icon="inline-start" />
+                  {copy.requestCardStatus.reusePrompt}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={8} className="whitespace-pre-wrap break-words text-left">{videoResult.task?.prompt || ""}</TooltipContent>
+            </Tooltip>
+          </ActionSlot>
+         </div> : <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-3">
           <ActionSlot visible={Boolean(canDownload)} label={copy.requestCardStatus.download}>
             <Button
               type="button"
@@ -607,7 +634,7 @@ export function ResultPanel({
               </TooltipContent>
             </Tooltip>
           </ActionSlot>
-        </div>
+         </div>}
       </div>
     </section>
   );

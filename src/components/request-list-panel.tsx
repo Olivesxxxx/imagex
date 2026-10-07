@@ -5,6 +5,7 @@ import {
   DownloadIcon,
   ImageIcon,
   ListChecksIcon,
+  RefreshCwIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -23,7 +24,8 @@ import {
   REQUEST_FILTERS,
   formatCompletionTime,
   formatRequestTiming,
-  generationMethodDisplayName,
+  payloadOutputFormat,
+  payloadQuality,
   payloadSize,
   requestStatusDisplayLabel,
   type ImageRequestRecord,
@@ -66,10 +68,10 @@ function RequestRow({
   request,
   selected,
   timing,
-  payloadSizeText,
   buttonRef,
   onCancelRequest,
   onDeleteRequest,
+  onRetryRequest,
   onSelect,
   onExportRequest,
   onPreviewRequest,
@@ -80,10 +82,10 @@ function RequestRow({
   request: ImageRequestRecord;
   selected: boolean;
   timing: string;
-  payloadSizeText: string;
   buttonRef?: (element: HTMLButtonElement | null) => void;
   onCancelRequest?: (id: string) => void;
   onDeleteRequest?: (id: string) => void;
+  onRetryRequest?: (id: string) => void;
   onSelect: () => void;
   onExportRequest: (id: string) => void;
   onPreviewRequest: (id: string) => void;
@@ -96,11 +98,14 @@ function RequestRow({
   const productSuiteAssociation = request.productSuiteSlotKey && request.productSuiteVersion
     ? `${request.productSuiteBatchNumber ? `${copy.productSuite.batchShortLabel(request.productSuiteBatchNumber)} · ` : ""}${request.productSuiteSlotLabel || copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
     : "";
+  const productSuiteSlotVersion = request.productSuiteSlotKey && request.productSuiteVersion
+    ? `${request.productSuiteSlotLabel || copy.productSuite.slotLabels[request.productSuiteSlotKey] || request.productSuiteSlotKey} · v${request.productSuiteVersion}`
+    : "";
+  const imageConfiguration = `${payloadSize(request.payload)} · ${payloadQuality(request.payload)} · ${payloadOutputFormat(request.payload)}`;
   const requestSummary = productSuiteAssociation
-    ? generationMethodDisplayName(request.method)
-    : `${generationMethodDisplayName(request.method)} · ${payloadSizeText}`;
-  const requestStatusText = `${requestStatusDisplayLabel(copy.requestStatusLabels, request.status)}${request.imageResolution ? ` · ${request.imageResolution}` : ""}`;
-  const productSuiteStatusText = productSuiteAssociation ? `${productSuiteAssociation} · ${requestStatusText}` : "";
+    ? `${imageConfiguration} · ${productSuiteSlotVersion}`
+    : imageConfiguration;
+  const productSuiteStatusText = productSuiteAssociation ? requestSummary : "";
   const requestDetail =
     request.error || (request.status === "done" ? formatCompletionTime(request.completedAt, language === "en" ? "en" : "zh") : "");
   const thumbnail = request.thumbnail || null;
@@ -229,6 +234,16 @@ function RequestRow({
               <TooltipContent>{copy.requestCardStatus.exportImage}</TooltipContent>
             </Tooltip>
           ) : null}
+          {request.status !== "queued" && request.status !== "running" && request.status !== "done" ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="ghost" size="icon-xs" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={language === "en" ? `Retry ${request.title}` : `重新生成 ${request.title}`} onClick={(event) => { event.stopPropagation(); onRetryRequest?.(request.id); }}>
+                  <RefreshCwIcon data-icon="inline-start" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{language === "en" ? "Retry" : "重新生成"}</TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
       </div>
       {imageSelectionMode && ((request.status === "done" && !request.detailsMissing && thumbnail) || request.status === "error" || request.status === "canceled") ? (
@@ -253,6 +268,8 @@ export function RequestListPanel({
   selectedRequestId,
   selectedRequestFilter,
   resultMediaFilter,
+  videoTaskCount,
+  videoFailedCount,
   requestCounts,
   now,
   settingsOpen,
@@ -262,6 +279,7 @@ export function RequestListPanel({
   onSelectRequest,
   onCancelRequest,
   onDeleteRequest,
+  onRetryRequest,
   onExportRequest,
   onPreviewRequest,
   onFilterChange,
@@ -270,14 +288,19 @@ export function RequestListPanel({
   onOpenExportZip,
   imageSelectionMode,
   selectedImageCount,
+  selectedVideoCount,
+  selectedVideoTaskIds,
   selectedImageKeys,
   onToggleImageSelectionMode,
   onToggleImageSelection,
+  onDeleteSelectedVideoTasks,
 }: {
   filteredRequests: ImageRequestRecord[];
   selectedRequestId: string | null;
   selectedRequestFilter: RequestFilter;
   resultMediaFilter: ResultMediaFilter;
+  videoTaskCount: number;
+  videoFailedCount: number;
   requestCounts: Record<RequestFilter, number>;
   now: number;
   settingsOpen: boolean;
@@ -287,6 +310,7 @@ export function RequestListPanel({
   onSelectRequest: (id: string) => void;
   onCancelRequest: (id: string) => void;
   onDeleteRequest: (id: string) => void;
+  onRetryRequest: (id: string) => void;
   onExportRequest: (id: string) => void;
   onPreviewRequest: (id: string) => void;
   onFilterChange: (filter: RequestFilter) => void;
@@ -295,12 +319,17 @@ export function RequestListPanel({
   onOpenExportZip: () => void;
   imageSelectionMode: boolean;
   selectedImageCount: number;
+  selectedVideoCount: number;
+  selectedVideoTaskIds: ReadonlySet<string>;
   selectedImageKeys: ReadonlySet<string>;
   onToggleImageSelectionMode: () => void;
   onToggleImageSelection: (key: string) => void;
+  onDeleteSelectedVideoTasks: (ids: readonly string[]) => void;
 }) {
   const { copy, language } = useI18n();
   const hasRequests = requestCounts.all > 0;
+  const hasVideoTasks = videoTaskCount > 0;
+  const selectedEntryCount = selectedImageCount + selectedVideoCount;
   const requestButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const [deleteSelectionDialogOpen, setDeleteSelectionDialogOpen] = useState(false);
   const selectedRequestIds = Array.from(
@@ -310,6 +339,7 @@ export function RequestListPanel({
         .filter(Boolean),
     ),
   );
+  const selectedVideoTaskIdList = Array.from(selectedVideoTaskIds);
 
   function focusRequest(id: string) {
     requestButtonRefs.current.get(id)?.focus();
@@ -357,8 +387,8 @@ export function RequestListPanel({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                disabled={requestCounts.failed === 0}
+                className="h-7 w-28 shrink-0 justify-center gap-1.5 px-2 text-xs"
+                disabled={requestCounts.failed === 0 && videoFailedCount === 0}
                 onClick={onOpenClearFailed}
               >
                 <Trash2Icon data-icon="inline-start" />
@@ -373,16 +403,12 @@ export function RequestListPanel({
                 type="button"
                 variant={imageSelectionMode ? "secondary" : "outline"}
                 size="sm"
-                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                disabled={!hasRequests}
+                className="h-7 w-28 shrink-0 justify-center gap-1.5 px-2 text-xs"
+                disabled={!hasRequests && !hasVideoTasks}
                 onClick={onToggleImageSelectionMode}
               >
                 <ListChecksIcon data-icon="inline-start" />
-                {imageSelectionMode
-                  ? selectedImageCount > 0
-                    ? copy.imageSelection.selected(selectedImageCount)
-                    : copy.imageSelection.exit
-                  : copy.imageSelection.enter}
+                {imageSelectionMode ? copy.imageSelection.exit : copy.imageSelection.enter}
               </Button>
             </TooltipTrigger>
             <TooltipContent>{imageSelectionMode ? copy.imageSelection.exit : copy.imageSelection.enter}</TooltipContent>
@@ -414,9 +440,9 @@ export function RequestListPanel({
 
       <div className="min-h-0 flex-1 py-3">
         <div className="standard-scrollbar request-list-scroll h-full overflow-y-auto overscroll-contain">
-          <div className={cn("grid gap-2 pl-3 pr-0", imageSelectionMode && selectedImageCount > 0 && "pb-24")}>
+          <div className={cn("grid gap-2 pl-3 pr-0", imageSelectionMode && selectedEntryCount > 0 && "pb-24")}>
           <div id="video-task-list" className="contents" />
-          {resultMediaFilter !== "videos" && !hasRequests ? (
+          {resultMediaFilter === "all" && !hasRequests && !hasVideoTasks ? (
             <Empty className="min-h-40 border">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -432,7 +458,6 @@ export function RequestListPanel({
                 request={request}
                 selected={request.id === selectedRequestId}
                 timing={formatRequestTiming(request, now, language === "en" ? "en" : "zh")}
-                payloadSizeText={payloadSize(request.payload)}
                 buttonRef={(element) => {
                   if (element) {
                     requestButtonRefs.current.set(request.id, element);
@@ -442,6 +467,7 @@ export function RequestListPanel({
                 }}
                 onCancelRequest={onCancelRequest}
                 onDeleteRequest={onDeleteRequest}
+                onRetryRequest={onRetryRequest}
                 onSelect={() => {
                   onSelectRequest(request.id);
                 }}
@@ -452,7 +478,7 @@ export function RequestListPanel({
                 onToggleImageSelection={onToggleImageSelection}
               />
             ))
-          ) : resultMediaFilter !== "videos" ? (
+          ) : resultMediaFilter === "images" && !filteredRequests.length ? (
             <Empty className="min-h-40 border">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -466,10 +492,10 @@ export function RequestListPanel({
         </div>
       </div>
 
-      {imageSelectionMode && selectedImageCount > 0 ? (
+      {imageSelectionMode && selectedEntryCount > 0 ? (
         <div className="absolute right-3 bottom-3 left-3 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur">
           <span className="min-w-0 text-xs font-medium text-muted-foreground">
-            {copy.imageSelection.selected(selectedImageCount)}
+            {copy.imageSelection.selected(selectedEntryCount)}
           </span>
           <div className="flex shrink-0 items-center gap-2">
             <Button
@@ -487,6 +513,7 @@ export function RequestListPanel({
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 px-3 text-xs"
+              disabled={selectedImageCount === 0}
               onClick={onOpenExportZip}
             >
               <DownloadIcon data-icon="inline-start" />
@@ -500,7 +527,7 @@ export function RequestListPanel({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{copy.imageSelection.deleteTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{copy.imageSelection.deleteDescription(selectedRequestIds.length)}</AlertDialogDescription>
+            <AlertDialogDescription>{copy.imageSelection.deleteDescription(selectedEntryCount)}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{copy.clearDialog.cancel}</AlertDialogCancel>
@@ -508,6 +535,7 @@ export function RequestListPanel({
               className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20"
               onClick={() => {
                 selectedRequestIds.forEach((id) => onDeleteRequest(id));
+                onDeleteSelectedVideoTasks(selectedVideoTaskIdList);
                 setDeleteSelectionDialogOpen(false);
                 onToggleImageSelectionMode();
               }}

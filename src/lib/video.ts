@@ -23,6 +23,7 @@ export interface VideoRequestOptions {
 
 export interface VideoTask {
   id: string;
+  title?: string;
   providerId: string;
   model: string;
   prompt: string;
@@ -35,6 +36,7 @@ export interface VideoTask {
   error?: string;
   url?: string;
   referenceImageCount?: number;
+  startedAt?: number;
 }
 
 export interface VideoTaskResult {
@@ -59,6 +61,7 @@ export function normalizeVideoTask(value: unknown): VideoTask | null {
     : "queued";
   return {
     id,
+    ...(typeof record.title === "string" && record.title.trim() ? { title: record.title.trim() } : {}),
     providerId: String(record.providerId || ""),
     model: String(record.model || ""),
     prompt: String(record.prompt || ""),
@@ -71,7 +74,41 @@ export function normalizeVideoTask(value: unknown): VideoTask | null {
     ...(typeof record.error === "string" ? { error: record.error } : {}),
     ...(typeof record.url === "string" ? { url: record.url } : {}),
     ...(Number.isFinite(Number(record.referenceImageCount)) ? { referenceImageCount: Number(record.referenceImageCount) } : {}),
+    ...(Number.isFinite(Number(record.startedAt)) ? { startedAt: Number(record.startedAt) } : {}),
   };
+}
+
+export function videoTaskBatchPrefix(timestamp: number) {
+  const date = new Date(timestamp);
+  const year = String(date.getFullYear()).slice(-2);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}${month}${day}-${hour}${minute}`;
+}
+
+export function videoTaskTitle(task: Pick<VideoTask, "createdAt" | "id" | "title">) {
+  return String(task.title || `${videoTaskBatchPrefix(task.createdAt)}-${String(task.id).slice(-4)}`).replace(/[^\w.-]+/g, "-");
+}
+
+export function videoDownloadName(task: Pick<VideoTask, "createdAt" | "id" | "title">) {
+  return `ImageX-${videoTaskTitle(task)}.mp4`;
+}
+
+function videoDurationText(milliseconds: number) {
+  const seconds = Math.max(0, milliseconds) / 1000;
+  return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m${(seconds % 60).toFixed(1)}s`;
+}
+
+export function formatVideoTaskTiming(task: Pick<VideoTask, "status" | "createdAt" | "updatedAt" | "startedAt">, now = Date.now(), language: "zh" | "en" = "zh") {
+  const startedAt = task.startedAt ?? (task.status === "queued" ? undefined : task.createdAt);
+  const waitEnd = startedAt ?? (task.status === "queued" ? now : task.createdAt);
+  const waitText = `${language === "en" ? "Waiting" : "等待"} ${videoDurationText(waitEnd - task.createdAt)}`;
+  if (task.status === "queued") return waitText;
+  const runEnd = task.status === "running" ? now : task.updatedAt;
+  const durationText = videoDurationText(runEnd - (startedAt ?? task.createdAt));
+  return `${waitText} · ${language === "en" ? (task.status === "running" ? "Elapsed" : "Duration") : (task.status === "running" ? "已用" : "用时")} ${durationText}`;
 }
 
 export function isAuttytVideoProvider(baseUrl: string) {
