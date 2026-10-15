@@ -76,7 +76,7 @@ export function SettingsDialog({
       baseUrl: "",
       apiKey: "",
       generationsModel: DEFAULTS.generationsModel,
-      editsModel: DEFAULTS.editsModel,
+      editsModel: "",
       videoModel: "",
       responsesModel: DEFAULTS.responsesModel,
       completionsModel: DEFAULTS.completionsModel,
@@ -117,7 +117,7 @@ export function SettingsDialog({
       baseUrl: "",
       apiKey: "",
       generationsModel: DEFAULTS.generationsModel,
-      editsModel: DEFAULTS.editsModel,
+      editsModel: "",
       videoModel: "",
       responsesModel: DEFAULTS.responsesModel,
       completionsModel: DEFAULTS.completionsModel,
@@ -197,7 +197,7 @@ export function SettingsDialog({
                         <Field><FieldLabel htmlFor="apiKey">{copy.settings.apiKey}</FieldLabel><Input id="apiKey" type="password" spellCheck={false} autoComplete="off" placeholder="api-key" value={activeProvider.apiKey} onChange={(event) => updateProviderConfig({ apiKey: event.target.value })} /></Field>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <Field><FieldLabel htmlFor="generationsModel">{copy.settings.generationsModel}</FieldLabel><Input id="generationsModel" value={activeProvider.generationsModel} onChange={(event) => updateProviderConfig({ generationsModel: event.target.value })} /></Field>
-                            <Field><FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel><Input id="editsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} /></Field>
+                            <Field><FieldLabel htmlFor="editsModel">{copy.settings.editsModel}</FieldLabel><Input id="editsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} placeholder={copy.settings.editsModelOptional} /></Field>
                             <Field><FieldLabel htmlFor="videoModel">{copy.settings.videoModel}</FieldLabel><Input id="videoModel" value={activeProvider.videoModel} onChange={(event) => updateProviderConfig({ videoModel: event.target.value })} placeholder={copy.settings.videoModelOptional} /></Field>
                         </div>
                         <Field orientation="horizontal" className="!items-center"><Checkbox id="streamImages" checked={activeProvider.streamImages} onCheckedChange={(checked) => updateProviderConfig({ streamImages: checked === true })} /><FieldContent><FieldLabel htmlFor="streamImages">流式生成中间图</FieldLabel><p className="text-xs text-muted-foreground">供应商支持时保持连接并接收 partial_images。</p></FieldContent></Field>
@@ -236,10 +236,13 @@ export function SettingsDialog({
                       </>
                     ) : (
                       <>
-                        <Field><FieldLabel htmlFor="geminiBaseUrl">{copy.settings.geminiBaseUrl}</FieldLabel><Input id="geminiBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.geminiBaseUrl} value={activeProvider.geminiBaseUrl} onChange={(event) => updateProviderConfig({ geminiBaseUrl: event.target.value })} /></Field>
-                        <Field><FieldLabel htmlFor="geminiApiKey">{copy.settings.geminiApiKey}</FieldLabel><Input id="geminiApiKey" type="password" spellCheck={false} autoComplete="off" placeholder="AIza..." value={activeProvider.geminiApiKey} onChange={(event) => updateProviderConfig({ geminiApiKey: event.target.value })} /></Field>
-                        <Field><FieldLabel htmlFor="geminiModel">{copy.settings.geminiModel}</FieldLabel><Input id="geminiModel" value={activeProvider.geminiModel} onChange={(event) => updateProviderConfig({ geminiModel: event.target.value })} /></Field>
-                        <Field><FieldLabel htmlFor="videoModel">{copy.settings.videoModel}</FieldLabel><Input id="videoModel" value={activeProvider.videoModel} onChange={(event) => updateProviderConfig({ videoModel: event.target.value })} placeholder={copy.settings.videoModelOptional} /></Field>
+                        <Field><FieldLabel htmlFor="geminiBaseUrl">{copy.settings.apiUrl}</FieldLabel><Input id="geminiBaseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.geminiBaseUrl} value={activeProvider.geminiBaseUrl} onChange={(event) => updateProviderConfig({ geminiBaseUrl: event.target.value })} /></Field>
+                        <Field><FieldLabel htmlFor="geminiApiKey">{copy.settings.apiKey}</FieldLabel><Input id="geminiApiKey" type="password" spellCheck={false} autoComplete="off" placeholder="api-key" value={activeProvider.geminiApiKey} onChange={(event) => updateProviderConfig({ geminiApiKey: event.target.value })} /></Field>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <Field><FieldLabel htmlFor="geminiModel">{copy.settings.generationsModel}</FieldLabel><Input id="geminiModel" value={activeProvider.geminiModel} onChange={(event) => updateProviderConfig({ geminiModel: event.target.value })} /></Field>
+                          <Field><FieldLabel htmlFor="geminiEditsModel">{copy.settings.editsModel}</FieldLabel><Input id="geminiEditsModel" value={activeProvider.editsModel} onChange={(event) => updateProviderConfig({ editsModel: event.target.value })} placeholder={copy.settings.editsModelOptional} /></Field>
+                          <Field><FieldLabel htmlFor="videoModel">{copy.settings.videoModel}</FieldLabel><Input id="videoModel" value={activeProvider.videoModel} onChange={(event) => updateProviderConfig({ videoModel: event.target.value })} placeholder={copy.settings.videoModelOptional} /></Field>
+                        </div>
                       </>
                     )}
 

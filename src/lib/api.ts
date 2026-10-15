@@ -1,6 +1,6 @@
 import { normalizeGeminiModelsEndpoint, normalizeModelsEndpoint } from "@/lib/endpoints";
 import { extractImages, responseBodyHasError, responseErrorMessage } from "@/lib/image-console";
-import type { OpenAIImageRequestOptions } from "@/lib/image-console";
+import type { EditInputImage, OpenAIImageRequestOptions } from "@/lib/image-console";
 
 export function authHeaders(
   apiKey: string,
@@ -435,14 +435,37 @@ export async function postGeminiImageGeneration(
   prompt: string,
   signal: AbortSignal,
   language: "zh" | "en" = "zh",
+  images: EditInputImage[] = [],
 ) {
+  const imageParts = await Promise.all(images.map(async (image) => {
+    const source = image.file || image.blob;
+    if (!source) {
+      throw new Error(language === "en" ? "The Gemini image input is unavailable." : "Gemini 参考图数据不可用。");
+    }
+    const bytes = new Uint8Array(await source.arrayBuffer());
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+    return {
+      inlineData: {
+        mimeType: image.mimeType || source.type || "image/png",
+        data: btoa(binary),
+      },
+    };
+  }));
   const url = new URL(endpoint);
-  if (apiKey) url.searchParams.set("key", apiKey);
+  const isGoogleEndpoint = url.hostname === "generativelanguage.googleapis.com";
+  const headers = isGoogleEndpoint
+    ? { "Content-Type": "application/json" }
+    : authHeaders(apiKey, "application/json", { authHeaderName: "Authorization", authPrefix: "Bearer" });
+  if (isGoogleEndpoint && apiKey) url.searchParams.set("key", apiKey);
   const response = await fetch(url.toString(), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }],
       generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
     }),
     signal,
@@ -473,7 +496,11 @@ export async function fetchGeminiModels(
   signal?: AbortSignal,
 ) {
   const url = new URL(normalizeGeminiModelsEndpoint(baseUrl));
-  if (apiKey) url.searchParams.set("key", apiKey);
-  const response = await fetch(url.toString(), { method: "GET", signal });
+  const isGoogleEndpoint = url.hostname === "generativelanguage.googleapis.com";
+  const headers = isGoogleEndpoint
+    ? undefined
+    : authHeaders(apiKey, null, { authHeaderName: "Authorization", authPrefix: "Bearer" });
+  if (isGoogleEndpoint && apiKey) url.searchParams.set("key", apiKey);
+  const response = await fetch(url.toString(), { method: "GET", headers, signal });
   return { endpoint: url.toString(), body: await validatedResponseBody(response, language) };
 }

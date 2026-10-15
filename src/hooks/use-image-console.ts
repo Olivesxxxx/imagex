@@ -980,14 +980,13 @@ export function useImageConsole() {
         }
 
         const body = request.protocol === "gemini"
-          ? request.method === "edit"
-            ? (() => { throw new Error(language === "en" ? "Gemini image editing is not supported yet. Use an OpenAI-compatible provider for image-to-image." : "Gemini 协议暂不支持图生图，请切换到 OpenAI 兼容协议。") })()
-            : await postGeminiImageGeneration(
+          ? await postGeminiImageGeneration(
                 request.endpoint,
                 request.apiKey || "",
                 String(request.payload.prompt || request.payload.input || ""),
                 controller.signal,
                 language,
+                request.editImages || [],
               )
           : request.method === "edit"
             ? await postImageEdit(
@@ -1219,11 +1218,12 @@ export function useImageConsole() {
     if (settings.protocol === "gemini") {
       const baseUrl = String(settings.geminiBaseUrl || DEFAULTS.geminiBaseUrl).replace(/\/+$/, "");
       const model = String(settings.geminiModel || DEFAULTS.geminiModel).trim() || DEFAULTS.geminiModel;
-      return `generateContent (${model})\n${baseUrl}/models/${model}:generateContent?key=••••`;
+      const authSuffix = /generativelanguage\.googleapis\.com$/i.test((new URL(baseUrl).hostname)) ? "?key=••••" : " (Authorization: Bearer ••••)";
+      return `generateContent (${model})\n${baseUrl}/models/${model}:generateContent${authSuffix}`;
     }
     const baseUrl = settings.baseUrl || DEFAULTS.baseUrl;
     const generationsModel = String(settings.generationsModel || DEFAULTS.generationsModel).trim();
-    const editsModel = String(settings.editsModel || DEFAULTS.editsModel).trim();
+    const editsModel = String(settings.editsModel || settings.generationsModel || DEFAULTS.generationsModel).trim();
     return [
       `generations (${generationsModel})\n${normalizeImageEndpoint(baseUrl)}`,
       `edits (${editsModel})\n${normalizeImageEditsEndpoint(baseUrl)}`,
@@ -1588,7 +1588,11 @@ export function useImageConsole() {
       let method: GenerationMethod;
       try {
         if (currentSettings.protocol === "gemini") {
-          const payload = { model: currentSettings.geminiModel, prompt: applyPromptPolicy(effectivePrompt, currentSettings.strictPrompt, currentSettings.strictPromptText) };
+          const payload = {
+            model: currentSettings.geminiModel,
+            prompt: applyPromptPolicy(effectivePrompt, currentSettings.strictPrompt, currentSettings.strictPromptText),
+            n: currentSettings.n,
+          };
           requestPayloads = buildGenerationRequests(payload);
           endpoint = normalizeGeminiImageEndpoint(currentSettings.geminiBaseUrl, currentSettings.geminiModel);
           method = "gpt-image-2";
@@ -1706,12 +1710,19 @@ export function useImageConsole() {
 
     try {
       if (currentSettings.protocol === "gemini") {
-        throw new Error(language === "en" ? "Gemini image editing is not supported yet. Use an OpenAI-compatible provider for image-to-image." : "Gemini 协议暂不支持图生图，请切换到 OpenAI 兼容协议。 ");
+        const payload = {
+          model: currentSettings.geminiModel,
+          prompt: applyPromptPolicy(effectivePrompt, currentSettings.strictPrompt, currentSettings.strictPromptText),
+        };
+        requestPayloads = buildEditImageRequests(payload, values.n);
+        endpoint = normalizeGeminiImageEndpoint(currentSettings.geminiBaseUrl, currentSettings.editsModel || currentSettings.geminiModel);
+        method = "edit";
+      } else {
+        const payload = buildEditImagePayload(values, runtimeImages, language);
+        requestPayloads = buildEditImageRequests(payload, values.n);
+        endpoint = normalizeImageEditsEndpoint(values.baseUrl);
+        method = "edit";
       }
-      const payload = buildEditImagePayload(values, runtimeImages, language);
-      requestPayloads = buildEditImageRequests(payload, values.n);
-      endpoint = normalizeImageEditsEndpoint(values.baseUrl);
-      method = "edit";
     } catch (error) {
       const message = (error as Error).message;
       toast.error(message);

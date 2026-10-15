@@ -166,7 +166,7 @@ function normalizeStoredSettings(raw: unknown): StoredConsoleSettings {
   const legacySharedSource = {
     ...raw,
     generationsModel: raw.generationsModel || raw.model,
-    editsModel: raw.editsModel || raw.model,
+    editsModel: raw.editsModel ?? raw.model,
     responsesModel: raw.responsesModel || raw.llmModel || raw.imageGenerationModel,
     completionsModel: raw.completionsModel || raw.llmModel || raw.imageGenerationModel,
   };

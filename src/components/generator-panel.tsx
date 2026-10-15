@@ -514,8 +514,10 @@ export function GeneratorPanel({
   const editImageSelectionFull = editImages.length >= MAX_EDIT_INPUT_IMAGES;
   const activeProvider = settings.openaiProviders.find((item) => item.id === settings.activeOpenAIProviderId);
   const imageModel = settings.protocol === "gemini"
-    ? settings.geminiModel.trim()
-    : (mode === "edit" ? activeProvider?.editsModel : activeProvider?.generationsModel)?.trim() || "";
+    ? (mode === "edit" ? (activeProvider?.editsModel.trim() || settings.geminiModel.trim()) : settings.geminiModel.trim())
+    : (mode === "edit"
+      ? (activeProvider?.editsModel.trim() || activeProvider?.generationsModel.trim())
+      : activeProvider?.generationsModel.trim()) || "";
   const imageModelMissing = !imageModel;
   const videoModelMissing = !activeProvider?.videoModel.trim();
   const previewEditImage = previewEditImageIndex !== null ? editImages[previewEditImageIndex] ?? null : null;

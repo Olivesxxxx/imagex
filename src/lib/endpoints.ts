@@ -68,11 +68,15 @@ export function normalizeGeminiImageEndpoint(baseUrl: string, model: string) {
   const input = trimTrailingSlash(baseUrl || "https://generativelanguage.googleapis.com/v1beta");
   const normalizedModel = String(model || "gemini-2.5-flash-image").trim();
   if (/\/models\/[^/]+:generateContent$/i.test(input)) return input;
-  return `${input}/models/${encodeURIComponent(normalizedModel)}:generateContent`;
+  const modelPath = `/models/${encodeURIComponent(normalizedModel)}:generateContent`;
+  if (input.endsWith("/v1beta") || input.endsWith("/v1beta/")) return `${input}${modelPath}`;
+  if (input.endsWith("/v1") || input.endsWith("/v1/")) return `${input.replace(/\/v1\/?$/i, "/v1beta")}${modelPath}`;
+  return `${input}${modelPath}`;
 }
 
 export function normalizeGeminiModelsEndpoint(baseUrl: string) {
   const input = trimTrailingSlash(baseUrl || "https://generativelanguage.googleapis.com/v1beta");
   if (/\/models$/i.test(input)) return input;
+  if (input.endsWith("/v1") || input.endsWith("/v1/")) return `${input.replace(/\/v1\/?$/i, "/v1beta")}/models`;
   return `${input}/models`;
 }

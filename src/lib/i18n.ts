@@ -552,6 +552,7 @@ type Copy = {
     developmentModeDescription: string;
     generationsModel: string;
     editsModel: string;
+    editsModelOptional: string;
     videoModel: string;
     videoModelOptional: string;
     responsesModel: string;
@@ -1042,6 +1043,7 @@ const COPY: Record<Language, Copy> = {
       developmentModeDescription: "显示本地占位任务和图片，用于测试图片选择、删除与导出流程。",
       generationsModel: "generations 模型",
       editsModel: "edits 模型",
+      editsModelOptional: "可选；留空时使用 generations 模型",
       videoModel: "视频模型",
       videoModelOptional: "可选；需供应商支持 /v1/videos",
       responsesModel: "responses 模型",
@@ -1051,9 +1053,9 @@ const COPY: Record<Language, Copy> = {
       privateApiKeyPlaceholder: "请输入 x-api-key",
       privateModel: "生图模型",
       geminiProtocol: "Gemini 协议",
-      geminiBaseUrl: "Gemini API 地址",
-      geminiApiKey: "Gemini API Key",
-      geminiModel: "Gemini 图像模型",
+      geminiBaseUrl: "API 地址",
+      geminiApiKey: "API Key",
+      geminiModel: "generations 模型",
       concurrency: "并发",
       interval: "间隔（秒）",
       endpointPreview: "请求地址",
@@ -1557,6 +1559,7 @@ const COPY: Record<Language, Copy> = {
       developmentModeDescription: "Show local placeholder requests and images for testing selection, deletion, and export workflows.",
       generationsModel: "Generations model",
       editsModel: "Edits model",
+      editsModelOptional: "Optional; falls back to the generations model",
       videoModel: "Video model",
       videoModelOptional: "Optional; provider must support /v1/videos",
       responsesModel: "Responses model",
@@ -1566,9 +1569,9 @@ const COPY: Record<Language, Copy> = {
       privateApiKeyPlaceholder: "Enter x-api-key",
       privateModel: "Image model",
       geminiProtocol: "Gemini protocol",
-      geminiBaseUrl: "Gemini API URL",
-      geminiApiKey: "Gemini API key",
-      geminiModel: "Gemini image model",
+      geminiBaseUrl: "API URL",
+      geminiApiKey: "API key",
+      geminiModel: "Generations model",
       concurrency: "Concurrency",
       interval: "Interval (sec)",
       endpointPreview: "Request endpoint",

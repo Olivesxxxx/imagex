@@ -188,12 +188,12 @@ function defaultProviderTransportConfig() {
   >;
 }
 
-const defaultProvider = (value: Omit<OpenAIProvider, "videoModel">): OpenAIProvider => ({ ...value, videoModel: "" });
+const defaultProvider = (value: Omit<OpenAIProvider, "videoModel"> & Partial<Pick<OpenAIProvider, "videoModel">>): OpenAIProvider => ({ ...value, videoModel: value.videoModel || "" });
 export const DEFAULT_OPENAI_PROVIDERS: OpenAIProvider[] = [
-  defaultProvider({ id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
-  defaultProvider({ id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
-  defaultProvider({ id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
-  defaultProvider({ id: "gemini", name: "Gemini", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "gpt-image-2.5", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://api.mhoo.cc/v1beta", geminiApiKey: "", geminiModel: "gemini-3-pro-image-preview", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "gemini", name: "MHOO", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://api.mhoo.cc/v1beta", geminiApiKey: "", geminiModel: "nano-banana-2.1", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig(), videoModel: "" }),
 ];
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
 export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
@@ -392,14 +392,14 @@ export const DEFAULTS: AppSettings = {
   rememberKey: false,
   developmentMode: false,
   generationsModel: "gpt-image-2.5",
-  editsModel: "gpt-image-2.5",
+  editsModel: "",
   videoModel: "",
   responsesModel: "gpt-5.4-mini",
   completionsModel: "gpt-5.4-mini",
   strictPromptText: "",
   strictPrompt: false,
   requestConcurrency: 2,
-  requestIntervalSeconds: 60,
+  requestIntervalSeconds: 20,
   size: "auto",
   quality: "auto",
   n: 1,
@@ -515,7 +515,7 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
   const currentGeminiApiKey = String(source.geminiApiKey || "").trim();
   const currentGeminiModel = String(source.geminiModel || DEFAULTS.geminiModel).trim() || DEFAULTS.geminiModel;
   const currentGenerationsModel = String(source.generationsModel || source.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel;
-  const currentEditsModel = String(source.editsModel || source.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel;
+  const currentEditsModel = String(source.editsModel ?? source.model ?? "").trim();
   const currentVideoModel = String(source.videoModel || "").trim();
   const currentResponsesModel = String(source.responsesModel || source.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel;
   const currentCompletionsModel = String(source.completionsModel || source.llmModel || DEFAULTS.completionsModel).trim() || DEFAULTS.completionsModel;
@@ -544,7 +544,7 @@ export function normalizeSharedSettings(values: unknown = {}): SharedSettings {
     rememberKey: Boolean(source.rememberKey),
     developmentMode: DEVELOPMENT_FIXTURES_ENABLED && Boolean(source.developmentMode),
     generationsModel: activeProvider?.generationsModel || currentGenerationsModel,
-    editsModel: activeProvider?.editsModel || currentEditsModel,
+    editsModel: activeProvider?.editsModel ?? currentEditsModel,
     videoModel: activeProvider?.videoModel || currentVideoModel,
     responsesModel: activeProvider?.responsesModel || currentResponsesModel,
     completionsModel: activeProvider?.completionsModel || currentCompletionsModel,
@@ -753,7 +753,9 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
       baseUrl: String(item.baseUrl || "").trim(),
       apiKey: String(item.apiKey || "").trim(),
       generationsModel: String(item.generationsModel || fallback.generationsModel || fallback.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
-      editsModel: String(item.editsModel || fallback.editsModel || fallback.model || DEFAULTS.editsModel).trim() || DEFAULTS.editsModel,
+      editsModel: BUILT_IN_PROVIDER_IDS.includes(String(item.id || "") as (typeof BUILT_IN_PROVIDER_IDS)[number]) && String(item.editsModel || "").trim() === "gpt-image-2.5"
+        ? ""
+        : String(item.editsModel ?? fallback.editsModel ?? fallback.model ?? "").trim(),
       videoModel: String(item.videoModel || "").trim(),
       responsesModel: String(item.responsesModel || fallback.responsesModel || fallback.llmModel || DEFAULTS.responsesModel).trim() || DEFAULTS.responsesModel,
       completionsModel: String(item.completionsModel || fallback.completionsModel || fallback.llmModel || DEFAULTS.completionsModel).trim() || DEFAULTS.completionsModel,
@@ -917,12 +919,8 @@ export function buildEditImagePayload(
     background: values.background || DEFAULTS.background,
     outputFormat: values.outputFormat || DEFAULTS.outputFormat,
   }, language);
-  const model = String(values.editsModel || DEFAULTS.editsModel).trim();
+  const model = String(values.editsModel || values.generationsModel || DEFAULTS.generationsModel).trim();
   const requestedCount = imageCountFromValue(values.n || DEFAULTS.n, language);
-
-  if (!model) {
-    throw new Error(validationCopy(language).editsModelRequired);
-  }
 
   if (!Array.isArray(images) || !images.length) {
     throw new Error(validationCopy(language).editInputMissing);

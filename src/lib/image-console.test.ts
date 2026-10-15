@@ -72,7 +72,8 @@ function requestRecordFixture(overrides: Partial<ImageRequestRecord>): ImageRequ
 
 describe("image console logic", () => {
   test("provides editable default OpenAI providers and preserves an explicit empty list", () => {
-    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Auttyt", "MHOO", "Gemini"]);
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Auttyt", "MHOO", "MHOO"]);
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.editsModel)).toEqual(["", "", "", ""]);
     expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(4);
     expect(normalizeSharedSettings({}).openaiProviders.map((provider) => provider.id)).toEqual([
       "lingsu",
@@ -90,6 +91,10 @@ describe("image console logic", () => {
     expect(normalizeSharedSettings({
       openaiProviders: [{ id: "custom", name: "我的接口", baseUrl: "https://example.com/v1", apiKey: "key" }],
     }).openaiProviders[0]).toMatchObject({ imageResponseMode: "auto", multiImageField: "auto" });
+  });
+
+  test("builds the requested number of Gemini generation tasks", () => {
+    expect(buildGenerationRequests({ model: "nano-banana-2.1", prompt: "a cat", n: 2 })).toHaveLength(2);
   });
 
   test("uses the private service default while keeping its credential blank", () => {
@@ -515,7 +520,7 @@ describe("image console logic", () => {
     expect(normalizeRequestIntervalSeconds("60")).toBe(60);
     expect(normalizeRequestIntervalSeconds("-1")).toBe(0);
     expect(normalizeRequestIntervalSeconds("9999")).toBe(3600);
-    expect(normalizeRequestIntervalSeconds("bad")).toBe(60);
+    expect(normalizeRequestIntervalSeconds("bad")).toBe(20);
   });
 
   test("maps internal generation methods to user-facing labels", () => {

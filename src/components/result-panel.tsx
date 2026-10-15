@@ -64,6 +64,18 @@ function downloadVideoResult(task: VideoTask, url: string) {
   anchor.click();
 }
 
+function downloadImageUrl(url: string, filename: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 async function generatedImageBlob(image: GeneratedImage) {
   if (image.blob instanceof Blob) return image.blob;
   if (String(image.src || "").startsWith("blob:")) {
@@ -113,10 +125,14 @@ async function downloadRequestImages(request: Pick<ImageRequestRecord, "images" 
 
   if (images.length > 1) {
     const entries: ZipFileEntry[] = [];
+    const fallbackImages: Array<{ image: GeneratedImage; index: number }> = [];
     for (const [index, image] of images.entries()) {
       if (!image?.src) continue;
       const blob = await generatedImageBlob(image);
-      if (!blob) continue;
+      if (!blob) {
+        fallbackImages.push({ image, index });
+        continue;
+      }
       entries.push({ name: imageDownloadName(request, index), blob });
     }
 
@@ -124,25 +140,23 @@ async function downloadRequestImages(request: Pick<ImageRequestRecord, "images" 
       const zipBlob = await createZipBlob(entries);
       downloadBlob(zipBlob, archiveDownloadName(request.title));
     }
+    for (const { image, index } of fallbackImages) {
+      downloadImageUrl(image.src, imageDownloadName(request, index));
+    }
     return;
   }
 
   for (const [index, image] of images.entries()) {
     if (!image?.src) continue;
-
-    const isRemoteUrlFallback = /^https?:\/\//i.test(image.src);
-    const anchor = document.createElement("a");
-    anchor.href = image.src;
-    anchor.rel = "noopener";
-    if (isRemoteUrlFallback) {
-      anchor.target = "_blank";
-    } else {
-      anchor.download = imageDownloadName(request, index);
+    const blob = await generatedImageBlob(image);
+    if (blob) {
+      downloadBlob(blob, imageDownloadName(request, index));
+      continue;
     }
-    anchor.style.display = "none";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+
+    // A cross-origin URL may be previewable but unreadable by fetch. Keep the
+    // browser's native save flow as a fallback instead of opening a blank tab.
+    downloadImageUrl(image.src, imageDownloadName(request, index));
   }
 }
 
@@ -461,9 +475,7 @@ export function ResultPanel({
             ? (!activeProvider?.videoModel.trim() ? copy.generator.videoModelRequired : null)
             : !activeProvider?.generationsModel.trim()
               ? copy.settings.generationsModel
-              : !activeProvider?.editsModel.trim()
-                ? copy.settings.editsModel
-                : null;
+              : null;
   const latencyState = testConnectionStatus.tone === "busy"
     ? "measuring"
     : connectionLatency !== null

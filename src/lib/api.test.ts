@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { authHeaders, fetchGeminiModels, postImageEdit, postImageGeneration } from "@/lib/api";
+import { authHeaders, fetchGeminiModels, postGeminiImageGeneration, postImageEdit, postImageGeneration } from "@/lib/api";
 
 const endpoint = "https://images.example/v1/images/generations";
 const successBody = { data: [{ b64_json: "aW1hZ2U=" }] };
@@ -29,6 +29,29 @@ describe("OpenAI-compatible image requests", () => {
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+  });
+
+  test("submits Gemini image edits as inline data parts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "aW1hZ2U=" } }] } }],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await postGeminiImageGeneration(
+      "https://api.mhoo.cc/v1beta/models/nano-banana-2.1:generateContent",
+      "mhoo-key",
+      "make it blue",
+      new AbortController().signal,
+      "en",
+      [{ file: new File(["image"], "source.png", { type: "image/png" }), name: "source.png", mimeType: "image/png", src: "blob:source" }],
+    );
+
+    const request = fetchMock.mock.calls[0][1];
+    expect(request.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer mhoo-key" });
+    expect(JSON.parse(request.body)).toEqual({
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/png", data: "aW1hZ2U=" } }, { text: "make it blue" }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    });
   });
 
   test("supports a custom authentication header and empty prefix", () => {
