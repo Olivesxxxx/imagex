@@ -432,6 +432,18 @@ function downloadBlob(blob: Blob, filename: string) {
   }, 0);
 }
 
+function openRemoteImageForDownload(url: string, filename: string) {
+  if (typeof document === "undefined") return;
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function uniqueZipEntryName(name: string, usedNames: Set<string>) {
   if (!usedNames.has(name)) {
     usedNames.add(name);
@@ -1981,6 +1993,8 @@ export function useImageConsole() {
           }
         }
 
+        if (!images.length && request.thumbnail) images = [request.thumbnail];
+
         images.forEach((image, index) => {
           if (selectedKeySet && !selectedKeySet.has(`${request.id}-${index}`)) return;
           imageItems.push({ request, image, index });
@@ -1990,6 +2004,7 @@ export function useImageConsole() {
       onProgress?.({ current: 0, total: imageItems.length });
 
       const entries: ZipFileEntry[] = [];
+      const fallbackImages: Array<{ image: GeneratedImage; request: ImageRequestRecord; index: number }> = [];
       const usedNames = new Set<string>();
 
       for (const [index, item] of imageItems.entries()) {
@@ -1999,22 +2014,32 @@ export function useImageConsole() {
             name: uniqueZipEntryName(imageDownloadName(item.request, item.index), usedNames),
             blob,
           });
+        } else if (/^https?:\/\//i.test(item.image.src)) {
+          fallbackImages.push(item);
         }
         onProgress?.({ current: index + 1, total: imageItems.length });
       }
 
       if (!entries.length) {
+        if (fallbackImages.length) {
+          fallbackImages.forEach((item) => openRemoteImageForDownload(item.image.src, imageDownloadName(item.request, item.index)));
+          return { count: fallbackImages.length, filename: imageDownloadName(fallbackImages[0].request, fallbackImages[0].index) };
+        }
         throw new Error(copy.exportZip.noImages);
       }
 
       if (selectedKeySet && entries.length === 1) {
         downloadBlob(entries[0].blob, entries[0].name);
+        for (const item of fallbackImages) {
+          openRemoteImageForDownload(item.image.src, imageDownloadName(item.request, item.index));
+        }
         return { count: 1, filename: entries[0].name };
       }
 
       const filename = `ImageX-${formatBatchPrefix()}.zip`;
       const zipBlob = await createZipBlob(entries);
       downloadBlob(zipBlob, filename);
+      fallbackImages.forEach((item) => openRemoteImageForDownload(item.image.src, imageDownloadName(item.request, item.index)));
       return { count: entries.length, filename };
     },
     [copy],

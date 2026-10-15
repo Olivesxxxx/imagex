@@ -120,8 +120,19 @@ export function isAuttytVideoProvider(baseUrl: string) {
   }
 }
 
+export function isLingsuVideoProvider(baseUrl: string) {
+  try {
+    const hostname = new URL(String(baseUrl || "").trim()).hostname.toLowerCase();
+    return hostname === "lingsu.xyz" || hostname.endsWith(".lingsu.xyz");
+  } catch {
+    return false;
+  }
+}
+
 export function videoPollIntervalMs(baseUrl: string) {
-  return isAuttytVideoProvider(baseUrl) ? 15000 : 2500;
+  if (isAuttytVideoProvider(baseUrl)) return 15000;
+  if (isLingsuVideoProvider(baseUrl)) return 3000;
+  return 2500;
 }
 
 const VIDEO_DB_NAME = "ImageX-videos";
@@ -273,21 +284,22 @@ function errorMessage(body: unknown, fallback: string) {
   return String(error.message || record.message || record.msg || fallback).trim() || fallback;
 }
 
+function normalizedVideoStatus(value: unknown, taskStatus?: unknown): VideoTaskStatus {
+  const status = String(value || "").toLowerCase();
+  const detailedStatus = String(taskStatus || "").toLowerCase();
+  if (status === "completed" || status === "success" || status === "succeeded" || status === "done") return "completed";
+  if (status === "failed" || status === "failure" || status === "error" || detailedStatus === "failed") return "failed";
+  if (status === "canceled" || status === "cancelled") return "canceled";
+  if (status === "running" || status === "processing" || status === "in_progress" || status === "generating" || detailedStatus === "review" || detailedStatus === "processing") return "running";
+  return "queued";
+}
+
 function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "aspectRatio" | "quality" | "referenceImages">): VideoTask {
   const root = readRecord(body);
   const data = readRecord(root.data);
   const id = String(root.id || data.id || root.task_id || data.task_id || "").trim();
   if (!id) throw new Error(errorMessage(body, "Video API did not return a task ID."));
-  const status = String(root.status || data.status || "queued").toLowerCase();
-  const normalizedStatus: VideoTaskStatus = status === "completed" || status === "success" || status === "succeeded" || status === "done"
-    ? "completed"
-    : status === "failed" || status === "failure" || status === "error"
-      ? "failed"
-      : status === "canceled" || status === "cancelled"
-        ? "canceled"
-        : status === "running" || status === "processing" || status === "in_progress" || status === "generating"
-          ? "running"
-          : "queued";
+  const normalizedStatus = normalizedVideoStatus(root.status || data.status, root.task_status || data.task_status);
   const now = Date.now();
   return {
     id,
@@ -310,9 +322,21 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
   if (!model) throw new Error("Video model is not configured for this provider.");
   if (!prompt) throw new Error("Video prompt is required.");
   const auttyt = isAuttytVideoProvider(options.baseUrl);
+  const lingsu = isLingsuVideoProvider(options.baseUrl);
+  if (lingsu && (options.referenceImages || []).length > 0) {
+    throw new Error("灵速参考图需要公开的 HTTP(S) 图片地址；当前本地上传图片无法直接发送。请先移除参考图，使用文生视频。 ");
+  }
   const body = auttyt
     ? await auttytVideoBody(options)
-    : (() => {
+    : lingsu
+      ? JSON.stringify({
+        model,
+        prompt,
+        seconds: Number(options.duration),
+        resolution: options.quality,
+        aspect_ratio: options.aspectRatio,
+      })
+      : (() => {
       const form = new FormData();
       form.append("model", model);
       form.append("prompt", prompt);
@@ -321,9 +345,18 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
       for (const image of options.referenceImages || []) form.append("image[]", image, image.name || "reference.png");
       return form;
     })();
+  const headers = authHeaders(options.apiKey, auttyt || lingsu ? "application/json" : null, lingsu
+    ? { authHeaderName: "Authorization", authPrefix: "Bearer" }
+    : options);
+  if (lingsu) {
+    const idempotencyKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `imagex-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
   const response = await fetch(auttyt ? videoEndpoint(options.baseUrl, "") : endpoint(options.baseUrl, "/videos"), {
     method: "POST",
-    headers: authHeaders(options.apiKey, auttyt ? "application/json" : null, options),
+    headers,
     body,
     signal: options.signal,
   });
@@ -371,7 +404,7 @@ function resultUrl(body: unknown) {
   const data = readRecord(root.data);
   const nestedVideo = readRecord(data.video);
   const content = readRecord(root.content);
-  return [root.url, root.video_url, root.result_url, data.url, data.video_url, data.result_url, nestedVideo.url, nestedVideo.video_url, content.url, content.video_url]
+  return [root.download_url, root.content_url, root.url, root.video_url, root.result_url, data.download_url, data.content_url, data.url, data.video_url, data.result_url, nestedVideo.url, nestedVideo.video_url, content.url, content.video_url]
     .find((value) => typeof value === "string" && value.trim()) as string | undefined;
 }
 
@@ -383,9 +416,11 @@ function resolveVideoUrl(baseUrl: string, value: string) {
   }
 }
 
-async function fetchVideoBlob(url: string, options: Pick<VideoRequestOptions, "apiKey" | "authHeaderName" | "authPrefix" | "signal">) {
+async function fetchVideoBlob(url: string, options: Pick<VideoRequestOptions, "baseUrl" | "apiKey" | "authHeaderName" | "authPrefix" | "signal">) {
   const response = await fetch(url, {
-    headers: authHeaders(options.apiKey, null, options),
+    headers: authHeaders(options.apiKey, null, isLingsuVideoProvider(options.baseUrl)
+      ? { authHeaderName: "Authorization", authPrefix: "Bearer" }
+      : options),
     signal: options.signal,
   });
   if (!response.ok) throw new Error(`Video content download failed (HTTP ${response.status}).`);
@@ -398,26 +433,20 @@ async function fetchVideoBlob(url: string, options: Pick<VideoRequestOptions, "a
 
 export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestOptions, "baseUrl" | "apiKey" | "authHeaderName" | "authPrefix" | "signal">): Promise<VideoTaskResult> {
   const response = await fetch(videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}`), {
-    headers: authHeaders(options.apiKey, null, options),
+    headers: authHeaders(options.apiKey, null, isLingsuVideoProvider(options.baseUrl)
+      ? { authHeaderName: "Authorization", authPrefix: "Bearer" }
+      : options),
     signal: options.signal,
   });
   const payload = await responseBody(response);
   if (!response.ok) throw new Error(`Video task query failed (HTTP ${response.status}): ${errorMessage(payload, response.statusText || "request failed")}`);
   const root = readRecord(payload);
   const data = readRecord(root.data);
-  const statusValue = String(root.status || data.status || "queued").toLowerCase();
-  const status: VideoTaskStatus = statusValue === "completed" || statusValue === "succeeded" || statusValue === "success" || statusValue === "done"
-    ? "completed"
-    : statusValue === "failed" || statusValue === "error"
-      ? "failed"
-      : statusValue === "canceled" || statusValue === "cancelled"
-        ? "canceled"
-        : statusValue === "running" || statusValue === "processing" || statusValue === "in_progress" || statusValue === "generating"
-          ? "running"
-          : "queued";
+  const status = normalizedVideoStatus(root.status || data.status, root.task_status || data.task_status);
   const url = resultUrl(payload);
-  if (url) {
+  if (url && status === "completed") {
     const resolvedUrl = resolveVideoUrl(options.baseUrl, url);
+    if (isLingsuVideoProvider(options.baseUrl)) return { status: "completed", blob: await fetchVideoBlob(resolvedUrl, options) };
     if (/^https?:\/\//i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?\//i.test(url)) return { status: "completed", url: resolvedUrl };
     try {
       return { status: "completed", blob: await fetchVideoBlob(resolvedUrl, options) };
@@ -435,7 +464,9 @@ export async function pollVideoTask(task: VideoTask, options: Pick<VideoRequestO
   if (status === "failed" || status === "canceled") return { status, error: errorMessage(payload, `Video task ${status}.`) };
   if (status !== "completed") return { status };
 
-  const contentUrl = videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}/content`);
+  const contentUrl = isLingsuVideoProvider(options.baseUrl)
+    ? endpoint(options.baseUrl, `/videos/${encodeURIComponent(task.id)}/download`)
+    : videoEndpoint(options.baseUrl, `/${encodeURIComponent(task.id)}/content`);
   return { status: "completed", blob: await fetchVideoBlob(contentUrl, options) };
 }
 

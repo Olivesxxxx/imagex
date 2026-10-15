@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoRequestOptions, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, isLingsuVideoProvider, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoRequestOptions, type VideoTask } from "@/lib/video";
 import { formatCompletionTime } from "@/lib/image-console";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
@@ -74,6 +74,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   const baseUrl = settings.baseUrl;
   const apiKey = settings.apiKey;
   const model = provider?.videoModel.trim() || "";
+  const isLingsu = isLingsuVideoProvider(baseUrl);
   const canSubmit = Boolean(prompt.trim() && model && apiKey && baseUrl && isOpenAI);
   const orderedTasks = useMemo(() => [...tasks].sort((a, b) => b.createdAt - a.createdAt), [tasks]);
   const selectedTask = orderedTasks.find((task) => task.id === selectedTaskId) || orderedTasks[0] || null;
@@ -277,6 +278,10 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   }
 
   function addReferenceFiles(files: File[]) {
+    if (isLingsu) {
+      toast.error(language === "en" ? "Lingsu video references must be public HTTP(S) image URLs; local uploads are not supported." : "灵速视频参考图必须是公开的 HTTP(S) 图片地址，暂不支持本地上传图片。 ");
+      return;
+    }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     if (imageFiles.length !== files.length) toast.error(language === "en" ? "Only image files can be used as video references." : "视频参考图只能选择图片文件。");
     const remaining = Math.max(0, MAX_VIDEO_REFERENCE_IMAGES - referenceImages.length);
@@ -417,7 +422,9 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
               <img src={image.src} alt="" aria-hidden="true" className="h-full w-full object-cover" />
               <Button type="button" variant="secondary" size="icon-xs" className="absolute right-0.5 top-0.5 rounded-full bg-background/90" aria-label={`${language === "en" ? "Remove reference image" : "移除参考图"} ${index + 1}`} onClick={() => removeReferenceImage(index)}><XIcon /></Button>
             </div>)}
-          </div> : <span className="text-xs text-muted-foreground">{language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。"}</span>}
+          </div> : <span className="text-xs text-muted-foreground">{isLingsu
+            ? (language === "en" ? "Lingsu requires public HTTP(S) image URLs for references; local uploads are unavailable." : "灵速参考图需要公开的 HTTP(S) 图片地址，当前本地上传图片无法直接发送。")
+            : (language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。")}</span>}
         </div>
       </section>
       {taskListTarget && resultMediaFilter !== "images" ? createPortal(<div className="contents">

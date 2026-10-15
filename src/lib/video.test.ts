@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createVideoTask, isAuttytVideoProvider, pollVideoTask, type VideoTask } from "@/lib/video";
+import { createVideoTask, isAuttytVideoProvider, isLingsuVideoProvider, pollVideoTask, type VideoTask } from "@/lib/video";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -27,6 +27,60 @@ describe("video API", () => {
   test("recognizes Auttyt hosts", () => {
     expect(isAuttytVideoProvider("https://www.auttyt.top/v1")).toBe(true);
     expect(isAuttytVideoProvider("https://video.example/v1")).toBe(false);
+  });
+
+  test("recognizes Lingsu hosts", () => {
+    expect(isLingsuVideoProvider("https://lingsu.xyz/v1")).toBe(true);
+    expect(isLingsuVideoProvider("https://api.lingsu.xyz/v1")).toBe(true);
+    expect(isLingsuVideoProvider("https://video.example/v1")).toBe(false);
+  });
+
+  test("uses Lingsu JSON video creation with an idempotency key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ object: "video", id: "lv-1", status: "queued", task_status: "submitting" }, 202));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const task = await createVideoTask({ ...options, baseUrl: "https://lingsu.xyz/v1", model: "H3-KS" }, "lingsu");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://lingsu.xyz/v1/videos");
+    expect(init.headers).toMatchObject({ "Content-Type": "application/json", Authorization: "Bearer test-key" });
+    expect(init.headers["Idempotency-Key"]).toMatch(/^[A-Za-z0-9-]{8,200}$/);
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "H3-KS",
+      prompt: options.prompt,
+      seconds: 8,
+      resolution: "720p",
+      aspect_ratio: "16:9",
+    });
+    expect(task).toMatchObject({ id: "lv-1", providerId: "lingsu", status: "queued" });
+  });
+
+  test("keeps Lingsu review tasks running", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ object: "video", id: "lv-review", status: "in_progress", task_status: "review" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const task: VideoTask = {
+      id: "lv-review", providerId: "lingsu", model: options.model, prompt: options.prompt,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "queued", createdAt: 1, updatedAt: 1,
+    };
+
+    await expect(pollVideoTask(task, { ...options, baseUrl: "https://lingsu.xyz/v1" })).resolves.toEqual({ status: "running" });
+  });
+
+  test("downloads a completed Lingsu task from its authenticated download URL", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ object: "video", id: "lv-done", status: "completed", task_status: "completed", download_url: "/v1/videos/lv-done/download" }))
+      .mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const task: VideoTask = {
+      id: "lv-done", providerId: "lingsu", model: options.model, prompt: options.prompt,
+      duration: options.duration, aspectRatio: options.aspectRatio, quality: options.quality, status: "running", createdAt: 1, updatedAt: 1,
+    };
+
+    await expect(pollVideoTask(task, { ...options, baseUrl: "https://lingsu.xyz/v1" })).resolves.toMatchObject({ status: "completed", blob: expect.any(Blob) });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://lingsu.xyz/v1/videos/lv-done",
+      "https://lingsu.xyz/v1/videos/lv-done/download",
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ headers: { Authorization: "Bearer test-key" } });
   });
 
   test("uses Auttyt JSON video generations with a data URI reference", async () => {
