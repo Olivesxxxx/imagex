@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createVideoTask, isAuttytVideoProvider, isLingsuVideoProvider, lingsuSupportsVideoReference, pollVideoTask, type VideoTask } from "@/lib/video";
+import { createVideoTask, isAuttytVideoProvider, isLingsuVideoProvider, lingsuSupportsVideoReference, pollVideoTask, videoPollAttemptLimit, type VideoTask } from "@/lib/video";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,6 +41,11 @@ describe("video API", () => {
     expect(lingsuSupportsVideoReference("SD官方2.0")).toBe(true);
     expect(lingsuSupportsVideoReference("WAN3.0-可参考视频")).toBe(true);
     expect(lingsuSupportsVideoReference("H3-KS")).toBe(false);
+  });
+
+  test("keeps a longer recoverable polling window for Lingsu", () => {
+    expect(videoPollAttemptLimit("https://lingsu.xyz/v1")).toBe(600);
+    expect(videoPollAttemptLimit("https://auttyt.top/v1")).toBe(120);
   });
 
   test("uses Lingsu JSON video creation with an idempotency key", async () => {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, isLingsuVideoProvider, lingsuSupportsVideoReference, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoReferenceSource, type VideoRequestOptions, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, isLingsuVideoProvider, lingsuSupportsVideoReference, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollAttemptLimit, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoReferenceSource, type VideoRequestOptions, type VideoTask } from "@/lib/video";
 import { formatCompletionTime } from "@/lib/image-console";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
@@ -113,6 +113,25 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   }, [failedTasks.length, onTaskFailedCountChange]);
 
   useEffect(() => {
+    const recoverableTimeoutMessage = language === "en"
+      ? "Polling resumed for the existing provider task."
+      : "已恢复查询原供应商任务，不会重新创建。";
+    const recoverableIds = new Set(
+      tasks
+        .filter((task) => {
+          if (task.status !== "failed" || !/polling timed out|轮询超时/i.test(task.error || "")) return false;
+          const taskProvider = settings.openaiProviders.find((item) => item.id === task.providerId);
+          return Boolean(taskProvider && taskProvider.protocol === "openai" && isLingsuVideoProvider(taskProvider.baseUrl));
+        })
+        .map((task) => task.id),
+    );
+    if (!recoverableIds.size) return;
+    setTasks((items) => items.map((task) => recoverableIds.has(task.id)
+      ? { ...task, status: "running", updatedAt: Date.now(), error: recoverableTimeoutMessage }
+      : task));
+  }, [language, settings.openaiProviders, tasks]);
+
+  useEffect(() => {
     onActionStateChange?.(() => { void submit(); }, canSubmit);
   }, [canSubmit, onActionStateChange, prompt, referenceImages, referenceUrls]);
 
@@ -205,7 +224,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
     let current = task.startedAt ? task : { ...task, startedAt };
     if (!task.startedAt) setTasks((items) => items.map((item) => item.id === task.id ? current : item));
     try {
-      for (let attempt = 0; attempt < 120; attempt += 1) {
+      for (let attempt = 0; attempt < videoPollAttemptLimit(options.baseUrl); attempt += 1) {
         const result = await pollVideoTask(current, { ...options, signal: controller.signal });
         const updatedAt = Date.now();
         if (result.status === "completed") {
@@ -214,7 +233,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
             await saveVideoBlob(task.id, result.blob);
             url = URL.createObjectURL(result.blob);
           }
-          current = { ...current, status: "completed", updatedAt, url };
+          current = { ...current, status: "completed", updatedAt, url, error: undefined };
           setMediaUrls((value) => ({ ...value, ...(url ? { [task.id]: url } : {}) }));
           setTasks((items) => items.map((item) => item.id === task.id ? current : item));
           return;
@@ -224,9 +243,17 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
           setTasks((items) => items.map((item) => item.id === task.id ? current : item));
           return;
         }
-        current = { ...current, status: result.status, updatedAt };
+        current = { ...current, status: result.status, updatedAt, error: undefined };
         setTasks((items) => items.map((item) => item.id === task.id ? current : item));
         await delayVideoPoll(videoPollIntervalMs(options.baseUrl), controller.signal);
+      }
+      const timeoutMessage = language === "en"
+        ? "Polling paused temporarily; the provider task is still kept and will continue to be checked."
+        : "轮询暂时达到窗口上限，供应商任务仍已保留，稍后会继续查询。";
+      if (isLingsuVideoProvider(options.baseUrl)) {
+        current = { ...current, status: "running", updatedAt: Date.now(), error: timeoutMessage };
+        setTasks((items) => items.map((item) => item.id === task.id ? current : item));
+        return;
       }
       throw new Error(language === "en" ? "Video task polling timed out." : "视频任务轮询超时。");
     } catch (error) {

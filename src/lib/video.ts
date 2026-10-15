@@ -160,6 +160,16 @@ export function videoPollIntervalMs(baseUrl: string) {
   return 2500;
 }
 
+/**
+ * Video providers may keep a task in an upstream review state for longer
+ * than the normal client polling window. Keep the Lingsu task recoverable
+ * instead of turning a still-valid task ID into a local failure.
+ */
+export function videoPollAttemptLimit(baseUrl: string) {
+  if (isLingsuVideoProvider(baseUrl)) return 600;
+  return 120;
+}
+
 const VIDEO_DB_NAME = "ImageX-videos";
 const VIDEO_DB_VERSION = 2;
 const VIDEO_STORE_NAME = "video-blobs";
