@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createVideoTask, isAuttytVideoProvider, isLingsuVideoProvider, pollVideoTask, type VideoTask } from "@/lib/video";
+import { createVideoTask, isAuttytVideoProvider, isLingsuVideoProvider, lingsuSupportsVideoReference, pollVideoTask, type VideoTask } from "@/lib/video";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -35,6 +35,14 @@ describe("video API", () => {
     expect(isLingsuVideoProvider("https://video.example/v1")).toBe(false);
   });
 
+  test("identifies Lingsu models that support reference video", () => {
+    expect(lingsuSupportsVideoReference("原生不卡人脸-全参2.5")).toBe(true);
+    expect(lingsuSupportsVideoReference("全参 2.5")).toBe(true);
+    expect(lingsuSupportsVideoReference("SD官方2.0")).toBe(true);
+    expect(lingsuSupportsVideoReference("WAN3.0-可参考视频")).toBe(true);
+    expect(lingsuSupportsVideoReference("H3-KS")).toBe(false);
+  });
+
   test("uses Lingsu JSON video creation with an idempotency key", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ object: "video", id: "lv-1", status: "queued", task_status: "submitting" }, 202));
     vi.stubGlobal("fetch", fetchMock);
@@ -63,6 +71,30 @@ describe("video API", () => {
     };
 
     await expect(pollVideoTask(task, { ...options, baseUrl: "https://lingsu.xyz/v1" })).resolves.toEqual({ status: "running" });
+  });
+
+  test("sends Lingsu reference video URLs through references", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ object: "video", id: "lv-ref", status: "queued" }, 202));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createVideoTask({
+      ...options,
+      baseUrl: "https://lingsu.xyz/v1",
+      model: "原生不卡人脸-全参2.5",
+      referenceUrls: [{ type: "video", source: "https://media.example/reference.mp4", durationSeconds: 6.5 }],
+    }, "lingsu");
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.references).toEqual([{ type: "video", source: "https://media.example/reference.mp4", role: "reference", duration_seconds: 6.5 }]);
+  });
+
+  test("rejects reference video URLs for Lingsu models without video support", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    await expect(createVideoTask({
+      ...options,
+      baseUrl: "https://lingsu.xyz/v1",
+      model: "H3-KS",
+      referenceUrls: [{ type: "video", source: "https://media.example/reference.mp4", durationSeconds: 6.5 }],
+    }, "lingsu")).rejects.toThrow("不支持参考视频");
   });
 
   test("downloads a completed Lingsu task from its authenticated download URL", async () => {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, isLingsuVideoProvider, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoRequestOptions, type VideoTask } from "@/lib/video";
+import { createVideoTask, deleteVideoBlob, deleteVideoReferenceFiles, delayVideoPoll, formatVideoTaskTiming, isLingsuVideoProvider, lingsuSupportsVideoReference, loadVideoBlob, loadVideoReferenceFiles, normalizeVideoTask, pollVideoTask, saveVideoBlob, saveVideoReferenceFiles, videoDownloadName, videoPollIntervalMs, videoTaskBatchPrefix, videoTaskTitle, VIDEO_DATA_CLEARED_EVENT, VIDEO_TASKS_STORAGE_KEY, type VideoAspectRatio, type VideoDuration, type VideoQuality, type VideoReferenceSource, type VideoRequestOptions, type VideoTask } from "@/lib/video";
 import { formatCompletionTime } from "@/lib/image-console";
 import type { AppSettings } from "@/lib/image-console";
 import { useI18n } from "@/lib/i18n";
@@ -15,6 +15,7 @@ import type { ResultMediaFilter } from "@/components/request-list-panel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const MAX_VIDEO_REFERENCE_IMAGES = 5;
+const MAX_LINGSU_REFERENCE_URLS = 15;
 type VideoReferenceImage = { file: File; src: string; name: string };
 
 export interface VideoTaskActions {
@@ -58,6 +59,10 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   const { copy, language } = useI18n();
   const [prompt, setPrompt] = useState("");
   const [referenceImages, setReferenceImages] = useState<VideoReferenceImage[]>([]);
+  const [referenceUrls, setReferenceUrls] = useState<VideoReferenceSource[]>([]);
+  const [referenceUrlDraft, setReferenceUrlDraft] = useState("");
+  const [referenceUrlType, setReferenceUrlType] = useState<VideoReferenceSource["type"]>("image");
+  const [referenceUrlDuration, setReferenceUrlDuration] = useState("");
   const [tasks, setTasks] = useState<VideoTask[]>(readTasks);
   const [activeIds, setActiveIds] = useState<Set<string>>(() => new Set());
   const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({});
@@ -109,7 +114,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
 
   useEffect(() => {
     onActionStateChange?.(() => { void submit(); }, canSubmit);
-  }, [canSubmit, onActionStateChange, prompt]);
+  }, [canSubmit, onActionStateChange, prompt, referenceImages, referenceUrls]);
 
   useEffect(() => {
     setTaskListTarget(document.getElementById("video-task-list"));
@@ -157,6 +162,9 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
       setTasks([]);
       setMediaUrls({});
       setReferenceImages([]);
+      setReferenceUrls([]);
+      setReferenceUrlDraft("");
+      setReferenceUrlDuration("");
     }
     window.addEventListener(VIDEO_DATA_CLEARED_EVENT, handleVideoDataCleared);
     return () => window.removeEventListener(VIDEO_DATA_CLEARED_EVENT, handleVideoDataCleared);
@@ -256,8 +264,9 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
       prompt: prompt.trim(),
       duration,
         aspectRatio,
-        quality,
+      quality,
       referenceImages: referenceImages.map((image) => image.file),
+      referenceUrls: referenceUrls.length ? referenceUrls : undefined,
       authHeaderName: provider?.authHeaderName,
       authPrefix: provider?.authPrefix,
     };
@@ -288,6 +297,34 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
     if (imageFiles.length > remaining) toast.error(language === "en" ? `Use up to ${MAX_VIDEO_REFERENCE_IMAGES} reference images.` : `视频最多使用 ${MAX_VIDEO_REFERENCE_IMAGES} 张参考图。`);
     const next = imageFiles.slice(0, remaining).map((file) => ({ file, src: URL.createObjectURL(file), name: file.name }));
     if (next.length) setReferenceImages((current) => [...current, ...next]);
+  }
+
+  function addReferenceUrl() {
+    const source = referenceUrlDraft.trim();
+    if (!/^https:\/\//i.test(source)) {
+      toast.error(language === "en" ? "Reference URLs must use HTTPS." : "参考素材地址必须使用 HTTPS。 ");
+      return;
+    }
+    if (referenceUrlType === "video" && !lingsuSupportsVideoReference(model)) {
+      toast.error(language === "en" ? "The selected Lingsu model does not support video references." : "当前灵速模型不支持参考视频。 ");
+      return;
+    }
+    const durationSeconds = Number(referenceUrlDuration);
+    if (referenceUrlType === "video" && (!Number.isFinite(durationSeconds) || durationSeconds <= 0)) {
+      toast.error(language === "en" ? "Enter the real video duration in seconds." : "请填写真实的视频时长（秒）。 ");
+      return;
+    }
+    if (referenceUrls.length >= MAX_LINGSU_REFERENCE_URLS) {
+      toast.error(language === "en" ? `Use up to ${MAX_LINGSU_REFERENCE_URLS} reference URLs.` : `最多添加 ${MAX_LINGSU_REFERENCE_URLS} 个参考素材地址。 `);
+      return;
+    }
+    if (referenceUrls.some((item) => item.type === referenceUrlType && item.source === source)) {
+      toast.error(language === "en" ? "This reference URL is already listed." : "这个参考素材地址已经添加。 ");
+      return;
+    }
+    setReferenceUrls((current) => [...current, { type: referenceUrlType, source, ...(referenceUrlType === "video" ? { durationSeconds } : {}) }]);
+    setReferenceUrlDraft("");
+    setReferenceUrlDuration("");
   }
 
   function removeReferenceImage(index: number) {
@@ -371,6 +408,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
         aspectRatio: task.aspectRatio,
         quality: task.quality,
         referenceImages: referenceFiles,
+        referenceUrls: task.referenceSources,
         authHeaderName: taskProvider.authHeaderName,
         authPrefix: taskProvider.authPrefix,
       }, task.providerId);
@@ -402,9 +440,23 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
       <section className="flex min-w-0 flex-col gap-3" aria-label={language === "en" ? "Video settings" : "视频设置"}>
         <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="videoPrompt">
           {copy.generator.promptLabel}
-          <Textarea id="videoPrompt" value={prompt} maxLength={16000} onChange={(event) => setPrompt(event.target.value)} placeholder={copy.generator.videoPromptPlaceholder} className="standard-scrollbar min-h-40 resize-y overflow-y-auto" />
+          <Textarea id="videoPrompt" value={prompt} maxLength={16000} onChange={(event) => setPrompt(event.target.value)} placeholder={copy.generator.videoPromptPlaceholder} className={`standard-scrollbar ${isLingsu ? "min-h-32" : "min-h-40"} resize-y overflow-y-auto`} />
         </label>
-        <div
+        {isLingsu ? <div className="flex min-h-20 shrink-0 flex-col gap-2 rounded-md border border-dashed border-border bg-muted/10 p-2" aria-label={language === "en" ? "Video reference URLs" : "视频参考素材地址"}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{language === "en" ? `Reference URLs (${referenceUrls.length}/${MAX_LINGSU_REFERENCE_URLS})` : `参考素材地址（${referenceUrls.length}/${MAX_LINGSU_REFERENCE_URLS}）`}</span>
+            <select className="h-7 rounded-md border border-input bg-background px-2 text-xs" value={referenceUrlType} onChange={(event) => { setReferenceUrlType(event.target.value as VideoReferenceSource["type"]); setReferenceUrlDuration(""); }}>
+              <option value="image">{language === "en" ? "Image" : "图片"}</option>
+              <option value="video">{language === "en" ? "Video" : "视频"}</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <input className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs" value={referenceUrlDraft} onChange={(event) => setReferenceUrlDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addReferenceUrl(); } }} placeholder={language === "en" ? "Public HTTPS media URL" : "公开的 HTTPS 素材直链"} />
+            {referenceUrlType === "video" ? <input className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs" type="number" min="0.1" step="0.1" value={referenceUrlDuration} onChange={(event) => setReferenceUrlDuration(event.target.value)} placeholder={language === "en" ? "Seconds" : "秒数"} aria-label={language === "en" ? "Reference video duration" : "参考视频时长"} /> : null}
+            <Button type="button" variant="outline" size="sm" className="!h-8 !min-h-8 !max-h-8 px-2 text-xs" disabled={referenceUrls.length >= MAX_LINGSU_REFERENCE_URLS || !referenceUrlDraft.trim()} onClick={addReferenceUrl}>{language === "en" ? "Add" : "添加"}</Button>
+          </div>
+          {referenceUrls.length ? <div className="flex flex-col gap-1">{referenceUrls.map((item, index) => <div key={`${item.type}-${item.source}-${index}`} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><span className="shrink-0 rounded bg-muted px-1.5 py-0.5">{item.type === "video" ? (language === "en" ? "Video" : "视频") : (language === "en" ? "Image" : "图片")}</span><span className="min-w-0 flex-1 truncate" title={item.source}>{item.source}{item.type === "video" && item.durationSeconds ? ` · ${item.durationSeconds}s` : ""}</span><Button type="button" variant="ghost" size="icon-xs" aria-label={`${language === "en" ? "Remove reference" : "移除参考素材"} ${index + 1}`} onClick={() => setReferenceUrls((current) => current.filter((_, currentIndex) => currentIndex !== index))}><XIcon /></Button></div>)}</div> : <span className="text-xs text-muted-foreground">{language === "en" ? "Use a public HTTPS file URL that remains available until the task completes." : "请填写任务完成前持续有效的公开 HTTPS 文件直链。"}</span>}
+        </div> : <div
           className="flex min-h-20 shrink-0 flex-col gap-2 rounded-md border border-dashed border-border bg-muted/10 p-2"
           aria-label={language === "en" ? "Video reference images" : "视频参考图"}
           tabIndex={0}
@@ -425,7 +477,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
           </div> : <span className="text-xs text-muted-foreground">{isLingsu
             ? (language === "en" ? "Lingsu requires public HTTP(S) image URLs for references; local uploads are unavailable." : "灵速参考图需要公开的 HTTP(S) 图片地址，当前本地上传图片无法直接发送。")
             : (language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。")}</span>}
-        </div>
+        </div>}
       </section>
       {taskListTarget && resultMediaFilter !== "images" ? createPortal(<div className="contents">
         {!orderedTasks.length ? <p className="px-1 py-1.5 text-xs text-muted-foreground">{copy.generator.videoNoTasks}</p> : null}

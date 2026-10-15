@@ -398,7 +398,16 @@ function Gallery({
 function VideoGallery({ task, url }: { task: VideoTask | null; url?: string }) {
   const { copy, language } = useI18n();
   if (!task) {
-    return <Empty className="min-h-0 w-full max-w-full overflow-hidden border"><EmptyHeader><EmptyMedia variant="icon"><VideoIcon /></EmptyMedia><EmptyTitle>{language === "en" ? "No video result selected" : "暂无视频结果"}</EmptyTitle></EmptyHeader></Empty>;
+    return (
+      <div className="grid h-full min-h-0 w-full max-w-full grid-cols-1 gap-3 overflow-hidden">
+        <Empty className="min-h-0 w-full max-w-full overflow-hidden border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><VideoIcon /></EmptyMedia>
+            <EmptyTitle>{language === "en" ? "No video result selected" : "暂无视频结果"}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    );
   }
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-center justify-center gap-3 overflow-hidden rounded-lg border border-border bg-black/5 p-3">

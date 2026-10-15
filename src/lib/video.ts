@@ -6,6 +6,13 @@ export type VideoQuality = "480p" | "720p" | "1080p";
 /** @deprecated Kept for consumers that still import the old video size type. */
 export type VideoSize = "1280x720" | "720x1280" | "1024x1024";
 export type VideoTaskStatus = "queued" | "running" | "completed" | "failed" | "canceled";
+export type VideoReferenceType = "image" | "video";
+
+export interface VideoReferenceSource {
+  type: VideoReferenceType;
+  source: string;
+  durationSeconds?: number;
+}
 
 export interface VideoRequestOptions {
   baseUrl: string;
@@ -18,6 +25,7 @@ export interface VideoRequestOptions {
   authHeaderName?: string;
   authPrefix?: string;
   referenceImages?: File[];
+  referenceUrls?: VideoReferenceSource[];
   signal?: AbortSignal;
 }
 
@@ -36,6 +44,7 @@ export interface VideoTask {
   error?: string;
   url?: string;
   referenceImageCount?: number;
+  referenceSources?: VideoReferenceSource[];
   startedAt?: number;
 }
 
@@ -74,6 +83,17 @@ export function normalizeVideoTask(value: unknown): VideoTask | null {
     ...(typeof record.error === "string" ? { error: record.error } : {}),
     ...(typeof record.url === "string" ? { url: record.url } : {}),
     ...(Number.isFinite(Number(record.referenceImageCount)) ? { referenceImageCount: Number(record.referenceImageCount) } : {}),
+    ...(Array.isArray(record.referenceSources) ? {
+      referenceSources: record.referenceSources.flatMap((item) => {
+        const source = readRecord(item);
+        const type = source.type === "image" || source.type === "video" ? source.type : null;
+        const url = typeof source.source === "string" ? source.source.trim() : "";
+        const durationSeconds = Number(source.durationSeconds);
+        return type && /^https:\/\//i.test(url)
+          ? [{ type, source: url, ...(type === "video" && Number.isFinite(durationSeconds) && durationSeconds > 0 ? { durationSeconds } : {}) }]
+          : [];
+      }),
+    } : {}),
     ...(Number.isFinite(Number(record.startedAt)) ? { startedAt: Number(record.startedAt) } : {}),
   };
 }
@@ -127,6 +147,11 @@ export function isLingsuVideoProvider(baseUrl: string) {
   } catch {
     return false;
   }
+}
+
+export function lingsuSupportsVideoReference(model: string) {
+  const normalized = String(model || "").trim().replace(/\s+/g, "");
+  return /全参2\.[05]|全参[25]|SD官方2\.0|SD官方20|WAN3\.0-可参考视频|WAN30-可参考视频/i.test(normalized);
 }
 
 export function videoPollIntervalMs(baseUrl: string) {
@@ -294,7 +319,7 @@ function normalizedVideoStatus(value: unknown, taskStatus?: unknown): VideoTaskS
   return "queued";
 }
 
-function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "aspectRatio" | "quality" | "referenceImages">): VideoTask {
+function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" | "prompt" | "duration" | "aspectRatio" | "quality" | "referenceImages" | "referenceUrls">): VideoTask {
   const root = readRecord(body);
   const data = readRecord(root.data);
   const id = String(root.id || data.id || root.task_id || data.task_id || "").trim();
@@ -310,6 +335,7 @@ function taskFromBody(body: unknown, options: Pick<VideoRequestOptions, "model" 
     aspectRatio: options.aspectRatio,
     quality: options.quality,
     referenceImageCount: options.referenceImages?.length || 0,
+    ...(options.referenceUrls?.length ? { referenceSources: options.referenceUrls } : {}),
     status: normalizedStatus,
     createdAt: now,
     updatedAt: now,
@@ -324,7 +350,21 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
   const auttyt = isAuttytVideoProvider(options.baseUrl);
   const lingsu = isLingsuVideoProvider(options.baseUrl);
   if (lingsu && (options.referenceImages || []).length > 0) {
-    throw new Error("灵速参考图需要公开的 HTTP(S) 图片地址；当前本地上传图片无法直接发送。请先移除参考图，使用文生视频。 ");
+    throw new Error("灵速参考素材必须使用公开的 HTTPS 地址；当前本地上传文件无法直接发送。请移除本地文件并填写参考素材 URL。 ");
+  }
+  const referenceUrls = (options.referenceUrls || []).map((item) => ({
+    type: item.type,
+    source: item.source.trim(),
+    ...(item.type === "video" && Number.isFinite(item.durationSeconds) && Number(item.durationSeconds) > 0 ? { durationSeconds: Number(item.durationSeconds) } : {}),
+  }));
+  if (lingsu && referenceUrls.some((item) => !/^https:\/\//i.test(item.source))) {
+    throw new Error("灵速参考素材只接受公开的 HTTPS 地址，不支持本地路径、blob: 或 data: 地址。 ");
+  }
+  if (lingsu && referenceUrls.some((item) => item.type === "video") && !lingsuSupportsVideoReference(model)) {
+    throw new Error("当前灵速模型不支持参考视频，请改用支持视频参考的模型，或移除视频素材。 ");
+  }
+  if (lingsu && referenceUrls.some((item) => item.type === "video" && !item.durationSeconds)) {
+    throw new Error("灵速参考视频需要填写真实且大于 0 的时长。 ");
   }
   const body = auttyt
     ? await auttytVideoBody(options)
@@ -335,6 +375,14 @@ export async function createVideoTask(options: VideoRequestOptions, providerId =
         seconds: Number(options.duration),
         resolution: options.quality,
         aspect_ratio: options.aspectRatio,
+        ...(referenceUrls.length ? {
+          references: referenceUrls.map((item) => ({
+            type: item.type,
+            role: "reference",
+            source: item.source,
+            ...(item.type === "video" ? { duration_seconds: item.durationSeconds } : {}),
+          })),
+        } : {}),
       })
       : (() => {
       const form = new FormData();
