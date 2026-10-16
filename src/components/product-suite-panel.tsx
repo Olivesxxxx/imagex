@@ -1195,6 +1195,31 @@ export function ProductSuitePanel({
                     const isFinalVersion = Boolean(resultRequest && slot.selectedVersion === resultVersion);
                     const slotNeedsRetry = Boolean(slotRequest && ["error", "canceled"].includes(slotRequest.status));
                     const slotAccent = SLOT_ACCENT_CLASSES[slot.key] || { border: "border-border", background: "bg-muted/10" };
+                    const versionHistory = requestHistory.length ? (
+                      <div className="grid min-w-0 gap-1.5">
+                        <span className="text-xs font-medium text-muted-foreground">{suiteCopy.versionHistory}</span>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          {requestHistory.map((request) => {
+                            const version = request.productSuiteVersion || 1;
+                            const selected = resultRequest?.id === request.id;
+                            return (
+                              <Button
+                                key={request.id}
+                                type="button"
+                                variant={selected ? "secondary" : "outline"}
+                                size="sm"
+                                className="h-8 px-3 text-xs"
+                                disabled={request.status !== "done"}
+                                aria-pressed={selected}
+                                onClick={() => setViewedVersionBySlot((current) => ({ ...current, [slot.key]: version }))}
+                              >
+                                {`v${version} · ${slotStatusLabel(request)}`}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null;
                     return (
                       <article key={slot.key} aria-labelledby={slotHeadingId} className={cn("grid min-w-0 content-start gap-2 self-start rounded-lg border p-3", slot.enabled ? `${slotAccent.border} ${slotAccent.background}` : "border-border bg-muted/30 opacity-70")}>
                         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
@@ -1274,6 +1299,7 @@ export function ProductSuitePanel({
                             </div>
                           </div>
                         </div>
+                        {versionHistory}
                         {resultRequest ? (
                           <div className="grid gap-3 border-t pt-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-stretch">
                             <button
@@ -1292,31 +1318,6 @@ export function ProductSuitePanel({
                               ) : <span className="flex h-full items-center justify-center text-xs text-muted-foreground">{suiteCopy.resultUnavailable}</span>}
                             </button>
                             <div className="flex min-w-0 flex-col justify-between gap-2 sm:h-full sm:self-stretch">
-                                {requestHistory.length ? (
-                                  <div className="grid min-w-0 gap-1.5">
-                                    <span className="text-xs font-medium text-muted-foreground">{suiteCopy.versionHistory}</span>
-                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                      {requestHistory.map((request) => {
-                                        const version = request.productSuiteVersion || 1;
-                                        const selected = resultRequest.id === request.id;
-                                        return (
-                                          <Button
-                                            key={request.id}
-                                            type="button"
-                                            variant={selected ? "secondary" : "outline"}
-                                            size="sm"
-                                            className="h-8 px-3 text-xs"
-                                            disabled={request.status !== "done"}
-                                            aria-pressed={selected}
-                                            onClick={() => setViewedVersionBySlot((current) => ({ ...current, [slot.key]: version }))}
-                                          >
-                                            {`v${version} · ${slotStatusLabel(request)}`}
-                                          </Button>
-                                        );
-                                      })}
-                            </div>
-                          </div>
-                        ) : null}
                                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                                  <Button type="button" variant="outline" size="sm" onClick={() => onSelectRequest(resultRequest.id)}>
                                    <EyeIcon data-icon="inline-start" />{suiteCopy.viewResult}
