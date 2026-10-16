@@ -1661,6 +1661,7 @@ export function useImageConsole() {
     mask?: EditInputImage;
     count?: number;
     silent?: boolean;
+    settings?: AppSettings;
     productSuite?: { taskId: string; batchId?: string; batchNumber?: number; slotKey: string; slotLabel?: string; version?: number };
   }) => {
     const effectivePrompt = overrides?.prompt ?? prompt;
@@ -1671,7 +1672,8 @@ export function useImageConsole() {
       return false;
     }
 
-    const requestConfigMessage = missingConnectionMessage(settingsRef.current, copy);
+    const requestSettings = overrides?.settings || settingsRef.current;
+    const requestConfigMessage = missingConnectionMessage(requestSettings, copy);
     if (requestConfigMessage) {
       toast.error(requestConfigMessage);
       return false;
@@ -1707,7 +1709,7 @@ export function useImageConsole() {
       return true;
     }
 
-    const editModeSettings = mergeSettingsForMode(
+    const editModeSettings = overrides?.settings || mergeSettingsForMode(
       storedSettingsRef.current.shared,
       storedSettingsRef.current.modeSettingsByMode.edit,
     );
@@ -1741,14 +1743,16 @@ export function useImageConsole() {
       return false;
     }
 
-    const nextStoredSettings = updateStoredSettingsForCurrentMode(
-      storedSettingsRef.current,
-      "edit",
-      currentSettings,
-    );
-    setStoredSettings(nextStoredSettings);
-    storedSettingsRef.current = nextStoredSettings;
-    saveSettings(nextStoredSettings);
+    if (!overrides?.settings) {
+      const nextStoredSettings = updateStoredSettingsForCurrentMode(
+        storedSettingsRef.current,
+        "edit",
+        currentSettings,
+      );
+      setStoredSettings(nextStoredSettings);
+      storedSettingsRef.current = nextStoredSettings;
+      saveSettings(nextStoredSettings);
+    }
     updatePromptHistory((history) => addPromptToHistory(history, effectivePrompt), "edit");
 
     const now = performance.now();

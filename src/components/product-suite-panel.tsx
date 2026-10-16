@@ -30,8 +30,9 @@ function brandAssets(task: ProductSuiteTask): ProductSuiteAsset[] {
   return task.brandAssets?.length ? task.brandAssets : (task.brandAsset ? [task.brandAsset] : []);
 }
 
-const PROMPT_REFERENCE_KEYS = ["商品名", "材质颜色", "核心卖点", "卖点1", "卖点2", "卖点3", "卖点4", "卖点5", "卖点6", "卖点7", "卖点8", "卖点9", "卖点10", "尺寸", "品牌语气", "目标平台"] as const;
+const PROMPT_REFERENCE_KEYS = ["商品名", "材质颜色", "核心卖点", "卖点1", "卖点2", "卖点3", "卖点4", "卖点5", "卖点6", "卖点7", "卖点8", "卖点9", "卖点10", "尺寸", "品牌语气", "目标平台", "禁用元素", "产品一致性要求"] as const;
 type PromptReferenceKey = (typeof PROMPT_REFERENCE_KEYS)[number];
+const AUTOMATIC_PROMPT_REFERENCE_KEYS = ["禁用元素", "产品一致性要求"] as const satisfies readonly PromptReferenceKey[];
 
 const PROMPT_REFERENCE_TOKENS: Record<PromptReferenceKey, string> = {
   商品名: "{{商品名}}",
@@ -42,6 +43,8 @@ const PROMPT_REFERENCE_TOKENS: Record<PromptReferenceKey, string> = {
   尺寸: "{{尺寸}}",
   品牌语气: "{{品牌语气}}",
   目标平台: "{{目标平台}}",
+  禁用元素: "{{禁用元素}}",
+  产品一致性要求: "{{产品一致性要求}}",
 };
 
 function promptReferenceValues(task: ProductSuiteTask, language: "zh" | "en"): Record<PromptReferenceKey, string> {
@@ -62,12 +65,23 @@ function promptReferenceValues(task: ProductSuiteTask, language: "zh" | "en"): R
     尺寸: task.info.dimensions || (language === "en" ? "not specified" : "未填写"),
     品牌语气: task.info.brandTone || (language === "en" ? "clean ecommerce product photography" : "干净的电商产品摄影"),
     目标平台: task.info.targetPlatform || (language === "en" ? "ecommerce" : "电商平台"),
+    禁用元素: task.info.forbiddenElements || (language === "en" ? "No forbidden elements specified" : "未填写"),
+    产品一致性要求: task.info.consistencyRequirement || (language === "en" ? "No consistency requirement specified" : "未填写"),
   };
 }
 
 type PromptReferenceMenuState = { slotKey: ProductSuiteSlotKey; start: number; left: number; top: number } | null;
 
-const PROMPT_REFERENCE_PATTERN = /(\{\{(?:商品名|材质颜色|核心卖点|卖点(?:[1-9]|10)|尺寸|品牌语气|目标平台)\}\})/g;
+const PROMPT_REFERENCE_PATTERN = /(\{\{(?:商品名|材质颜色|核心卖点|卖点(?:[1-9]|10)|尺寸|品牌语气|目标平台|禁用元素|产品一致性要求)\}\})/g;
+
+function normalizeAutomaticPromptTemplate(template: string, task: ProductSuiteTask): string {
+  let normalized = String(template || "").replace(/\{\{(?:禁用元素|产品一致性要求)\}\}/g, "").replace(/[ \t]+\n/g, "\n").trimEnd();
+  const automaticTokens = AUTOMATIC_PROMPT_REFERENCE_KEYS.filter((key) =>
+    key === "禁用元素" ? Boolean(task.info.forbiddenElements.trim()) : Boolean(task.info.consistencyRequirement.trim()),
+  ).map((key) => PROMPT_REFERENCE_TOKENS[key]);
+  if (!automaticTokens.length) return normalized;
+  return `${normalized}${normalized ? "\n\n" : ""}${automaticTokens.join("\n")}`;
+}
 
 function promptReferenceKeys(task: ProductSuiteTask): PromptReferenceKey[] {
   const pointCount = Math.min(10, Math.max(1, task.info.sellingPointItems.length));
@@ -89,8 +103,9 @@ function serializePromptEditor(node: Node): string {
 
 function renderPromptEditorDom(root: HTMLElement, template: string, task: ProductSuiteTask, language: "zh" | "en", labels: Record<PromptReferenceKey, string>) {
   const values = promptReferenceValues(task, language);
+  const normalizedTemplate = normalizeAutomaticPromptTemplate(template, task);
   root.replaceChildren();
-  template.split(PROMPT_REFERENCE_PATTERN).forEach((part) => {
+  normalizedTemplate.split(PROMPT_REFERENCE_PATTERN).forEach((part) => {
     const key = referenceKeyFromToken(part);
     if (!key) {
       root.appendChild(document.createTextNode(part));
@@ -144,8 +159,9 @@ function PromptEditor({
     if (!root) return;
     const signatureChanged = previousSignatureRef.current !== valueSignature;
     previousSignatureRef.current = valueSignature;
-    if (!signatureChanged && serializePromptEditor(root) === template) return;
-    renderPromptEditorDom(root, template, task, language, labels);
+    const normalizedTemplate = normalizeAutomaticPromptTemplate(template, task);
+    if (!signatureChanged && serializePromptEditor(root) === normalizedTemplate) return;
+    renderPromptEditorDom(root, normalizedTemplate, task, language, labels);
   }, [labels, language, task, template, valueSignature]);
 
   return (
@@ -594,25 +610,15 @@ export function ProductSuitePanel({
     setDraft((current) => current ? updater(current) : current);
   }
 
-  function updateSellingPoint(index: number, value: string) {
+  function updateSellingPoints(value: string) {
+    const lines = value.split(/\r?\n/);
+    const items = lines
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    const limitedValue = lines.length > 10 ? lines.slice(0, 10).join("\n") : value;
     updateDraft((current) => {
-      const items = [...current.info.sellingPointItems];
-      while (items.length <= index) items.push("");
-      items[index] = value;
-      return { ...current, info: { ...current.info, sellingPointItems: items, sellingPoints: items.filter((item) => item.trim()).join("\n") } };
-    });
-  }
-
-  function addSellingPoint() {
-    updateDraft((current) => current.info.sellingPointItems.length >= 10
-      ? current
-      : { ...current, info: { ...current.info, sellingPointItems: [...current.info.sellingPointItems, ""] } });
-  }
-
-  function removeSellingPoint(index: number) {
-    updateDraft((current) => {
-      const items = current.info.sellingPointItems.filter((_, itemIndex) => itemIndex !== index);
-      return { ...current, info: { ...current.info, sellingPointItems: items, sellingPoints: items.filter((item) => item.trim()).join("\n") } };
+      return { ...current, info: { ...current.info, sellingPointItems: items, sellingPoints: limitedValue } };
     });
   }
 
@@ -751,14 +757,14 @@ export function ProductSuitePanel({
   function updateSlot(slotKey: ProductSuiteSlotKey, promptTemplate: string) {
     updateDraft((current) => ({
       ...current,
-      slots: current.slots.map((slot) => slot.key === slotKey ? { ...slot, promptTemplate } : slot),
+      slots: current.slots.map((slot) => slot.key === slotKey ? { ...slot, promptTemplate: normalizeAutomaticPromptTemplate(promptTemplate, current) } : slot),
     }));
   }
 
   function insertPromptReference(slotKey: ProductSuiteSlotKey, key: PromptReferenceKey, rangeStart?: number, rangeEnd?: number) {
     const editor = slotPromptRefs.current[slotKey];
     const token = PROMPT_REFERENCE_TOKENS[key];
-    const current = draft?.slots.find((slot) => slot.key === slotKey)?.promptTemplate || "";
+    const current = draft ? normalizeAutomaticPromptTemplate(draft.slots.find((slot) => slot.key === slotKey)?.promptTemplate || "", draft) : "";
     const anchorStart = promptReferenceAnchorRef.current[slotKey] ?? null;
     const fallbackSelection = editor ? editorSelection(editor) : { start: current.length, end: current.length };
     const start = anchorStart !== null ? anchorStart : (rangeStart ?? fallbackSelection.start);
@@ -782,7 +788,7 @@ export function ProductSuitePanel({
 
   function handlePromptKeyDown(slotKey: ProductSuiteSlotKey, event: KeyboardEvent<HTMLDivElement>) {
     const editor = event.currentTarget;
-    const current = draft?.slots.find((slot) => slot.key === slotKey)?.promptTemplate || "";
+    const current = draft ? normalizeAutomaticPromptTemplate(draft.slots.find((slot) => slot.key === slotKey)?.promptTemplate || "", draft) : "";
     const selection = editorSelection(editor);
     if (!event.ctrlKey && !event.metaKey && !event.altKey && selection.start === selection.end) {
       const cursor = selection.start;
@@ -797,6 +803,8 @@ export function ProductSuitePanel({
             : null;
         if (!removeToken) continue;
         event.preventDefault();
+        const key = referenceKeyFromToken(match[0]);
+        if (key && (AUTOMATIC_PROMPT_REFERENCE_KEYS as readonly string[]).includes(key)) return;
         const next = `${current.slice(0, removeToken.start)}${current.slice(removeToken.end)}`;
         updateSlot(slotKey, next);
         requestAnimationFrame(() => {
@@ -861,7 +869,7 @@ export function ProductSuitePanel({
       ...current,
       slots: current.slots.map((slot) => {
         const next = defaults.find((item) => item.key === slotKey);
-        return slot.key === slotKey && next ? { ...slot, promptTemplate: next.promptTemplate } : slot;
+        return slot.key === slotKey && next ? { ...slot, promptTemplate: normalizeAutomaticPromptTemplate(next.promptTemplate, current) } : slot;
       }),
     }));
   }
@@ -1053,8 +1061,6 @@ export function ProductSuitePanel({
     </section>
   );
 
-  const sellingPointItems = draft?.info.sellingPointItems?.length ? draft.info.sellingPointItems : [""];
-
   if (!open) return null;
 
   return (
@@ -1148,43 +1154,14 @@ export function ProductSuitePanel({
                 <div className="grid gap-1.5"><label htmlFor="product-suite-material" className="text-xs font-medium text-muted-foreground">{suiteCopy.materialAndColor}</label><Input id="product-suite-material" value={draft.info.materialAndColor} onChange={(event) => updateDraft((current) => ({ ...current, info: { ...current.info, materialAndColor: event.target.value } }))} /></div>
                 <div className="grid gap-1.5"><label htmlFor="product-suite-platform" className="text-xs font-medium text-muted-foreground">{suiteCopy.targetPlatform}</label><Input id="product-suite-platform" value={draft.info.targetPlatform} onChange={(event) => updateDraft((current) => ({ ...current, info: { ...current.info, targetPlatform: event.target.value } }))} placeholder={suiteCopy.targetPlatformPlaceholder} /></div>
                 <div className="grid gap-1.5 sm:col-span-2">
-                  <span className="text-xs font-medium text-muted-foreground">{suiteCopy.sellingPoints}</span>
-                  <div className="grid min-w-0 gap-2">
-                    {sellingPointItems.map((value, index) => (
-                      <div key={`selling-point-${index}`} className="flex min-w-0 items-center gap-2">
-                        <span className="w-16 shrink-0 text-xs text-muted-foreground">{suiteCopy.sellingPointItem(index + 1)}</span>
-                        <Input
-                          id={`product-suite-selling-${index + 1}`}
-                          value={value}
-                          onChange={(event) => updateSellingPoint(index, event.target.value)}
-                          className="min-w-0 flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 shrink-0"
-                          aria-label={suiteCopy.removeSellingPoint}
-                          title={suiteCopy.removeSellingPoint}
-                          disabled={sellingPointItems.length <= 1}
-                          onClick={() => removeSellingPoint(index)}
-                        >
-                          <XIcon className="size-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-fit"
-                      disabled={sellingPointItems.length >= 10}
-                      onClick={addSellingPoint}
-                    >
-                      <PlusIcon className="size-4" />
-                      {suiteCopy.addSellingPoint}
-                    </Button>
-                  </div>
+                  <label htmlFor="product-suite-selling-points" className="text-xs font-medium text-muted-foreground">{suiteCopy.sellingPoints}</label>
+                  <Textarea
+                    id="product-suite-selling-points"
+                    value={draft.info.sellingPoints || draft.info.sellingPointItems.join("\n")}
+                    onChange={(event) => updateSellingPoints(event.target.value)}
+                    rows={4}
+                    className="standard-scrollbar"
+                  />
                 </div>
                 <div className="grid gap-1.5"><label htmlFor="product-suite-dimensions" className="text-xs font-medium text-muted-foreground">{suiteCopy.dimensions}</label><Input id="product-suite-dimensions" value={draft.info.dimensions} onChange={(event) => updateDraft((current) => ({ ...current, info: { ...current.info, dimensions: event.target.value } }))} placeholder={suiteCopy.dimensionsPlaceholder} /></div>
                 <div className="grid gap-1.5"><label htmlFor="product-suite-tone" className="text-xs font-medium text-muted-foreground">{suiteCopy.brandTone}</label><Input id="product-suite-tone" value={draft.info.brandTone} onChange={(event) => updateDraft((current) => ({ ...current, info: { ...current.info, brandTone: event.target.value } }))} /></div>

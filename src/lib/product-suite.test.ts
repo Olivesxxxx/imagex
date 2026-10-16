@@ -4,6 +4,7 @@ import {
   createProductSuiteTask,
   productSuiteTaskFromTemplate,
   productSuiteTemplateJson,
+  renderProductSuitePrompt,
 } from "@/lib/product-suite";
 
 describe("product suite templates", () => {
@@ -33,5 +34,18 @@ describe("product suite templates", () => {
 
   test("rejects unsupported template payloads", () => {
     expect(() => productSuiteTaskFromTemplate(null)).toThrow();
+  });
+
+  test("renders workflow constraints in the final prompt", () => {
+    const task = createProductSuiteTask(1000);
+    task.info.forbiddenElements = "extra logos";
+    task.info.consistencyRequirement = "Keep the shape unchanged.";
+    task.slots[0].promptTemplate = "Create {{商品名}}\n\n{{禁用元素}}\n{{产品一致性要求}}";
+
+    const prompt = renderProductSuitePrompt(task, "hero");
+    expect(prompt).toContain("不要出现: extra logos");
+    expect(prompt).toContain("Keep the shape unchanged.");
+    expect(prompt).not.toContain("{{禁用元素}}");
+    expect(prompt).not.toContain("{{产品一致性要求}}");
   });
 });

@@ -420,6 +420,7 @@ export default function App() {
         prompt,
         editImages: slotImages,
         count: 1,
+        settings: consoleState.settings,
         silent: true,
         productSuite: {
           taskId: task.id,
@@ -460,6 +461,7 @@ export default function App() {
       prompt,
       editImages,
       count: 1,
+      settings: consoleState.settings,
       silent: true,
       productSuite: {
         taskId: task.id,

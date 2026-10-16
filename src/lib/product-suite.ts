@@ -64,22 +64,37 @@ export interface ProductSuiteTemplate {
 }
 
 const DEFAULT_SLOT_TEMPLATES_ZH: Record<ProductSuiteSlotKey, string> = {
-  hero: "生成一张电商主图。突出 {{商品名}} 的主体和第一眼卖点：{{核心卖点}}。画面干净、有商业吸引力，适合 {{目标平台}} 首图展示。可合理使用可选商业标识素材，但不要遮挡产品。",
+  hero: "生成一张电商主图。突出 {{商品名}} 的主体和第一眼卖点：\n第一卖点：{{卖点1}}\n第二卖点：{{卖点2}}\n第三卖点：{{卖点3}}\n画面干净、有商业吸引力，适合 {{目标平台}} 首图展示。可合理使用可选商业标识素材，但不要遮挡产品。",
   whiteBackground: "生成一张白底图。背景为干净纯白或接近纯白，产品居中，轮廓清晰，颜色和比例准确，不添加多余道具、文字或装饰。",
-  detail: "生成一张详情图。围绕 {{商品名}} 的核心卖点 {{核心卖点}} 进行展示，可用局部构图表达材质、结构或功能，画面适合后续叠加简短说明文字。",
+  detail: "生成一张详情图。围绕 {{商品名}} 的卖点进行展示：\n卖点1：{{卖点1}}\n卖点2：{{卖点2}}\n卖点3：{{卖点3}}\n可用局部构图表达材质、结构或功能，画面适合后续叠加简短说明文字。",
   size: "生成一张尺寸图。围绕尺寸数据 {{尺寸}} 做清晰展示，保留产品真实比例。尺寸数字必须以用户填写的数据为准，不要编造或篡改尺寸。",
   closeUp: "生成一张细节图。放大展示 {{商品名}} 的材质、接口、纹理、边缘、工艺或包装细节。材质/颜色参考：{{材质颜色}}。",
   scene: "生成一张场景图。把 {{商品名}} 放入符合 {{品牌语气}} 的真实使用场景中，光线自然，画面有生活感或使用感，但产品本体必须和参考图一致。",
 };
 
 const DEFAULT_SLOT_TEMPLATES_EN: Record<ProductSuiteSlotKey, string> = {
-  hero: "Create an ecommerce hero image for {{商品名}}. Emphasize the product and the first-glance selling points: {{核心卖点}}. Keep the scene clean, commercial, and suitable for {{目标平台}}.",
+  hero: "Create an ecommerce hero image for {{商品名}}. Emphasize these selling points:\nSelling point 1: {{卖点1}}\nSelling point 2: {{卖点2}}\nSelling point 3: {{卖点3}}\nKeep the scene clean, commercial, and suitable for {{目标平台}}.",
   whiteBackground: "Create a white-background product image. Use a clean white background, center the product, preserve accurate color and proportions, and avoid extra props or text.",
-  detail: "Create a detail image for {{商品名}} focused on these selling points: {{核心卖点}}. Use partial compositions to explain material, structure, or function.",
+  detail: "Create a detail image for {{商品名}} focused on these selling points:\nSelling point 1: {{卖点1}}\nSelling point 2: {{卖点2}}\nSelling point 3: {{卖点3}}\nUse partial compositions to explain material, structure, or function.",
   size: "Create a size reference image using these dimensions: {{尺寸}}. Preserve real proportions and never invent or alter the provided numbers.",
   closeUp: "Create a close-up image showing material, ports, texture, edges, craftsmanship, or packaging details of {{商品名}}. Material/color: {{材质颜色}}.",
   scene: "Create a scene image placing {{商品名}} in a realistic use scenario matching this brand tone: {{品牌语气}}. Keep the product itself consistent with the reference photo.",
 };
+
+const LEGACY_DEFAULT_SLOT_TEMPLATES: Record<string, string> = {
+  hero: "生成一张电商主图。突出 {{商品名}} 的主体和第一眼卖点：{{核心卖点}}。画面干净、有商业吸引力，适合 {{目标平台}} 首图展示。可合理使用可选商业标识素材，但不要遮挡产品。",
+  detail: "生成一张详情图。围绕 {{商品名}} 的核心卖点 {{核心卖点}} 进行展示，可用局部构图表达材质、结构或功能，画面适合后续叠加简短说明文字。",
+  hero_en: "Create an ecommerce hero image for {{商品名}}. Emphasize the product and the first-glance selling points: {{核心卖点}}. Keep the scene clean, commercial, and suitable for {{目标平台}}.",
+  detail_en: "Create a detail image for {{商品名}} focused on these selling points: {{核心卖点}}. Use partial compositions to explain material, structure, or function.",
+};
+
+function migrateLegacyDefaultSlotTemplate(key: ProductSuiteSlotKey, template: string) {
+  if (key === "hero" && template === LEGACY_DEFAULT_SLOT_TEMPLATES.hero) return DEFAULT_SLOT_TEMPLATES_ZH.hero;
+  if (key === "detail" && template === LEGACY_DEFAULT_SLOT_TEMPLATES.detail) return DEFAULT_SLOT_TEMPLATES_ZH.detail;
+  if (key === "hero" && template === LEGACY_DEFAULT_SLOT_TEMPLATES.hero_en) return DEFAULT_SLOT_TEMPLATES_EN.hero;
+  if (key === "detail" && template === LEGACY_DEFAULT_SLOT_TEMPLATES.detail_en) return DEFAULT_SLOT_TEMPLATES_EN.detail;
+  return template;
+}
 
 function defaultSlotTemplate(key: ProductSuiteSlotKey, language: ProductSuiteTemplateLanguage) {
   return (language === "en" ? DEFAULT_SLOT_TEMPLATES_EN : DEFAULT_SLOT_TEMPLATES_ZH)[key];
@@ -118,7 +133,7 @@ function normalizeProductSuiteSlots(value: unknown): ProductSuiteSlot[] {
     return {
       key,
       enabled: typeof record?.enabled === "boolean" ? record.enabled : true,
-      promptTemplate: String(record?.promptTemplate || defaultSlotTemplate(key, "zh")),
+      promptTemplate: migrateLegacyDefaultSlotTemplate(key, String(record?.promptTemplate || defaultSlotTemplate(key, "zh"))),
       selectedVersion: Number.isInteger(selectedVersion) && selectedVersion > 0 ? selectedVersion : null,
     };
   });
@@ -291,15 +306,20 @@ export function renderProductSuitePrompt(task: ProductSuiteTask, slotKey: Produc
     尺寸: task.info.dimensions || (language === "en" ? "not specified" : "未填写"),
     品牌语气: task.info.brandTone || (language === "en" ? "clean ecommerce product photography" : "干净的电商产品摄影"),
     目标平台: task.info.targetPlatform || (language === "en" ? "ecommerce" : "电商平台"),
+    禁用元素: task.info.forbiddenElements.trim()
+      ? (language === "en" ? "Avoid: " : "不要出现: ") + task.info.forbiddenElements.trim()
+      : "",
+    产品一致性要求: task.info.consistencyRequirement.trim(),
   };
   task.info.sellingPointItems.slice(0, 10).forEach((point, index) => {
     values[`卖点${index + 1}`] = point || (language === "en" ? "not specified" : "未填写");
   });
   const rendered = Object.entries(values).reduce((current, [key, value]) => current.replaceAll("{{" + key + "}}", value), template);
   const forbidden = task.info.forbiddenElements.trim();
-  const forbiddenLine = forbidden ? "\n" + (language === "en" ? "Avoid" : "不要出现") + ": " + forbidden : "";
+  const forbiddenLine = forbidden && !template.includes("{{禁用元素}}") ? "\n" + (language === "en" ? "Avoid" : "不要出现") + ": " + forbidden : "";
   const consistency = task.info.consistencyRequirement.trim();
-  return rendered + forbiddenLine + (consistency ? "\n\n" + consistency : "");
+  const consistencyLine = consistency && !template.includes("{{产品一致性要求}}") ? "\n\n" + consistency : "";
+  return rendered + forbiddenLine + consistencyLine;
 }
 
 function openProductSuiteDatabase(): Promise<IDBDatabase | null> {
