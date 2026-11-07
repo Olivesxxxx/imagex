@@ -41,6 +41,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { VideoGenerationPanel } from "@/components/video-generation-panel";
+import { SortablePreviewStrip } from "@/components/sortable-preview-strip";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
 import { useTimedConfirmation } from "@/hooks/use-timed-confirmation";
 import {
@@ -519,6 +520,7 @@ export function GeneratorPanel({
       ? (activeProvider?.editsModel.trim() || activeProvider?.generationsModel.trim())
       : activeProvider?.generationsModel.trim()) || "";
   const imageModelMissing = !imageModel;
+  const apiKeyMissing = !(settings.protocol === "gemini" ? settings.geminiApiKey.trim() : settings.apiKey.trim());
   const videoModelMissing = !activeProvider?.videoModel.trim();
   const previewEditImage = previewEditImageIndex !== null ? editImages[previewEditImageIndex] ?? null : null;
 
@@ -575,12 +577,7 @@ export function GeneratorPanel({
   function addEditImageFiles(files: File[]) {
     if (!files.length) return 0;
 
-    const remainingSlots = Math.max(0, MAX_EDIT_INPUT_IMAGES - editImages.length);
-    if (files.length > remainingSlots) {
-      toast.error(copy.generator.maxEditImages(MAX_EDIT_INPUT_IMAGES));
-    }
-
-    const nextImages: EditInputImage[] = files.slice(0, remainingSlots).map((file) => ({
+    const nextImages: EditInputImage[] = files.map((file) => ({
       src: URL.createObjectURL(file),
       name: file.name,
       mimeType: file.type || "application/octet-stream",
@@ -588,10 +585,17 @@ export function GeneratorPanel({
       sourceKey: `local:${file.name}:${file.lastModified}:${file.size}:${Math.random().toString(36).slice(2, 8)}`,
     }));
 
-    if (nextImages.length) {
-      setEditImages((current) => [...current, ...nextImages].slice(0, MAX_EDIT_INPUT_IMAGES));
-    }
-    return nextImages.length;
+    let addedCount = 0;
+    setEditImages((current) => {
+      const remainingSlots = Math.max(0, MAX_EDIT_INPUT_IMAGES - current.length);
+      addedCount = Math.min(remainingSlots, nextImages.length);
+      if (nextImages.length > remainingSlots) {
+        toast.error(copy.generator.maxEditImages(MAX_EDIT_INPUT_IMAGES));
+        nextImages.slice(remainingSlots).forEach((image) => URL.revokeObjectURL(image.src));
+      }
+      return addedCount ? [...current, ...nextImages.slice(0, addedCount)] : current;
+    });
+    return addedCount;
   }
 
   function handleEditImagesChange(event: ChangeEvent<HTMLInputElement>) {
@@ -599,23 +603,32 @@ export function GeneratorPanel({
     event.currentTarget.value = "";
   }
 
-  function handlePromptPaste(event: ClipboardEvent<HTMLElement>) {
+  function handlePromptPaste(event: ClipboardEvent<HTMLElement> | globalThis.ClipboardEvent) {
     if (mode !== "edit") return;
-    const items = event.clipboardData?.items;
-    if (!items) return;
-
-    const imageFiles: File[] = [];
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith("image/")) {
-        const file = item.getAsFile();
-        if (file) imageFiles.push(file);
-      }
+    if (event.defaultPrevented) return;
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+    const imageFiles = Array.from(clipboard.files).filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length) {
+      imageFiles.push(...Array.from(clipboard.items)
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file)));
     }
 
     if (!imageFiles.length) return;
     event.preventDefault();
     addEditImageFiles(imageFiles);
   }
+
+  useEffect(() => {
+    if (mode !== "edit") return;
+    const handleDocumentPaste = (event: globalThis.ClipboardEvent) => {
+      handlePromptPaste(event);
+    };
+    document.addEventListener("paste", handleDocumentPaste, true);
+    return () => document.removeEventListener("paste", handleDocumentPaste, true);
+  }, [mode, editImages.length]);
 
   function handleEditImageDrag(event: DragEvent<HTMLElement>) {
     if (!event.dataTransfer.types.includes("Files")) return;
@@ -637,6 +650,7 @@ export function GeneratorPanel({
     addEditImageFiles(imageFiles);
   }
 
+
   function handleModeChange(value: string) {
     const nextMode = value as GeneratorModeTab;
     if (nextMode === "workflow") {
@@ -652,7 +666,7 @@ export function GeneratorPanel({
 
   return (
     <>
-    <form noValidate onSubmit={submitGeneration} className={cn(
+      <form noValidate onSubmit={submitGeneration} onPasteCapture={handlePromptPaste} className={cn(
       "flex min-w-0 flex-col gap-3",
       videoOpen ? "min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none" : "h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-none",
     )}>
@@ -712,12 +726,12 @@ export function GeneratorPanel({
         className={cn(
           "min-h-0 flex-1",
           mode === "edit"
-            ? "grid gap-3 md:gap-y-1 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.44fr)] md:grid-rows-[auto_minmax(0,1fr)]"
+            ? "flex flex-col gap-3"
             : "flex flex-col",
         )}
       >
-        <div className={cn("flex min-h-32 min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground", mode === "edit" && "md:contents")}>
-          <div className={cn("flex h-4 min-h-4 items-center justify-between gap-2 leading-4", mode === "edit" && "md:col-start-1 md:row-start-1")}>
+        <div className={cn("flex min-h-32 min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground", mode === "edit" && "min-h-0 flex-[1_1_auto]")}>
+          <div className="flex h-4 min-h-4 items-center justify-between gap-2 leading-4">
             <label htmlFor="prompt" className={panelLabelClassName}>{copy.generator.promptLabel}</label>
             {mode === "generate" || mode === "edit" ? (
               <div className="flex items-center gap-2">
@@ -731,14 +745,14 @@ export function GeneratorPanel({
               </div>
             ) : null}
           </div>
-          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className={cn("standard-scrollbar min-h-24 flex-1 resize-none overflow-y-auto", mode === "edit" && "md:col-start-1 md:row-start-2")} />
+          <Textarea id="prompt" name="prompt" ref={promptTextareaRef} rows={4} maxLength={32000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === "edit" ? copy.generator.editPromptPlaceholder : copy.generator.promptPlaceholder} required className="standard-scrollbar min-h-24 flex-1 resize-none overflow-y-auto" />
         </div>
 
         {mode === "edit" ? (
-          <div className={cn("flex min-h-0 min-w-0 flex-col gap-2", "md:contents")}>
+          <div className="flex min-h-0 w-full flex-none flex-col gap-1">
             <div
               className={cn(
-                "flex min-h-24 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors md:col-start-2 md:row-start-2",
+                "flex h-[82px] min-h-[82px] max-h-[82px] w-full min-w-0 max-w-full flex-none flex-col overflow-hidden rounded-md border border-dashed p-2 transition-colors",
                 editImageDragActive ? "border-foreground/50 bg-muted/50" : "bg-muted/10",
               )}
               role="region"
@@ -751,25 +765,65 @@ export function GeneratorPanel({
               onDragLeave={handleEditImageDragLeave}
               onDrop={handleEditImageDrop}
             >
-              {editImages.length ? (
-                <div className="grid w-full min-w-0 max-w-full grid-cols-5 gap-2 overflow-hidden" data-testid="edit-image-preview-strip">
-                  {editImages.map((image, index) => (
-                    <div key={`${image.sourceKey || image.name}-${index}`} className="relative aspect-square min-w-0 overflow-hidden rounded-md border border-border bg-muted/30">
-                      <button type="button" className="block h-full w-full cursor-zoom-in" aria-label={`${copy.generator.previewInputImage} ${index + 1}`} onClick={() => setPreviewEditImageIndex(index)}>
-                        <img src={image.src} alt="" aria-hidden="true" className="block h-full w-full object-cover object-center" />
-                      </button>
-                      <Button type="button" variant="secondary" size="icon-xs" className="absolute right-1 top-1 rounded-full bg-background/90 shadow-none" aria-label={`${copy.historyImage.deleteButton} ${index + 1}`} onClick={() => setEditImages((current) => current.filter((_, currentIndex) => currentIndex !== index))}>
-                        <XIcon />
-                      </Button>
-                      <Button type="button" variant="secondary" size="icon-xs" className="absolute bottom-1 right-1 rounded-full bg-background/90 shadow-none" aria-label={`编辑遮罩 ${index + 1}`} onClick={() => onOpenMaskEditor(image)}>
-                        <PencilIcon />
-                      </Button>
-                    </div>
-                  ))}
+              <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2">
+                {editImages.length ? (
+                  <SortablePreviewStrip
+                    items={editImages}
+                    getItemKey={(image) => image.sourceKey || image.name}
+                    itemSize={64}
+                    onReorder={(fromIndex, toIndex) => setEditImages((current) => {
+                      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.length || toIndex >= current.length) return current;
+                      const next = [...current];
+                      const [moved] = next.splice(fromIndex, 1);
+                      next.splice(toIndex, 0, moved);
+                      return next;
+                    })}
+                    className="standard-scrollbar h-16 min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+                    itemClassName="relative size-16 cursor-grab overflow-hidden rounded-md border border-border bg-muted/30 active:cursor-grabbing"
+                    renderItem={(image, index) => (
+                      <>
+                        <button type="button" className="block h-full w-full cursor-zoom-in" aria-label={`${copy.generator.previewInputImage} ${index + 1}`} onClick={() => setPreviewEditImageIndex(index)}>
+                          <img src={image.src} alt="" aria-hidden="true" draggable={false} className="block h-full w-full object-cover object-center" />
+                        </button>
+                        <Button type="button" variant="secondary" size="icon-xs" className="absolute right-1 top-1 rounded-full bg-background/90 shadow-none" aria-label={`${copy.historyImage.deleteButton} ${index + 1}`} onClick={() => setEditImages((current) => current.filter((_, currentIndex) => currentIndex !== index))}>
+                          <XIcon />
+                        </Button>
+                        <Button type="button" variant="secondary" size="icon-xs" className="absolute bottom-1 right-1 rounded-full bg-background/90 shadow-none" aria-label={`编辑遮罩 ${index + 1}`} onClick={() => onOpenMaskEditor(image)}>
+                          <PencilIcon />
+                        </Button>
+                      </>
+                    )}
+                  />
+                ) : (
+                  <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-3 py-2 text-center text-xs text-muted-foreground">{copy.generator.pasteImageHint}</div>
+                )}
+                <div className="flex w-max max-w-full shrink-0 flex-col items-stretch gap-0">
+                  <Button type="button" variant="outline" size="sm" className={cn(panelControlClassName, "!w-full !min-w-max shrink-0 justify-start whitespace-nowrap px-2")} disabled={editImageSelectionFull} onClick={() => editImagesInputRef.current?.click()} aria-label={copy.generator.selectLocalImage}>
+                    <ImagePlusIcon data-icon="inline-start" />{copy.generator.selectLocalImage}
+                  </Button>
+                  <Input id="editImages" ref={editImagesInputRef} type="file" accept="image/*" multiple disabled={editImageSelectionFull} onChange={handleEditImagesChange} className="hidden" />
+                  <Select value={historicalEditImageValue} onValueChange={(value) => { void addHistoricalEditImage(value); }}>
+                    <SelectTrigger id="historicalEditImages" size="sm" className={cn(panelSelectTriggerClassName, "!w-full !min-w-max shrink-0 justify-start whitespace-nowrap bg-muted/30 px-2")} disabled={!historicalEditImageOptions.length || editImageSelectionFull} aria-label={copy.generator.selectHistoricalImage}>
+                      <ImagePlusIcon />
+                      <SelectValue placeholder={copy.generator.selectHistoricalImage} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {historicalEditImageOptions.length ? historicalEditImageOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value} className="min-h-14 items-center py-2 pr-3">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className="flex size-9 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30">
+                                {option.thumbnail?.src ? <img src={option.thumbnail.src} alt="" aria-hidden="true" className="h-full w-full object-cover object-center" /> : <span className="flex h-full w-full items-center justify-center text-muted-foreground"><ImageIcon className="size-4" /></span>}
+                              </span>
+                              <span className="min-w-0 truncate">{option.label}</span>
+                            </span>
+                          </SelectItem>
+                        )) : <SelectItem value="__empty" disabled>{copy.generator.noHistoricalImages}</SelectItem>}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
-              ) : (
-                <div className="flex min-h-24 flex-1 items-center justify-center px-3 py-2 text-center text-xs text-muted-foreground">{copy.generator.pasteImageHint}</div>
-              )}
+              </div>
             </div>
           </div>
         ) : null}
@@ -778,31 +832,7 @@ export function GeneratorPanel({
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pt-1">
         {mode === "edit" ? (
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <Button type="button" variant="outline" size="sm" className={cn(panelControlClassName, "!w-fit !min-w-0 shrink-0 px-2.5")} disabled={editImageSelectionFull} onClick={() => editImagesInputRef.current?.click()} aria-label={copy.generator.selectLocalImage}>
-              <ImagePlusIcon data-icon="inline-start" />{copy.generator.selectLocalImage}
-            </Button>
-            <Input id="editImages" ref={editImagesInputRef} type="file" accept="image/*" multiple disabled={editImageSelectionFull} onChange={handleEditImagesChange} className="hidden" />
             {editMask ? <Button type="button" variant="secondary" size="sm" className={cn(panelControlClassName, "!w-fit !min-w-0 shrink-0 px-2.5")} onClick={() => setEditMask(undefined)}><PencilIcon data-icon="inline-start" />清除遮罩</Button> : null}
-            <Select value={historicalEditImageValue} onValueChange={(value) => { void addHistoricalEditImage(value); }}>
-              <SelectTrigger id="historicalEditImages" size="sm" className={cn(panelSelectTriggerClassName, "!w-fit !min-w-0 shrink-0 bg-muted/30 px-2.5")} disabled={!historicalEditImageOptions.length || editImageSelectionFull} aria-label={copy.generator.selectHistoricalImage}>
-                <ImageIcon />
-                <SelectValue placeholder={copy.generator.selectHistoricalImage} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {historicalEditImageOptions.length ? historicalEditImageOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value} className="min-h-14 items-center py-2 pr-3">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="flex size-9 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30">
-                          {option.thumbnail?.src ? <img src={option.thumbnail.src} alt="" aria-hidden="true" className="h-full w-full object-cover object-center" /> : <span className="flex h-full w-full items-center justify-center text-muted-foreground"><ImageIcon className="size-4" /></span>}
-                        </span>
-                        <span className="min-w-0 truncate">{option.label}</span>
-                      </span>
-                    </SelectItem>
-                  )) : <SelectItem value="__empty" disabled>{copy.generator.noHistoricalImages}</SelectItem>}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
           </div>
         ) : null}
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
@@ -819,15 +849,15 @@ export function GeneratorPanel({
             </Button>
           ) : null}
           {mode === "edit" ? (
-            <Button type="submit" size="sm" disabled={imageModelMissing} className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
-              <ImagePlusIcon data-icon="inline-start" />
-              {imageModelMissing ? copy.generator.imageModelRequired : copy.generator.edits}
+             <Button type="submit" size="sm" disabled={apiKeyMissing || imageModelMissing} className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
+               <PlayIcon data-icon="inline-start" />
+               {apiKeyMissing ? copy.generator.apiKeyRequired : imageModelMissing ? copy.generator.imageModelRequired : copy.generator.edits}
             </Button>
           ) : (
             <>
-              <Button type="submit" size="sm" disabled={imageModelMissing} className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
+               <Button type="submit" size="sm" disabled={apiKeyMissing || imageModelMissing} className={cn(panelControlClassName, generationButtonFeedbackClassName, "!w-fit !min-w-20 px-3")}>
                 <PlayIcon data-icon="inline-start" />
-                {imageModelMissing ? copy.generator.imageModelRequired : copy.generator.generations}
+                 {apiKeyMissing ? copy.generator.apiKeyRequired : imageModelMissing ? copy.generator.imageModelRequired : copy.generator.generations}
               </Button>
             </>
           )}

@@ -130,7 +130,7 @@ export interface OpenAIProvider {
   asyncPollIntervalSeconds: number;
   asyncMaxPollAttempts: number;
 }
-export const BUILT_IN_PROVIDER_IDS = ["lingsu", "auttyt", "mhoo", "gemini"] as const;
+export const BUILT_IN_PROVIDER_IDS = ["aigw", "mhoo", "gemini", "lingsu", "auttyt"] as const;
 export function isBuiltInProvider(provider: Pick<OpenAIProvider, "id"> | null | undefined) {
   return Boolean(provider && BUILT_IN_PROVIDER_IDS.includes(provider.id as (typeof BUILT_IN_PROVIDER_IDS)[number]));
 }
@@ -190,10 +190,11 @@ function defaultProviderTransportConfig() {
 
 const defaultProvider = (value: Omit<OpenAIProvider, "videoModel"> & Partial<Pick<OpenAIProvider, "videoModel">>): OpenAIProvider => ({ ...value, videoModel: value.videoModel || "" });
 export const DEFAULT_OPENAI_PROVIDERS: OpenAIProvider[] = [
-  defaultProvider({ id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
-  defaultProvider({ id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
-  defaultProvider({ id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://api.mhoo.cc/v1beta", geminiApiKey: "", geminiModel: "gemini-3-pro-image-preview", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "aigw", name: "AIGW", protocol: "openai", baseUrl: "https://canvas.aigw.store/v1", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "mhoo", name: "MHOO", protocol: "openai", baseUrl: "https://api.mhoo.cc/v1", apiKey: "", generationsModel: "gpt-image-2.6", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://api.mhoo.cc/v1beta", geminiApiKey: "", geminiModel: "gemini-3-pro-image-preview", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
   defaultProvider({ id: "gemini", name: "MHOO", protocol: "gemini", baseUrl: "", apiKey: "", generationsModel: "gpt-image-2.5", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://api.mhoo.cc/v1beta", geminiApiKey: "", geminiModel: "nano-banana-2.1", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig(), videoModel: "" }),
+  defaultProvider({ id: "lingsu", name: "灵速", protocol: "openai", baseUrl: "https://lingsu.xyz/v1", apiKey: "", generationsModel: "gpt-image-2.6", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
+  defaultProvider({ id: "auttyt", name: "Auttyt", protocol: "openai", baseUrl: "https://www.auttyt.top/v1", apiKey: "", generationsModel: "gpt-image-2.6", editsModel: "", responsesModel: "gpt-5.4-mini", completionsModel: "gpt-5.4-mini", privateBaseUrl: "https://video.codepup.cn", privateApiKey: "", privateModel: "gpt-image-2", geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta", geminiApiKey: "", geminiModel: "gemini-2.5-flash-image", imageResponseMode: "auto", multiImageField: "auto", streamImages: false, streamPartialImages: 2, ...defaultProviderTransportConfig() }),
 ];
 export const KNOWN_REQUEST_STATUSES = ["queued", "running", "done", "error", "canceled"] as const;
 export type KnownRequestStatus = (typeof KNOWN_REQUEST_STATUSES)[number];
@@ -741,18 +742,27 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
   const fallback = isSettingsRecord(fallbackValues) ? fallbackValues : {};
   const source = Array.isArray(value) ? value : DEFAULT_OPENAI_PROVIDERS;
   const seen = new Set<string>();
-  return source.reduce<OpenAIProvider[]>((providers, item, index) => {
+  const providers = source.reduce<OpenAIProvider[]>((providers, item, index) => {
     if (!isSettingsRecord(item)) return providers;
     const rawId = String(item.id || `provider-${index + 1}`).trim();
     const id = rawId && !seen.has(rawId) ? rawId : `provider-${index + 1}-${providers.length + 1}`;
     seen.add(id);
+    const builtIn = DEFAULT_OPENAI_PROVIDERS.find((provider) => provider.id === id);
+    const rawBaseUrl = String(item.baseUrl || "").trim();
+    const baseUrl = id === "aigw" && rawBaseUrl === "https://canvas.aigw.store"
+      ? builtIn?.baseUrl || rawBaseUrl
+      : rawBaseUrl;
+    const rawGenerationsModel = String(item.generationsModel || fallback.generationsModel || fallback.model || "").trim();
+    const generationsModel = builtIn?.generationsModel === "gpt-image-2.6" && rawGenerationsModel === "gpt-image-2.5"
+      ? "gpt-image-2.6"
+      : rawGenerationsModel || builtIn?.generationsModel || DEFAULTS.generationsModel;
     providers.push({
       id,
       name: String(item.name || "未命名供应商").trim() || "未命名供应商",
       protocol: item.protocol === "gemini" ? "gemini" : "openai",
-      baseUrl: String(item.baseUrl || "").trim(),
+      baseUrl,
       apiKey: String(item.apiKey || "").trim(),
-      generationsModel: String(item.generationsModel || fallback.generationsModel || fallback.model || DEFAULTS.generationsModel).trim() || DEFAULTS.generationsModel,
+      generationsModel,
       editsModel: BUILT_IN_PROVIDER_IDS.includes(String(item.id || "") as (typeof BUILT_IN_PROVIDER_IDS)[number]) && String(item.editsModel || "").trim() === "gpt-image-2.5"
         ? ""
         : String(item.editsModel ?? fallback.editsModel ?? fallback.model ?? "").trim(),
@@ -784,6 +794,23 @@ function normalizeOpenAIProviders(value: unknown, fallbackValues: unknown = {}):
     });
     return providers;
   }, []);
+
+  if (source.length === 0) return providers;
+
+  for (const builtIn of DEFAULT_OPENAI_PROVIDERS) {
+    if (seen.has(builtIn.id)) continue;
+    providers.push({ ...builtIn });
+    seen.add(builtIn.id);
+  }
+
+  return providers.sort((left, right) => {
+    const leftIndex = BUILT_IN_PROVIDER_IDS.indexOf(left.id as (typeof BUILT_IN_PROVIDER_IDS)[number]);
+    const rightIndex = BUILT_IN_PROVIDER_IDS.indexOf(right.id as (typeof BUILT_IN_PROVIDER_IDS)[number]);
+    if (leftIndex === -1 && rightIndex === -1) return 0;
+    if (leftIndex === -1) return 1;
+    if (rightIndex === -1) return -1;
+    return leftIndex - rightIndex;
+  });
 }
 
 function privateImageDimensions(size: ImageSize | string | undefined) {

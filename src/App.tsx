@@ -524,6 +524,12 @@ export default function App() {
                 setVideoOpen(true);
                 setVideoPromptPrefill({ value: prompt, signal: Date.now() });
               }}
+               onProviderChange={(providerId) => {
+                 const provider = consoleState.settings.openaiProviders.find((item) => item.id === providerId);
+                 if (!provider || provider.id === consoleState.settings.activeOpenAIProviderId) return;
+                 consoleState.updateSettings("activeOpenAIProviderId", provider.id);
+                 toast.success(copy.settings.providerSwitched(provider.name || copy.settings.provider));
+               }}
             />
           </div>
           <div
@@ -559,6 +565,7 @@ export default function App() {
                   setProductSuiteOpen(false);
                   void handleAnnotateImage(value);
                 }}
+                onOpenMaskEditor={(image) => setMaskEditorTarget(image)}
                 requestRecords={consoleState.requestRecords}
               />
           </div>
@@ -601,7 +608,7 @@ export default function App() {
                   onVideoTaskCountChange={setVideoTaskCount}
                   onVideoTaskFailedCountChange={setVideoFailedCount}
                   onVideoSubmitted={() => setVideoOpen(true)}
-                  onVideoTaskSelect={() => setVideoOpen(true)}
+                  onVideoTaskSelect={() => { setVideoOpen(true); scrollToResultPanel(); }}
                   videoSelectionMode={imageSelectionMode}
                   selectedVideoTaskIds={selectedVideoTaskIds}
                   onToggleVideoTaskSelection={toggleVideoTaskSelection}

@@ -135,7 +135,7 @@ function RequestRow({
       className={cn(
         "relative grid min-h-22 w-full grid-cols-1 items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow]",
         "hover:border-foreground/15 hover:bg-muted/40",
-        selected && "border-foreground/20 bg-[oklch(0.985_0.006_255)]",
+        selected && "border-foreground/15 bg-muted/40",
       )}
     >
       <div className="grid w-full min-w-0 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3">
@@ -446,7 +446,7 @@ export function RequestListPanel({
             <Empty className="min-h-40 border">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <ImageIcon />
+                  <CheckCircle2Icon />
                 </EmptyMedia>
                 <EmptyTitle>{copy.filterEmptyText.all}</EmptyTitle>
               </EmptyHeader>
@@ -486,6 +486,15 @@ export function RequestListPanel({
                 </EmptyMedia>
                 <EmptyTitle>{copy.filterEmptyText[selectedRequestFilter]}</EmptyTitle>
               </EmptyHeader>
+             </Empty>
+           ) : resultMediaFilter === "videos" && !hasVideoTasks ? (
+             <Empty className="min-h-40 border">
+               <EmptyHeader>
+                 <EmptyMedia variant="icon">
+                   <AlertCircleIcon />
+                 </EmptyMedia>
+                 <EmptyTitle>{copy.generator.videoNoTasks}</EmptyTitle>
+               </EmptyHeader>
              </Empty>
            ) : null}
            </div>

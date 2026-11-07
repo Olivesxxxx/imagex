@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { BriefcaseBusinessIcon, CheckIcon, DownloadIcon, EyeIcon, ImageIcon, PencilRulerIcon, PlayIcon, PlusIcon, QuoteIcon, RefreshCwIcon, SaveIcon, Trash2Icon, UploadIcon, XIcon } from "lucide-react";
+import { BriefcaseBusinessIcon, CheckIcon, DownloadIcon, EyeIcon, ImageIcon, PencilIcon, PencilRulerIcon, PlayIcon, PlusIcon, QuoteIcon, RefreshCwIcon, SaveIcon, Trash2Icon, UploadIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,9 +15,10 @@ import { WorkflowHeaderControls } from "@/components/generator-panel";
 import { type ConnectionStatus } from "@/hooks/use-image-console";
 import { useI18n } from "@/lib/i18n";
 import { createDefaultProductSuiteSlots, createProductSuiteBatchId, createProductSuiteTask, deleteProductSuiteTask, DEVELOPMENT_PRODUCT_SUITE_TASK_ID, hashProductSuiteImage, loadProductSuiteTasks, productSuiteTaskFromTemplate, productSuiteTemplateJson, saveProductSuiteTask, type ProductSuiteAsset, type ProductSuiteSlotKey, type ProductSuiteTask } from "@/lib/product-suite";
-import { MAX_EDIT_INPUT_IMAGES, type AppSettings, type ConsoleMode, type ImageRequestRecord } from "@/lib/image-console";
+import { MAX_EDIT_INPUT_IMAGES, type AppSettings, type ConsoleMode, type EditInputImage, type ImageRequestRecord } from "@/lib/image-console";
 import { cn } from "@/lib/utils";
 import { Dialog as DialogPrimitive } from "radix-ui";
+import { SortablePreviewStrip } from "@/components/sortable-preview-strip";
 
 function assetFromFile(file: File): ProductSuiteAsset {
   return { blob: file, name: file.name, mimeType: file.type || "image/png" };
@@ -330,6 +332,8 @@ function AssetDropZone({
   previewUrls,
   onFiles,
   onRemove,
+  onReorder,
+  onEdit,
 }: {
   label: string;
   hint: string;
@@ -338,6 +342,8 @@ function AssetDropZone({
   previewUrls: string[];
   onFiles: (files: File[]) => void;
   onRemove: (index: number) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  onEdit: (index: number) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -376,7 +382,7 @@ function AssetDropZone({
         aria-label={label}
         tabIndex={0}
         className={cn(
-          "flex min-h-24 min-w-0 flex-col gap-2 rounded-md border border-dashed p-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          "flex h-[82px] min-h-[82px] max-h-[82px] min-w-0 flex-col gap-2 rounded-md border border-dashed border-border p-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
           dragActive ? "border-foreground/50 bg-muted/50" : "bg-muted/10",
         )}
         onPaste={handlePaste}
@@ -393,18 +399,25 @@ function AssetDropZone({
           addFiles(Array.from(event.dataTransfer.files));
         }}
       >
-        <div className="relative flex min-h-20 min-w-0 items-center gap-2 p-1">
+        <div className="relative flex h-16 min-h-16 min-w-0 items-center gap-2">
           {previewUrls.length ? (
-            <div className="standard-scrollbar flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
-              {previewUrls.map((previewUrl, index) => (
-                <div key={`${previewUrl}-${index}`} className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-background">
+            <SortablePreviewStrip
+              items={previewUrls}
+              getItemKey={(previewUrl) => previewUrl}
+              onReorder={onReorder}
+              itemSize={64}
+              className="standard-scrollbar min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1"
+              itemClassName="relative size-16 cursor-grab overflow-hidden rounded-md border border-border bg-muted/30 active:cursor-grabbing"
+              renderItem={(previewUrl, index) => (
+                <>
                   <button type="button" className="block size-full cursor-zoom-in" aria-label={`${label} ${index + 1}`} onClick={() => setPreviewIndex(index)}>
-                    <img src={previewUrl} alt="" className="h-full w-full object-cover" />
+                    <img src={previewUrl} alt="" draggable={false} className="h-full w-full object-cover" />
                   </button>
-                  <Button type="button" variant="secondary" size="icon-xs" className="absolute right-1 top-1 shadow-sm" aria-label={index === 0 ? removeLabel : `${removeLabel} ${index + 1}`} onClick={() => onRemove(index)}><XIcon /></Button>
-                </div>
-              ))}
-            </div>
+                  <Button type="button" variant="secondary" size="icon-xs" className="absolute right-1 top-1 rounded-full bg-background/90 shadow-none" aria-label={index === 0 ? removeLabel : `${removeLabel} ${index + 1}`} onClick={() => onRemove(index)}><XIcon /></Button>
+                  <Button type="button" variant="secondary" size="icon-xs" className="absolute bottom-1 right-1 rounded-full bg-background/90 shadow-none" aria-label={`${label} ${index + 1} edit`} onClick={() => onEdit(index)}><PencilIcon /></Button>
+                </>
+              )}
+            />
           ) : <div className="flex min-h-16 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><UploadIcon className="size-5 shrink-0" /><span>{hint}</span></div>}
           <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => inputRef.current?.click()}><UploadIcon data-icon="inline-start" />{chooseLabel}</Button>
         </div>
@@ -453,6 +466,7 @@ export function ProductSuitePanel({
   onClearVersions,
   onUseAsReference,
   onAnnotateResult,
+  onOpenMaskEditor,
   requestRecords,
 }: {
   open: boolean;
@@ -474,15 +488,19 @@ export function ProductSuitePanel({
   onClearVersions: (taskId: string, slotKey?: ProductSuiteSlotKey, batchId?: string) => void;
   onUseAsReference: (requestId: string) => void;
   onAnnotateResult: (requestId: string) => void;
+  onOpenMaskEditor: (image: EditInputImage) => void;
   requestRecords: ImageRequestRecord[];
 }) {
   const { copy, language } = useI18n();
   const suiteCopy = copy.productSuite;
+  const apiKeyMissing = !(settings.protocol === "gemini" ? settings.geminiApiKey.trim() : settings.apiKey.trim());
   const [tasks, setTasks] = useState<ProductSuiteTask[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProductSuiteTask | null>(null);
   const [productImageUrls, setProductImageUrls] = useState<string[]>([]);
   const [brandAssetUrls, setBrandAssetUrls] = useState<string[]>([]);
+  const productAssetUrlMapRef = useRef(new Map<Blob, string>());
+  const brandAssetUrlMapRef = useRef(new Map<Blob, string>());
   const [loading, setLoading] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -543,16 +561,51 @@ export function ProductSuitePanel({
   }, [language, open, settings.developmentMode]);
 
   useEffect(() => {
-    const urls = draft ? productAssets(draft).map((asset) => URL.createObjectURL(asset.blob)) : [];
+    const assets = draft ? productAssets(draft) : [];
+    const map = productAssetUrlMapRef.current;
+    const activeBlobs = new Set(assets.map((asset) => asset.blob));
+    for (const [blob, url] of map) {
+      if (!activeBlobs.has(blob)) {
+        URL.revokeObjectURL(url);
+        map.delete(blob);
+      }
+    }
+    const urls = assets.map((asset) => {
+      const existing = map.get(asset.blob);
+      if (existing) return existing;
+      const url = URL.createObjectURL(asset.blob);
+      map.set(asset.blob, url);
+      return url;
+    });
     setProductImageUrls(urls);
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [draft?.productImages, draft?.productImage]);
 
   useEffect(() => {
-    const urls = draft ? brandAssets(draft).map((asset) => URL.createObjectURL(asset.blob)) : [];
+    const assets = draft ? brandAssets(draft) : [];
+    const map = brandAssetUrlMapRef.current;
+    const activeBlobs = new Set(assets.map((asset) => asset.blob));
+    for (const [blob, url] of map) {
+      if (!activeBlobs.has(blob)) {
+        URL.revokeObjectURL(url);
+        map.delete(blob);
+      }
+    }
+    const urls = assets.map((asset) => {
+      const existing = map.get(asset.blob);
+      if (existing) return existing;
+      const url = URL.createObjectURL(asset.blob);
+      map.set(asset.blob, url);
+      return url;
+    });
     setBrandAssetUrls(urls);
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [draft?.brandAssets, draft?.brandAsset]);
+
+  useEffect(() => () => {
+    for (const url of productAssetUrlMapRef.current.values()) URL.revokeObjectURL(url);
+    for (const url of brandAssetUrlMapRef.current.values()) URL.revokeObjectURL(url);
+    productAssetUrlMapRef.current.clear();
+    brandAssetUrlMapRef.current.clear();
+  }, []);
 
   useEffect(() => {
     setViewedVersionBySlot({});
@@ -736,6 +789,36 @@ export function ProductSuitePanel({
       return;
     }
     setPendingProductImageChange({ assets, hash });
+  }
+
+  async function reorderAssets(fromIndex: number, toIndex: number, field: "productImage" | "brandAsset") {
+    if (!draft || fromIndex === toIndex) return;
+    const current = field === "productImage" ? productAssets(draft) : brandAssets(draft);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= current.length || toIndex >= current.length) return;
+    const next = [...current];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    if (field === "productImage") {
+      await setProductAssets(next, { suppressBatchPrompt: true });
+      return;
+    }
+    updateDraft((task) => ({ ...task, brandAsset: next[0] || null, brandAssets: next }));
+  }
+
+  function editAsset(index: number, field: "productImage" | "brandAsset") {
+    if (!draft) return;
+    const assets = field === "productImage" ? productAssets(draft) : brandAssets(draft);
+    const urls = field === "productImage" ? productImageUrls : brandAssetUrls;
+    const asset = assets[index];
+    const src = urls[index];
+    if (!asset || !src) return;
+    onOpenMaskEditor({
+      src,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      blob: asset.blob,
+      sourceKey: `product-suite:${draft.id}:${field}:${index + 1}`,
+    });
   }
 
   async function removeAsset(index: number, field: "productImage" | "brandAsset") {
@@ -1137,6 +1220,8 @@ export function ProductSuitePanel({
                     previewUrls={productImageUrls}
                     onFiles={(files) => void setAssetFiles(files, "productImage")}
                     onRemove={(index) => void removeAsset(index, "productImage")}
+                    onReorder={(fromIndex, toIndex) => void reorderAssets(fromIndex, toIndex, "productImage")}
+                    onEdit={(index) => editAsset(index, "productImage")}
                   />
                   <AssetDropZone
                     label={suiteCopy.brandAsset}
@@ -1146,6 +1231,8 @@ export function ProductSuitePanel({
                     previewUrls={brandAssetUrls}
                     onFiles={(files) => void setAssetFiles(files, "brandAsset")}
                     onRemove={(index) => void removeAsset(index, "brandAsset")}
+                    onReorder={(fromIndex, toIndex) => void reorderAssets(fromIndex, toIndex, "brandAsset")}
+                    onEdit={(index) => editAsset(index, "brandAsset")}
                   />
                 </div>
               </div>
@@ -1169,15 +1256,11 @@ export function ProductSuitePanel({
                 <div className="grid gap-1.5 sm:col-span-2"><label htmlFor="product-suite-consistency" className="text-xs font-medium text-muted-foreground">{suiteCopy.consistencyRequirement}</label><Textarea id="product-suite-consistency" value={draft.info.consistencyRequirement} onChange={(event) => updateDraft((current) => ({ ...current, info: { ...current.info, consistencyRequirement: event.target.value } }))} placeholder={suiteCopy.consistencyRequirementPlaceholder} rows={2} className="standard-scrollbar" /></div>
               </div>
 
-              <section className="grid min-w-0 gap-3 rounded-lg border bg-muted/10 p-3">
+              <section className="mt-1.5 grid min-w-0 gap-1.5">
                 <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">{suiteCopy.slotsTitle}</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={addCustomSlot}>
-                      <PlusIcon data-icon="inline-start" />{suiteCopy.addCustomSlot}
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{suiteCopy.slotsDescription} {suiteCopy.referenceHelp}</p>
+                  <p className="min-w-0 text-xs text-muted-foreground">
+                    {suiteCopy.slotsDescription} <span className="font-semibold text-blue-600 dark:text-blue-400">{suiteCopy.referenceHelp}</span>
+                  </p>
                 </div>
                 <div className="grid min-w-0 items-start gap-3">
                   {draft.slots.map((slot) => {
@@ -1240,19 +1323,23 @@ export function ProductSuitePanel({
                             </span>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
-                            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <input className="size-4 accent-foreground" type="checkbox" checked={slot.enabled} onChange={(event) => toggleSlot(slot.key, event.currentTarget.checked)} />
-                              {suiteCopy.slotEnabled}
-                            </label>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => resetSlot(slot.key)}>{suiteCopy.resetTemplate}</Button>
+                            <Button type="button" variant="outline" size="sm" className="h-8 min-h-8 max-h-8 rounded-md px-3 text-xs font-medium" onClick={() => resetSlot(slot.key)}>
+                              <RefreshCwIcon data-icon="inline-start" />{suiteCopy.resetTemplate}
+                            </Button>
                             {slot.key.startsWith("custom-") ? (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeCustomSlot(slot.key)}>
+                              <Button type="button" variant="outline" size="sm" className="h-8 min-h-8 max-h-8 rounded-md px-3 text-xs font-medium" onClick={() => removeCustomSlot(slot.key)}>
                                 <XIcon data-icon="inline-start" />{suiteCopy.removeCustomSlot}
                               </Button>
                             ) : null}
-                            <Button type="button" variant="ghost" size="sm" disabled={!requestHistory.length} onClick={() => setClearVersionsTarget(slot.key)}>
+                            <Button type="button" variant="outline" size="sm" className="h-8 min-h-8 max-h-8 rounded-md px-3 text-xs font-medium" disabled={!requestHistory.length} onClick={() => setClearVersionsTarget(slot.key)}>
                               <Trash2Icon data-icon="inline-start" />{suiteCopy.clearVersionHistory}
                             </Button>
+                            <Checkbox
+                              checked={slot.enabled}
+                              className="bg-background data-[state=checked]:bg-primary"
+                              onCheckedChange={(checked) => toggleSlot(slot.key, checked === true)}
+                              aria-label={suiteCopy.slotEnabled}
+                            />
                           </div>
                         </div>
                 <div className="grid min-w-0 gap-3">
@@ -1359,8 +1446,12 @@ export function ProductSuitePanel({
                     );
                   })}
                 </div>
+                <div className="mt-1.5 flex justify-end">
+                  <Button type="button" variant="outline" size="sm" onClick={addCustomSlot}>
+                    <PlusIcon data-icon="inline-start" />{suiteCopy.addCustomSlot}
+                  </Button>
+                </div>
               </section>
-              <p className="text-xs text-muted-foreground">{suiteCopy.nextStepHint}</p>
               <p className="sr-only" aria-live="polite">{activeTaskName}</p>
             </section>
           ) : (
@@ -1389,7 +1480,7 @@ export function ProductSuitePanel({
                 <DownloadIcon data-icon="inline-start" />{exportingSuite ? suiteCopy.exportingSuite : suiteCopy.exportSuite}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-8 min-h-8 max-h-8 rounded-md px-3 text-xs" onClick={() => void saveDraft()}><SaveIcon data-icon="inline-start" />{suiteCopy.saveTask}</Button>
-              <Button type="button" size="sm" className="h-8 min-h-8 max-h-8 rounded-md px-3 text-xs" onClick={openSubmitConfirmation}><PlayIcon data-icon="inline-start" />{suiteCopy.generateSuite}</Button>
+               <Button type="button" size="sm" disabled={apiKeyMissing} className="h-8 min-h-8 max-h-8 rounded-md px-3 text-xs" onClick={openSubmitConfirmation}><PlayIcon data-icon="inline-start" />{apiKeyMissing ? copy.generator.apiKeyRequired : suiteCopy.generateSuite}</Button>
             </div>
           </DialogFooter>
         </section>

@@ -13,10 +13,58 @@ import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 import type { ResultMediaFilter } from "@/components/request-list-panel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SortablePreviewStrip } from "@/components/sortable-preview-strip";
 
 const MAX_VIDEO_REFERENCE_IMAGES = 5;
 const MAX_LINGSU_REFERENCE_URLS = 15;
+const DEVELOPMENT_VIDEO_PREFIX = "imagex-development-video-";
 type VideoReferenceImage = { file: File; src: string; name: string };
+
+const DEVELOPMENT_VIDEO_TASKS: VideoTask[] = [
+  {
+    id: `${DEVELOPMENT_VIDEO_PREFIX}completed`,
+    title: "开发示例-已完成",
+    providerId: "development-video",
+    model: "development-video-model",
+    prompt: "开发模式视频示例：产品展示镜头，缓慢推进，保持主体一致。",
+    duration: "8",
+    aspectRatio: "16:9",
+    quality: "1080p",
+    status: "completed",
+    createdAt: Date.now() - 6 * 60 * 1000,
+    updatedAt: Date.now() - 5 * 60 * 1000,
+    referenceImageCount: 2,
+  },
+  {
+    id: `${DEVELOPMENT_VIDEO_PREFIX}running`,
+    title: "开发示例-处理中",
+    providerId: "development-video",
+    model: "development-video-model",
+    prompt: "开发模式视频示例：展示产品细节和材质变化。",
+    duration: "4",
+    aspectRatio: "9:16",
+    quality: "720p",
+    status: "running",
+    createdAt: Date.now() - 80 * 1000,
+    updatedAt: Date.now() - 10 * 1000,
+    startedAt: Date.now() - 70 * 1000,
+    referenceImageCount: 1,
+  },
+  {
+    id: `${DEVELOPMENT_VIDEO_PREFIX}failed`,
+    title: "开发示例-失败",
+    providerId: "development-video",
+    model: "development-video-model",
+    prompt: "开发模式视频示例：失败状态和重新生成入口。",
+    duration: "12",
+    aspectRatio: "1:1",
+    quality: "480p",
+    status: "failed",
+    createdAt: Date.now() - 14 * 60 * 1000,
+    updatedAt: Date.now() - 13 * 60 * 1000,
+    error: "开发模式示例失败任务。",
+  },
+];
 
 export interface VideoTaskActions {
   clearFailed: () => void;
@@ -39,7 +87,7 @@ function readTasks(): VideoTask[] {
 
 function saveTasks(tasks: VideoTask[]) {
   try {
-    localStorage.setItem(VIDEO_TASKS_STORAGE_KEY, JSON.stringify(tasks));
+    localStorage.setItem(VIDEO_TASKS_STORAGE_KEY, JSON.stringify(tasks.filter((task) => !task.id.startsWith(DEVELOPMENT_VIDEO_PREFIX))));
   } catch {
     toast.error("Unable to save video task history in this browser.");
   }
@@ -83,6 +131,13 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   const canSubmit = Boolean(prompt.trim() && model && apiKey && baseUrl && isOpenAI);
   const orderedTasks = useMemo(() => [...tasks].sort((a, b) => b.createdAt - a.createdAt), [tasks]);
   const selectedTask = orderedTasks.find((task) => task.id === selectedTaskId) || orderedTasks[0] || null;
+
+  useEffect(() => {
+    setTasks((current) => {
+      const realTasks = current.filter((task) => !task.id.startsWith(DEVELOPMENT_VIDEO_PREFIX));
+      return settings.developmentMode ? [...DEVELOPMENT_VIDEO_TASKS, ...realTasks] : realTasks;
+    });
+  }, [settings.developmentMode]);
 
   useEffect(() => {
     if (videoPromptPrefill?.signal) setPrompt(videoPromptPrefill.value);
@@ -320,10 +375,15 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
     }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     if (imageFiles.length !== files.length) toast.error(language === "en" ? "Only image files can be used as video references." : "视频参考图只能选择图片文件。");
-    const remaining = Math.max(0, MAX_VIDEO_REFERENCE_IMAGES - referenceImages.length);
-    if (imageFiles.length > remaining) toast.error(language === "en" ? `Use up to ${MAX_VIDEO_REFERENCE_IMAGES} reference images.` : `视频最多使用 ${MAX_VIDEO_REFERENCE_IMAGES} 张参考图。`);
-    const next = imageFiles.slice(0, remaining).map((file) => ({ file, src: URL.createObjectURL(file), name: file.name }));
-    if (next.length) setReferenceImages((current) => [...current, ...next]);
+    const next = imageFiles.map((file) => ({ file, src: URL.createObjectURL(file), name: file.name }));
+    setReferenceImages((current) => {
+      const remaining = Math.max(0, MAX_VIDEO_REFERENCE_IMAGES - current.length);
+      if (next.length > remaining) {
+        toast.error(language === "en" ? `Use up to ${MAX_VIDEO_REFERENCE_IMAGES} reference images.` : `视频最多使用 ${MAX_VIDEO_REFERENCE_IMAGES} 张参考图。`);
+        next.slice(remaining).forEach((image) => URL.revokeObjectURL(image.src));
+      }
+      return remaining > 0 ? [...current, ...next.slice(0, remaining)] : current;
+    });
   }
 
   function addReferenceUrl() {
@@ -363,10 +423,14 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
   }
 
   function handleReferencePaste(event: ClipboardEvent<HTMLDivElement>) {
-    const files = Array.from(event.clipboardData.items)
-      .filter((item) => item.type.startsWith("image/"))
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => Boolean(file));
+    if (event.defaultPrevented) return;
+    const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    if (!files.length) {
+      files.push(...Array.from(event.clipboardData.items)
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file)));
+    }
     if (!files.length) return;
     event.preventDefault();
     addReferenceFiles(files);
@@ -488,7 +552,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
           aria-label={language === "en" ? "Video reference images" : "视频参考图"}
           tabIndex={0}
           onPaste={handleReferencePaste}
-          onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+           onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
           onDrop={(event) => { event.preventDefault(); addReferenceFiles(Array.from(event.dataTransfer.files)); }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -496,18 +560,30 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
             <Button type="button" variant="outline" size="sm" className="!h-7 !min-h-7 !max-h-7 px-2 text-xs" disabled={referenceImages.length >= MAX_VIDEO_REFERENCE_IMAGES} onClick={() => referenceInputRef.current?.click()}><ImagePlusIcon data-icon="inline-start" />{language === "en" ? "Add" : "添加"}</Button>
             <input ref={referenceInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { addReferenceFiles(Array.from(event.currentTarget.files || [])); event.currentTarget.value = ""; }} />
           </div>
-          {referenceImages.length ? <div className="grid grid-cols-5 gap-1.5">
-            {referenceImages.map((image, index) => <div key={`${image.name}-${index}`} className="relative aspect-square overflow-hidden rounded border border-border bg-background">
-              <img src={image.src} alt="" aria-hidden="true" className="h-full w-full object-cover" />
-              <Button type="button" variant="secondary" size="icon-xs" className="absolute right-0.5 top-0.5 rounded-full bg-background/90" aria-label={`${language === "en" ? "Remove reference image" : "移除参考图"} ${index + 1}`} onClick={() => removeReferenceImage(index)}><XIcon /></Button>
-            </div>)}
-          </div> : <span className="text-xs text-muted-foreground">{isLingsu
+          {referenceImages.length ? <SortablePreviewStrip
+            items={referenceImages}
+            getItemKey={(image) => `${image.name}-${image.file.lastModified}-${image.file.size}`}
+            onReorder={(fromIndex, toIndex) => setReferenceImages((current) => {
+              if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.length || toIndex >= current.length) return current;
+              const next = [...current];
+              const [moved] = next.splice(fromIndex, 1);
+              next.splice(toIndex, 0, moved);
+              return next;
+            })}
+            className="standard-scrollbar min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden"
+            itemClassName="relative size-12 cursor-grab overflow-hidden rounded border border-border bg-background active:cursor-grabbing"
+            renderItem={(image, index) => (
+              <>
+                <img src={image.src} alt="" aria-hidden="true" draggable={false} className="h-full w-full object-cover" />
+                <Button type="button" variant="secondary" size="icon-xs" className="absolute right-0.5 top-0.5 rounded-full bg-background/90" aria-label={`${language === "en" ? "Remove reference image" : "移除参考图"} ${index + 1}`} onClick={() => removeReferenceImage(index)}><XIcon /></Button>
+              </>
+            )}
+          /> : <span className="text-xs text-muted-foreground">{isLingsu
             ? (language === "en" ? "Lingsu requires public HTTP(S) image URLs for references; local uploads are unavailable." : "灵速参考图需要公开的 HTTP(S) 图片地址，当前本地上传图片无法直接发送。")
             : (language === "en" ? "Optional. Drop or paste images here; providers must support the image[] video field." : "可选。可将图片拖入或粘贴到这里；供应商需要支持视频请求的 image[] 字段。")}</span>}
         </div>}
       </section>
       {taskListTarget && resultMediaFilter !== "images" ? createPortal(<div className="contents">
-        {!orderedTasks.length ? <p className="px-1 py-1.5 text-xs text-muted-foreground">{copy.generator.videoNoTasks}</p> : null}
         {orderedTasks.map((task) => {
           const videoUrl = mediaUrls[task.id] || task.url;
           const active = activeIds.has(task.id);
@@ -517,7 +593,7 @@ export function VideoGenerationPanel({ settings, duration, aspectRatio, quality,
             setSelectedTaskId(task.id);
             onTaskSelect?.(task);
           };
-          return <article key={task.id} className={`relative grid min-h-22 w-full grid-cols-1 items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow] hover:border-foreground/15 hover:bg-muted/40 ${selected ? "border-foreground/20 bg-[oklch(0.985_0.006_255)]" : ""}`} onClick={selectTask}>
+          return <article key={task.id} className={`relative grid min-h-22 w-full grid-cols-1 items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-2 text-card-foreground transition-[border-color,background-color,box-shadow] hover:border-foreground/15 hover:bg-muted/40 ${selected ? "border-foreground/15 bg-muted/40" : ""}`} onClick={selectTask}>
             <div className="grid w-full min-w-0 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3">
               <div className="relative size-24 shrink-0">
                 <button type="button" className="flex size-24 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-border bg-black text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); selectTask(); }} aria-label={`${language === "en" ? "View video result" : "查看视频结果"} ${task.id}`}>

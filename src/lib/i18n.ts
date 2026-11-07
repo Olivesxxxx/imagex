@@ -305,6 +305,7 @@ type Copy = {
     videoPromptPlaceholder: string;
     videoModelRequired: string;
     imageModelRequired: string;
+    apiKeyRequired: string;
     videoSubmit: string;
     videoCancel: string;
     videoDuration: string;
@@ -703,7 +704,7 @@ const COPY: Record<Language, Copy> = {
     requestStatusLabels: {
       queued: "排队中",
       running: "生成中",
-      done: "完成",
+      done: "已完成",
       error: "失败",
       canceled: "取消",
     },
@@ -780,6 +781,7 @@ const COPY: Record<Language, Copy> = {
       videoPromptPlaceholder: "描述你想生成的视频内容、动作、镜头和氛围",
       videoModelRequired: "请先为当前供应商填写视频模型",
       imageModelRequired: "请先为当前供应商填写图片模型",
+      apiKeyRequired: "请先配置API Key",
       videoSubmit: "生成视频",
       videoCancel: "停止轮询",
       videoDuration: "时长",
@@ -1296,6 +1298,7 @@ const COPY: Record<Language, Copy> = {
       videoPromptPlaceholder: "Describe the video, motion, camera, and mood you want to generate",
       videoModelRequired: "Enter a video model for the current provider first",
       imageModelRequired: "Enter an image model for the current provider first",
+      apiKeyRequired: "Configure the API key first",
       videoSubmit: "Generate video",
       videoCancel: "Stop polling",
       videoDuration: "Duration",

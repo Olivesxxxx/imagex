@@ -17,6 +17,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   imageDownloadName,
@@ -33,6 +34,16 @@ import {
 import { getCopy, useI18n, type Language } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { createZipBlob, type ZipFileEntry } from "@/lib/zip";
+
+type ProtocolIconProps = { className?: string; "aria-hidden"?: boolean | "true" | "false" };
+
+function OpenAIProtocolIcon({ className, "aria-hidden": ariaHidden }: ProtocolIconProps) {
+  return <svg viewBox="0 0 260 260" aria-hidden={ariaHidden} className={className} fill="currentColor"><path d="M239.184 106.203a64.72 64.72 0 0 0-5.576-53.103C219.452 28.459 191 15.784 163.213 21.74A65.586 65.586 0 0 0 52.096 45.22a64.72 64.72 0 0 0-43.23 31.36c-14.31 24.602-11.061 55.634 8.033 76.74a64.67 64.67 0 0 0 5.525 53.102c14.174 24.65 42.644 37.324 70.446 31.36a64.72 64.72 0 0 0 48.754 21.744c28.481.025 53.714-18.361 62.414-45.481a64.77 64.77 0 0 0 43.229-31.36c14.137-24.558 10.875-55.423-8.083-76.483m-97.56 136.338a48.4 48.4 0 0 1-31.105-11.255l1.535-.87l51.67-29.825a8.6 8.6 0 0 0 4.247-7.367v-72.85l21.845 12.636c.218.111.37.32.409.563v60.367c-.056 26.818-21.783 48.545-48.601 48.601M37.158 197.93a48.35 48.35 0 0 1-5.781-32.589l1.534.921l51.722 29.826a8.34 8.34 0 0 0 8.441 0l63.181-36.425v25.221a.87.87 0 0 1-.358.665l-52.335 30.184c-23.257 13.398-52.97 5.431-66.404-17.803M23.549 85.38a48.5 48.5 0 0 1 25.58-21.333v61.39a8.29 8.29 0 0 0 4.195 7.316l62.874 36.272l-21.845 12.636a.82.82 0 0 1-.767 0L41.353 151.53c-23.211-13.454-31.171-43.144-17.804-66.405zm179.466 41.695l-63.08-36.63L161.73 77.86a.82.82 0 0 1 .768 0l52.233 30.184a48.6 48.6 0 0 1-7.316 87.635v-61.391a8.54 8.54 0 0 0-4.4-7.213m21.742-32.69l-1.535-.922l-51.619-30.081a8.39 8.39 0 0 0-8.492 0L99.98 99.808V74.587a.72.72 0 0 1 .307-.665l52.233-30.133a48.652 48.652 0 0 1 72.236 50.391zM88.061 139.097l-21.845-12.585a.87.87 0 0 1-.41-.614V65.685a48.652 48.652 0 0 1 79.757-37.346l-1.535.87l-51.67 29.825a8.6 8.6 0 0 0-4.246 7.367z" /></svg>;
+}
+
+function GeminiProtocolIcon({ className, "aria-hidden": ariaHidden }: ProtocolIconProps) {
+  return <svg viewBox="0 0 24 24" aria-hidden={ariaHidden} className={className} fill="currentColor"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" /></svg>;
+}
 import type { ConnectionStatus } from "@/hooks/use-image-console";
 import { videoDownloadName, type VideoTask } from "@/lib/video";
 
@@ -433,6 +444,7 @@ export function ResultPanel({
   videoOpen,
   videoResult,
   onReuseVideoPrompt,
+  onProviderChange,
 }: {
   selectedRequest: ImageRequestRecord | null;
   selectedRequestDetailLoadingId: string | null;
@@ -450,6 +462,7 @@ export function ResultPanel({
   videoOpen: boolean;
   videoResult: { task: VideoTask | null; url?: string };
   onReuseVideoPrompt: (prompt: string) => void;
+  onProviderChange: (providerId: string) => void;
 }) {
   const { copy, language } = useI18n();
   const canDownload = selectedRequest?.status === "done";
@@ -469,6 +482,8 @@ export function ResultPanel({
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId);
   const providerName = activeProvider?.name || (language === "en" ? "Provider" : "供应商");
   const protocolLabel = settings.protocol === "gemini" ? "Gemini" : "OpenAI";
+  const ProtocolIcon = settings.protocol === "gemini" ? GeminiProtocolIcon : OpenAIProtocolIcon;
+  const protocolIconClassName = settings.protocol === "gemini" ? "text-blue-500" : "text-emerald-600";
   const appSettings = settings as AppSettings;
   const apiUrl = (settings.protocol === "gemini" ? appSettings.geminiBaseUrl : settings.baseUrl).trim();
   const apiKey = (settings.protocol === "gemini" ? appSettings.geminiApiKey : appSettings.apiKey).trim();
@@ -517,7 +532,7 @@ export function ResultPanel({
       ? `${latency} ms`
       : copy.requestCardStatus.latencyUnavailable;
   const availability = configurationIssue
-    ? { label: `${copy.requestCardStatus.availabilityUnconfigured} · ${configurationIssue}`, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
+    ? { label: `${copy.requestCardStatus.availabilityUnconfigured}${language === "en" ? " " : ""}${configurationIssue}`, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
     : testConnectionStatus.tone === "error" || latencyState === "unavailable"
     ? { label: copy.requestCardStatus.latencyUnavailable, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
     : latencyState === "measuring" || testConnectionStatus.tone === "busy"
@@ -544,37 +559,72 @@ export function ResultPanel({
     >
       <h2 className="sr-only">{copy.resultSectionLabel}</h2>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-16 flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-1">
-          <div className="flex min-w-0 flex-1 flex-col gap-2 self-start">
-            <strong className="block min-w-0 truncate text-sm font-semibold leading-normal">
+        <div className="flex min-h-16 flex-wrap items-start justify-between gap-3 px-3 pt-3 pb-0">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 self-start">
+            <span className="flex h-8 w-fit min-w-0 max-w-full items-center rounded-md border border-input bg-background px-3 text-sm font-semibold leading-normal shadow-xs">
+              <span className="min-w-0 truncate">
               {showingVideo ? (videoResult.task ? `${copy.generator.video} · ${copy.generator.videoStatus[videoResult.task.status]}` : copy.generator.video) : (selectedRequest?.title || copy.requestCardStatus.unselectedTitle)}
-            </strong>
-            <span className="block min-w-0 truncate text-xs font-medium leading-normal text-muted-foreground" title={showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}>{showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}</span>
-          </div>
-          <div className="flex min-w-0 flex-col items-end gap-2 self-start">
-            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 text-sm font-semibold leading-normal">
-              <span className="max-w-full truncate" title={`${providerName} · ${protocolLabel}`}>{providerName} · {protocolLabel}</span>
-              <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${availability.className}`}>{availability.label}</span>
-            </div>
-            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-medium leading-normal text-muted-foreground tabular-nums">
-              <span>{copy.settings.concurrency} {settings.requestConcurrency}</span>
-              <span>{copy.requestCardStatus.interval} {settings.requestIntervalSeconds}s</span>
-              <span className={latencyToneClass(latencyState, latency)}>
-                {copy.requestCardStatus.latency} {latencyLabel}
               </span>
+            </span>
+            <span className="flex h-8 min-w-0 items-center truncate text-xs font-medium leading-normal text-muted-foreground" title={showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}>{showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}</span>
+          </div>
+          <div className="flex min-w-0 flex-col items-end gap-0.5 self-start">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3 text-sm font-semibold leading-normal">
+              <Select value={activeProvider?.id || ""} onValueChange={onProviderChange}>
+                <SelectTrigger
+                  size="sm"
+                  className="h-8 max-w-full min-w-0 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-semibold shadow-xs hover:bg-muted/50 focus-visible:ring-1"
+                  aria-label={copy.settings.provider}
+                  title={`${providerName} · ${protocolLabel}`}
+                >
+                  <SelectValue placeholder={providerName}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{providerName}</span>
+                      <span aria-hidden="true">·</span>
+                      <ProtocolIcon aria-hidden="true" className={`size-4 shrink-0 ${protocolIconClassName}`} />
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="end" className="min-w-56">
+                  {settings.openaiProviders.map((provider) => {
+                    const providerProtocol = provider.protocol === "gemini" ? copy.settings.geminiProtocol : copy.settings.openAiProtocol;
+                    return (
+                      <SelectItem key={provider.id} value={provider.id}>
+                        <span className="truncate">{provider.name || copy.settings.provider} · {providerProtocol}</span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-xs" className="size-5" disabled={Boolean(configurationIssue) || latencyState === "measuring" || testConnectionStatus.tone === "busy"} onClick={() => void onTestConnection()} aria-label={copy.requestCardStatus.testConnection}>
-                    <RefreshCwIcon className={latencyState === "measuring" ? "animate-spin" : undefined} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={`h-8 shrink-0 rounded-md border px-3 text-sm font-semibold shadow-xs ${availability.className}`}
+                    disabled={Boolean(configurationIssue) || latencyState === "measuring" || testConnectionStatus.tone === "busy"}
+                    onClick={() => void onTestConnection()}
+                    aria-label={`${availability.label}${apiKey ? ` · ${latencyLabel}` : ""}`}
+                  >
+                    {availability.label}
+                    {apiKey ? <><span aria-hidden="true" className="mx-1.5">·</span><span className="tabular-nums">{latencyLabel}</span><RefreshCwIcon className={`ml-1.5 size-3.5 ${latencyState === "measuring" ? "animate-spin" : ""}`} /></> : null}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{copy.requestCardStatus.testConnection}</TooltipContent>
               </Tooltip>
             </div>
+            <div className="flex min-h-8 min-w-0 max-w-full flex-wrap items-center justify-end gap-2 text-xs font-medium leading-normal text-muted-foreground tabular-nums">
+              <span>{settings.protocol === "gemini" ? appSettings.geminiModel : activeProvider?.generationsModel || "-"}</span>
+              <span aria-hidden="true">·</span>
+              <span>{copy.settings.concurrency}{settings.requestConcurrency}</span>
+              <span aria-hidden="true">·</span>
+              <span>{copy.requestCardStatus.interval}{settings.requestIntervalSeconds}s</span>
+            </div>
           </div>
           </div>
 
-        <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden px-3 pt-1 pb-3">
+        <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden px-3 pt-0 pb-3">
            {showingVideo ? <VideoGallery task={videoResult.task} url={videoResult.url} /> : <Gallery request={selectedRequest} loading={selectedRequestDetailLoading} onEditImage={onEditImage} onAnnotateImage={onAnnotateImage} previewTarget={previewTarget} />}
          </div>
          {showingVideo ? <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-3">

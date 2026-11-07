@@ -102,12 +102,6 @@ export function SettingsDialog({
     setProviderDeleteConfirmOpen(false);
   }
 
-  function selectProvider(provider: OpenAIProvider) {
-    if (provider.id === settings.activeOpenAIProviderId) return;
-    updateSettings("activeOpenAIProviderId", provider.id);
-    toast.success(copy.settings.providerSwitched(provider.name || copy.settings.provider));
-  }
-
   function restoreProviderDefaults() {
     if (!activeProvider) return;
     const builtIn = DEFAULT_OPENAI_PROVIDERS.find((provider) => provider.id === activeProvider.id);
@@ -161,12 +155,12 @@ export function SettingsDialog({
                       const address = provider.protocol === "gemini" ? provider.geminiBaseUrl : provider.baseUrl;
                       const protocolAccent = provider.protocol === "gemini" ? "border-l-emerald-500" : "border-l-neutral-900";
                       return (
-                        <Button key={provider.id} type="button" variant={selected ? "default" : "ghost"} size="sm" className={`h-auto min-w-0 justify-start border-l-4 px-2 py-2 text-left ${protocolAccent}`} aria-pressed={selected} onClick={() => selectProvider(provider)}>
+                        <div key={provider.id} className={`flex h-auto min-w-0 items-center justify-start rounded-md border-l-4 px-2 py-2 text-left ${selected ? "bg-primary text-primary-foreground" : "text-muted-foreground"} ${protocolAccent}`} aria-current={selected ? "true" : undefined}>
                           <span className="grid min-w-0 gap-0.5">
                             <span className="truncate font-medium">{provider.name || copy.settings.provider}</span>
-                            <span className={`truncate text-xs ${selected ? "text-background/70" : "text-muted-foreground"}`}>{protocolLabel} · {address || copy.settings.apiUrl}</span>
+                            <span className={`truncate text-xs ${selected ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{protocolLabel} · {address || copy.settings.apiUrl}</span>
                           </span>
-                        </Button>
+                        </div>
                       );
                     })}
                   </div>
@@ -176,7 +170,14 @@ export function SettingsDialog({
                 {activeProvider ? (
                   <FieldGroup className="min-w-0 rounded-md border p-4">
                     <div className="flex min-w-0 items-center justify-between gap-3">
-                      <div className="min-w-0 truncate text-sm font-medium">{activeProvider.name || copy.settings.provider}</div>
+                      <Input
+                        id="providerName"
+                        aria-label={copy.settings.providerName}
+                        className="h-8 min-w-0 max-w-[15rem] text-sm font-medium"
+                        value={activeProvider.name}
+                        onChange={(event) => updateProviderName(event.target.value)}
+                        placeholder={copy.settings.provider}
+                      />
                       <div className="flex shrink-0 items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={restoreProviderDefaults}><RotateCcwIcon data-icon="inline-start" />{copy.settings.restoreProviderDefaults}</Button>
                         <Button type="button" variant="destructive" size="sm" disabled={settings.openaiProviders.length <= 1 || isBuiltInProvider(activeProvider)} title={isBuiltInProvider(activeProvider) ? copy.settings.builtInProviderDescription : undefined} onClick={() => setProviderDeleteConfirmOpen(true)}><Trash2Icon data-icon="inline-start" />{copy.settings.deleteProvider}</Button>
@@ -189,8 +190,6 @@ export function SettingsDialog({
                         <SelectContent><SelectItem value="openai">{copy.settings.openAiProtocol}</SelectItem><SelectItem value="gemini">{copy.settings.geminiProtocol}</SelectItem></SelectContent>
                       </Select>
                     </Field>
-                    <Field><FieldLabel htmlFor="providerName">{copy.settings.providerName}</FieldLabel><Input id="providerName" value={activeProvider.name} onChange={(event) => updateProviderName(event.target.value)} /></Field>
-
                     {activeProvider.protocol === "openai" ? (
                       <>
                         <Field><FieldLabel htmlFor="baseUrl">{copy.settings.apiUrl}</FieldLabel><Input id="baseUrl" type="url" spellCheck={false} autoComplete="url" placeholder={DEFAULTS.baseUrl} value={activeProvider.baseUrl} onChange={(event) => updateProviderConfig({ baseUrl: event.target.value })} /></Field>

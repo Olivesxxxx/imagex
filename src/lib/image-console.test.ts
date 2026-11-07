@@ -72,17 +72,32 @@ function requestRecordFixture(overrides: Partial<ImageRequestRecord>): ImageRequ
 
 describe("image console logic", () => {
   test("provides editable default OpenAI providers and preserves an explicit empty list", () => {
-    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["灵速", "Auttyt", "MHOO", "MHOO"]);
-    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.editsModel)).toEqual(["", "", "", ""]);
-    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(4);
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.name)).toEqual(["AIGW", "MHOO", "MHOO", "灵速", "Auttyt"]);
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.editsModel)).toEqual(["", "", "", "", ""]);
+    expect(DEFAULT_OPENAI_PROVIDERS.map((provider) => provider.generationsModel)).toEqual(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6"]);
+    expect(DEFAULT_OPENAI_PROVIDERS[0].baseUrl).toBe("https://canvas.aigw.store/v1");
+    expect(normalizeSharedSettings({}).openaiProviders).toHaveLength(5);
     expect(normalizeSharedSettings({}).openaiProviders.map((provider) => provider.id)).toEqual([
-      "lingsu",
-      "auttyt",
+      "aigw",
       "mhoo",
       "gemini",
+      "lingsu",
+      "auttyt",
     ]);
     expect(normalizeSharedSettings({}).openaiProviders[0]).toMatchObject({ streamImages: false, streamPartialImages: 2 });
     expect(normalizeSharedSettings({ openaiProviders: [] }).openaiProviders).toEqual([]);
+    expect(normalizeSharedSettings({
+      openaiProviders: [{ ...DEFAULT_OPENAI_PROVIDERS[3], generationsModel: "gpt-image-2.5" }],
+    }).openaiProviders.map((provider) => [provider.id, provider.generationsModel])).toEqual([
+      ["aigw", "gpt-image-2.5"],
+      ["mhoo", "gpt-image-2.6"],
+      ["gemini", "gpt-image-2.5"],
+      ["lingsu", "gpt-image-2.6"],
+      ["auttyt", "gpt-image-2.6"],
+    ]);
+    expect(normalizeSharedSettings({
+      openaiProviders: [{ ...DEFAULT_OPENAI_PROVIDERS[0], baseUrl: "https://canvas.aigw.store" }],
+    }).openaiProviders.find((provider) => provider.id === "aigw")?.baseUrl).toBe("https://canvas.aigw.store/v1");
     expect(normalizeSharedSettings({
       openaiProviders: [{ id: "custom", name: "我的接口", baseUrl: "https://example.com/v1", apiKey: "key" }],
       activeOpenAIProviderId: "custom",
