@@ -477,6 +477,9 @@ export function ResultPanel({
   const selectedRequestConfiguration = selectedRequest
     ? `${payloadSize(selectedRequest.payload)} · ${payloadQuality(selectedRequest.payload)} · ${payloadOutputFormat(selectedRequest.payload)}${selectedProductSuiteSlotVersion ? ` · ${selectedProductSuiteSlotVersion}` : ""}`
     : copy.requestCardStatus.unselectedSubtitle;
+  const selectedRequestTitle = selectedRequest?.title
+    ? String(selectedRequest.title).split(/\s+\u00b7\s+/)[0]
+    : copy.requestCardStatus.unselectedTitle;
   const inputPromptTooltip = selectedRequest?.sourcePrompt?.trim() || (language === "en" ? "No input prompt" : "暂无输入提示词");
   const revisedPromptTooltip = revisedPromptForResponse(selectedRequest?.response) || (language === "en" ? "No revised_prompt found" : "未找到 revised_prompt");
   const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId);
@@ -524,13 +527,7 @@ export function ResultPanel({
     };
   }, [configurationIssue, onTestConnection, testConnectionStatus.tone]);
 
-  const latencyLabel = latencyState === "idle"
-    ? "-"
-    : latencyState === "measuring"
-      ? copy.requestCardStatus.latencyMeasuring
-    : latencyState === "ready" && latency !== null
-      ? `${latency} ms`
-      : copy.requestCardStatus.latencyUnavailable;
+  const latencyValue = apiKey && latencyState === "ready" && latency !== null ? `${latency} ms` : "";
   const availability = configurationIssue
     ? { label: `${copy.requestCardStatus.availabilityUnconfigured}${language === "en" ? " " : ""}${configurationIssue}`, className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300" }
     : testConnectionStatus.tone === "error" || latencyState === "unavailable"
@@ -563,7 +560,7 @@ export function ResultPanel({
           <div className="flex min-w-0 flex-1 flex-col gap-0.5 self-start">
             <span className="flex h-8 w-fit min-w-0 max-w-full items-center rounded-md border border-input bg-background px-3 text-sm font-semibold leading-normal shadow-xs">
               <span className="min-w-0 truncate">
-              {showingVideo ? (videoResult.task ? `${copy.generator.video} · ${copy.generator.videoStatus[videoResult.task.status]}` : copy.generator.video) : (selectedRequest?.title || copy.requestCardStatus.unselectedTitle)}
+              {showingVideo ? (videoResult.task ? `${copy.generator.video} · ${copy.generator.videoStatus[videoResult.task.status]}` : copy.generator.video) : selectedRequestTitle}
               </span>
             </span>
             <span className="flex h-8 min-w-0 items-center truncate text-xs font-medium leading-normal text-muted-foreground" title={showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}>{showingVideo && videoResult.task ? `${videoResult.task.aspectRatio} · ${videoResult.task.quality} · ${videoResult.task.duration}s` : selectedRequestConfiguration}</span>
@@ -575,17 +572,16 @@ export function ResultPanel({
                   size="sm"
                   className="h-8 max-w-full min-w-0 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-semibold shadow-xs hover:bg-muted/50 focus-visible:ring-1"
                   aria-label={copy.settings.provider}
-                  title={`${providerName} · ${protocolLabel}`}
+                  title={`${providerName} ${protocolLabel}`}
                 >
                   <SelectValue placeholder={providerName}>
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate">{providerName}</span>
-                      <span aria-hidden="true">·</span>
                       <ProtocolIcon aria-hidden="true" className={`size-4 shrink-0 ${protocolIconClassName}`} />
                     </span>
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent align="end" className="min-w-56">
+                <SelectContent align="end" className="w-max min-w-0 max-w-[calc(100vw-2rem)]">
                   {settings.openaiProviders.map((provider) => {
                     const providerProtocol = provider.protocol === "gemini" ? copy.settings.geminiProtocol : copy.settings.openAiProtocol;
                     return (
@@ -605,10 +601,11 @@ export function ResultPanel({
                     className={`h-8 shrink-0 rounded-md border px-3 text-sm font-semibold shadow-xs ${availability.className}`}
                     disabled={Boolean(configurationIssue) || latencyState === "measuring" || testConnectionStatus.tone === "busy"}
                     onClick={() => void onTestConnection()}
-                    aria-label={`${availability.label}${apiKey ? ` · ${latencyLabel}` : ""}`}
+                    aria-label={`${availability.label}${latencyValue ? ` ${latencyValue}` : ""}`}
                   >
                     {availability.label}
-                    {apiKey ? <><span aria-hidden="true" className="mx-1.5">·</span><span className="tabular-nums">{latencyLabel}</span><RefreshCwIcon className={`ml-1.5 size-3.5 ${latencyState === "measuring" ? "animate-spin" : ""}`} /></> : null}
+                    {latencyValue ? <><span className="ml-1.5 tabular-nums">{latencyValue}</span><RefreshCwIcon className="ml-1.5 size-3.5" /></> : null}
+                    {apiKey && !latencyValue && latencyState === "measuring" ? <RefreshCwIcon className="ml-1.5 size-3.5 animate-spin" /> : null}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{copy.requestCardStatus.testConnection}</TooltipContent>

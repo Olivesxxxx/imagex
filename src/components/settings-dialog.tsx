@@ -1,5 +1,5 @@
 import { CheckCircle2Icon, Loader2Icon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -43,7 +43,14 @@ export function SettingsDialog({
   const { copy } = useI18n();
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [providerDeleteConfirmOpen, setProviderDeleteConfirmOpen] = useState(false);
-  const activeProvider = settings.openaiProviders.find((provider) => provider.id === settings.activeOpenAIProviderId) || null;
+  const [editingProviderId, setEditingProviderId] = useState(settings.activeOpenAIProviderId);
+  useEffect(() => {
+    if (!settingsOpen) return;
+    setEditingProviderId((current) => settings.openaiProviders.some((provider) => provider.id === current)
+      ? current
+      : settings.activeOpenAIProviderId || settings.openaiProviders[0]?.id || "");
+  }, [settingsOpen, settings.activeOpenAIProviderId, settings.openaiProviders]);
+  const activeProvider = settings.openaiProviders.find((provider) => provider.id === editingProviderId) || null;
   const testConfigurationReady = Boolean(
     activeProvider && (
       activeProvider.protocol === "openai"
@@ -92,13 +99,15 @@ export function SettingsDialog({
       streamPartialImages: 2,
     }];
     updateSettings("openaiProviders", providers);
-    updateSettings("activeOpenAIProviderId", id);
+    setEditingProviderId(id);
   }
 
   function deleteProvider() {
     if (!activeProvider) return;
     if (settings.openaiProviders.length <= 1 || isBuiltInProvider(activeProvider)) return;
-    updateSettings("openaiProviders", settings.openaiProviders.filter((provider) => provider.id !== activeProvider.id));
+    const remainingProviders = settings.openaiProviders.filter((provider) => provider.id !== activeProvider.id);
+    updateSettings("openaiProviders", remainingProviders);
+    setEditingProviderId(remainingProviders.find((provider) => provider.id === settings.activeOpenAIProviderId)?.id || remainingProviders[0]?.id || "");
     setProviderDeleteConfirmOpen(false);
   }
 
@@ -150,17 +159,23 @@ export function SettingsDialog({
                   <FieldTitle className="px-1">{copy.settings.provider}</FieldTitle>
                   <div className="standard-scrollbar grid max-h-44 min-w-0 gap-1 overflow-y-auto pr-1 md:max-h-[32rem]">
                     {settings.openaiProviders.map((provider) => {
-                      const selected = provider.id === settings.activeOpenAIProviderId;
+                      const selected = provider.id === editingProviderId;
                       const protocolLabel = provider.protocol === "gemini" ? copy.settings.geminiProtocol : copy.settings.openAiProtocol;
                       const address = provider.protocol === "gemini" ? provider.geminiBaseUrl : provider.baseUrl;
                       const protocolAccent = provider.protocol === "gemini" ? "border-l-emerald-500" : "border-l-neutral-900";
                       return (
-                        <div key={provider.id} className={`flex h-auto min-w-0 items-center justify-start rounded-md border-l-4 px-2 py-2 text-left ${selected ? "bg-primary text-primary-foreground" : "text-muted-foreground"} ${protocolAccent}`} aria-current={selected ? "true" : undefined}>
+                        <button
+                          key={provider.id}
+                          type="button"
+                          className={`flex h-auto min-w-0 items-center justify-start rounded-md border-l-4 px-2 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"} ${protocolAccent}`}
+                          aria-current={selected ? "true" : undefined}
+                          onClick={() => setEditingProviderId(provider.id)}
+                        >
                           <span className="grid min-w-0 gap-0.5">
                             <span className="truncate font-medium">{provider.name || copy.settings.provider}</span>
                             <span className={`truncate text-xs ${selected ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{protocolLabel} · {address || copy.settings.apiUrl}</span>
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
